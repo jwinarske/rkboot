@@ -120,6 +120,7 @@ struct dram_cfg {
 };
 
 enum {
+	PCTL_DRAM_CLASS = 0,
 	PCTL_MRR_ERROR_STATUS = 17,
 	PCTL_LP_AUTO_ENTRY_EN = 101,
 	PCTL_PERIPHERAL_MRR_DATA = 119,
@@ -135,8 +136,15 @@ enum {
 	PCTL_READ_MODEREG = 118,
 };
 
-extern const struct odt_preset odt_50mhz;
+enum {
+	PHY_SW_MASTER_MODE = 86,
+};
+enum {
+	PHY_ADR_SW_MASTER_MODE = 35,
+};
 
-void lpddr4_modify_config(struct dram_cfg *cfg);
+extern const struct odt_preset odt_50mhz;
+void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
+void lpddr4_modify_config(struct dram_cfg *cfg, const struct odt_settings *odt);
 void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
 void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);

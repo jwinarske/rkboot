@@ -49,16 +49,6 @@ static void copy_reg_range(const volatile u32 *a, volatile u32 *b, u32 n) {
 	while (n--) {*b++ = *a++;}
 }
 
-enum {
-	REG_PHY_SW_MASTER_MODE = 86,
-};
-enum {
-	REG_PHY_ADR_SW_MASTER_MODE = 35,
-};
-enum {
-	REG_PCTL_DRAM_CLASS = 0,
-};
-
 static void set_phy_dll_bypass(volatile struct phy_regs *phy, _Bool enable) {
 	u64 aop, dop;
 	if (enable) {
@@ -70,19 +60,23 @@ static void set_phy_dll_bypass(volatile struct phy_regs *phy, _Bool enable) {
 		aop = SET_BITS32(2, 0) << 10;
 		dop = SET_BITS32(2, 0) << 18;
 	}
-	for_dslice(i) {apply32v(&phy->dslice[i][REG_PHY_SW_MASTER_MODE], dop);}
-	for_aslice(i) {apply32v(&phy->aslice[i][REG_PHY_ADR_SW_MASTER_MODE], aop);}
+	for_dslice(i) {apply32v(&phy->dslice[i][PHY_SW_MASTER_MODE], dop);}
+	for_aslice(i) {apply32v(&phy->aslice[i][PHY_ADR_SW_MASTER_MODE], aop);}
 	puts(" done.\n");
 }
 
 static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct channel_config *ch_cfg, enum dramtype type) {
-	u8 csmask = ch_cfg->csmask;
+	u32 csmask = ch_cfg->csmask;
 	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
-	u8 row_bits = 16 - bounds_checked(row_bits_table, ch_cfg->ddrconfig);
+	u32 row_diff = 16 - bounds_checked(row_bits_table, ch_cfg->ddrconfig);
 	_Bool reduc = ch_cfg->bw == 2;
-	u64 col_op = SET_BITS32(4, 12 - ch_cfg->col);
-	u64 bk_row_op = SET_BITS32(2, 3 - ch_cfg->bk) << 16
-		| SET_BITS32(3, row_bits) << 24;
+	u32 bk_diff = 3 - ch_cfg->bk, col_diff = 12 - ch_cfg->col;
+
+	printf("set_memory_map: pctl@%zx pi@%zx reduc%u col%u row%u bk%u cs%u\n", (u64)pctl, (u64)pi, (u32)reduc, col_diff, row_diff, (u32)bk_diff, csmask);
+	u64 col_op = SET_BITS32(4, col_diff);
+	u64 bk_row_op = SET_BITS32(2, bk_diff) << 16
+		| SET_BITS32(3, row_diff) << 24;
+
 	apply32v(pctl + 191, col_op);
 	apply32v(pctl + 190, bk_row_op);
 	apply32v(pctl + 196,
@@ -92,15 +86,12 @@ static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct ch
 
 	apply32v(pi + 199, col_op);
 	apply32v(pi + 155, bk_row_op);
-	if (type == LPDDR4) {
-		csmask |= csmask << 2;
-	}
+
+	if (type == LPDDR4) {csmask |= csmask << 2;}
 
 	apply32v(pi + 41, SET_BITS32(4, csmask) << 24);
 
-	if (type == DDR3) {
-		pi[34] = 0x2ec7ffff;
-	}
+	if (type == DDR3) {pi[34] = 0x2ec7ffff;}
 }
 
 void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
@@ -125,10 +116,54 @@ void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
 	printf("    }\n  }\n}\n");
 }
 
+inline u32 mr_read_command(u8 mr, u8 cs) {
+	return (u32)mr | ((u32)cs << 8) | (1 << 16);
+}
+
+enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
+
+enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
+	pctl[PCTL_READ_MODEREG] = mr_read_command(mr, cs) << 8;
+	u32 status;
+	u64 start_time = get_timestamp();
+	while (!((status = pctl[PCTL_INT_STATUS]) & 0x00201000)) {
+		if (get_timestamp() - start_time > 100 * CYCLES_PER_MICROSECOND) {
+			*out = 0;
+			return MRR_TIMEOUT;
+		}
+	}
+	pctl[PCTL_INT_ACK] = 0x00201000;
+	if ((status >> 12) & 1) {
+		*out = pctl[PCTL_MRR_ERROR_STATUS];
+		return MRR_ERROR;
+	}
+	*out = pctl[PCTL_PERIPHERAL_MRR_DATA];
+	return MRR_OK;
+}
+
+void dump_mrs() {
+	for_channel(ch) {
+		printf("channel %u\n", ch);
+		for_range(cs, 0, 2) {
+			printf("CS=%u\n", cs);
+			for_range(mr, 0, 26) {
+				if (!((1 << mr) & 0x30c51f1)) {continue;}
+				u32 mr_value; enum mrrresult res;
+				if ((res = read_mr(pctl_base_for(ch), mr, cs, &mr_value))) {
+					if (res == MRR_TIMEOUT) {printf("MRR timeout for mr%u\n", mr);}
+					else {printf("MRR error %x for MR%u\n", mr_value, mr);}
+				} else {
+					printf("MR%u = %x\n", mr, mr_value);
+				}
+			}
+		}
+	}
+}
+
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
-_Bool try_init(u32 chmask, struct dram_cfg *cfg) {
+_Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt) {
 	softreset_memory_controller();
 	for_channel(ch) {
 		if (!((1 << ch) & chmask)) {continue;}
@@ -136,23 +171,17 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg) {
 		volatile u32 *pi = pi_base_for(ch);
 		volatile struct phy_regs *phy = phy_for(ch);
 		set_phy_dll_bypass(phy, cfg->mhz < 125);
-		switch (cfg->type) {
-		case LPDDR4:
-			lpddr4_modify_config(cfg);
-			break;
-		default:
-			die("unsupported DDR type %u\n", (u32)cfg->type);
-		}
-		/*set_phy_io(phy, &reg_layout, &odt);*/
-		dump_cfg(&cfg->regs.pctl[0], &cfg->regs.pi[0], &cfg->regs.phy);
+
+		set_phy_io((volatile u32 *)phy, &reg_layout, odt);
+
 		copy_reg_range(
-			&cfg->regs.pctl[REG_PCTL_DRAM_CLASS + 1],
-			pctl + REG_PCTL_DRAM_CLASS + 1,
-			NUM_PCTL_REGS - REG_PCTL_DRAM_CLASS - 1
+			&cfg->regs.pctl[PCTL_DRAM_CLASS + 1],
+			pctl + PCTL_DRAM_CLASS + 1,
+			NUM_PCTL_REGS - PCTL_DRAM_CLASS - 1
 		);
 		/* must happen after setting NO_PHY_IND_TRAIN_INT in the transfer above */
-		pctl[REG_PCTL_DRAM_CLASS] = cfg->regs.pctl[REG_PCTL_DRAM_CLASS];
-		
+		pctl[PCTL_DRAM_CLASS] = cfg->regs.pctl[PCTL_DRAM_CLASS];
+
 		if (cfg->type == LPDDR4 && chmask == 3 && ch == 1) {
 			/* delay ZQ calibration */
 			pctl[14] += cfg->mhz * 1000;
@@ -175,16 +204,18 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg) {
 		
 		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 1) << 24);
 
-		pi[0] = START;
-		pctl[0] = START;
+		pi[0] |= START;
+		pctl[0] |= START;
 
 		assert(cfg->type == LPDDR4);
 
 		copy_reg_range(&phy_cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
 		for_dslice(i) {copy_reg_range(&phy_cfg->dslice[i][0], &phy->dslice[i][0], NUM_PHY_DSLICE_REGS);}
-		for_aslice(i) {copy_reg_range(&phy_cfg->aslice[i][0], &phy->dslice[i][0], NUM_PHY_ASLICE_REGS);}
+		for_aslice(i) {copy_reg_range(&phy_cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
 
 		/* TODO: do next register set manipulation */
+
+		phy->global[0] = phy_cfg->global[0] & ~(u32)0x0300;
 
 		for_dslice(i) {
 			phy->dslice[i][83] = phy_cfg->dslice[i][83] + 0x00100000;
@@ -224,6 +255,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg) {
 		}
 		log("channel %u initialized\n", ch);
 	}
+	dump_mrs();
 	return 1;
 }
 
@@ -233,5 +265,16 @@ void ddrinit() {
 	/* not doing this will make the CPU hang during the DLL bypass step */
 	*(volatile u32*)0xff330040 = 0xc000c000;
 	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
-	try_init(3, &init_cfg);
+	struct odt_settings odt;
+	lpddr4_get_odt_settings(&odt, &odt_50mhz);
+	odt.flags |= ODT_SET_RST_DRIVE;
+	switch (init_cfg.type) {
+	case LPDDR4:
+		lpddr4_modify_config(&init_cfg, &odt);
+		break;
+	default:
+		die("unsupported DDR type %u\n", (u32)init_cfg.type);
+	}
+	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
+	try_init(3, &init_cfg, &odt);
 }

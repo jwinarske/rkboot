@@ -119,13 +119,13 @@ void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct
 		puts("setting boost + slew\n");
 		static const struct regshift boost_regs[] = {
 			{925, 8}, {926, 12}, {927, 14}, {928, 20},
-			{929, 22}, {935, 20}, {937, 20}, {929, 20},
+			{929, 22}, {935, 20}, {937, 20}, {939, 20},
 		}; apply32_multiple(boost_regs, ARRAY_SIZE(boost_regs), phy, delta,
 			SET_BITS32(8, 0x11)
 		);
 		static const struct regshift slew_regs[] = {
 			{924, 8}, {926, 0}, {927, 0}, {928, 8},
-			{929, 8}, {935, 8}, {937, 8}, {929, 8},
+			{929, 8}, {935, 8}, {937, 8}, {939, 8},
 		}; apply32_multiple(slew_regs, ARRAY_SIZE(slew_regs), phy, delta,
 			SET_BITS32(6, 0x09)
 		);
@@ -141,7 +141,7 @@ void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct
 	if (odt->flags & ODT_SET_RX_CM_INPUT) {
 		static const struct regshift rx_cm_input_regs[] = {
 			{924, 14}, {926, 11}, {927, 13}, {928, 19},
-			{929, 21}, {935, 19}, {937, 19}, {929, 19},
+			{929, 21}, {935, 19}, {937, 19}, {939, 19},
 		}; apply32_multiple(rx_cm_input_regs, ARRAY_SIZE(rx_cm_input_regs), phy, delta,
 			SET_BITS32(1, 1)
 		);

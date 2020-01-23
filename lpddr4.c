@@ -110,7 +110,7 @@ void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *
 	}
 }
 
-void lpddr4_modify_config(struct dram_cfg *cfg) {
+void lpddr4_modify_config(struct dram_cfg *cfg, const struct odt_settings *odt) {
 	u32 *pctl = &cfg->regs.pctl[0], *pi = &cfg->regs.pi[0];
 	struct phy_cfg *phy = &cfg->regs.phy;
 	mr_adjust(pctl, pi, &dq_odt_adj, 2, odt_50mhz.dram.dq_odt);
@@ -119,13 +119,10 @@ void lpddr4_modify_config(struct dram_cfg *cfg) {
 	mr_adjust(pctl, pi, &mr12_adj, 2, odt_50mhz.dram.ca_vref);
 	mr_adjust(pctl, pi, &mr14_adj, 2, odt_50mhz.dram.dq_vref);
 
-	struct odt_settings odt;
-	lpddr4_get_odt_settings(&odt, &odt_50mhz);
-	odt.flags |= ODT_SET_RST_DRIVE;
-	set_drive_strength(pctl, (u32*)phy, &cfg_layout, &odt);
+	set_drive_strength(pctl, (u32*)phy, &cfg_layout, odt);
 	/*set_phy_io((u32 *)phy, &cfg_layout, &odt);*/
 	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
-	for_array(i, arr) {printf("%s n=%x p=%x\n", arr[i], (u32)odt.ds[i][ODT_N], (u32)odt.ds[i][ODT_P]);}
+	for_array(i, arr) {printf("%s n=%x p=%x\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
 
 	/* read 2-cycle preamble */
 	pctl[200] |= 3 << 24;
