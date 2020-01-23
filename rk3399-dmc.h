@@ -45,8 +45,8 @@ enum odt_situation {
 	ODT_NUM_SITUATIONS
 };
 enum odt_level {
-	ODT_P = 0,
-	ODT_N,
+	ODT_N = 0,
+	ODT_P,
 	ODT_NUM_LEVELS
 };
 
@@ -65,6 +65,8 @@ enum odt_flags {
 struct odt_settings {
 	u32 flags;
 	u8 soc_odt;
+	u8 padding;
+	u16 padding2;
 	u8 ds[ODT_NUM_SITUATIONS][ODT_NUM_LEVELS];
 	u8 mode_dq, value_dq;
 	u8 mode_ac, value_ac;

@@ -1,12 +1,18 @@
 OUTPUT_FORMAT(elf64-littleaarch64)
 ENTRY(main) 
-start = 0xff8c2004;
+start = 0xff8c2000;
 SECTIONS {
 	.text start : AT(start) {
-		code = .;
 		*(.entry)
 		*(.text)
-		*(.text)
+	}
+	.rodata : {
 		*(.rodata*)
+	}
+	.eh_frame : {
+		*(.eh_frame)
+	}
+	.data : {
+		*(.data)
 	}
 }

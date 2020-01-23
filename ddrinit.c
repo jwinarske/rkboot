@@ -28,9 +28,9 @@ static inline volatile u32 *pctl_base_for(u32 channel) {
 static inline volatile u32 *pi_base_for(u32 channel) {
 	return (volatile u32 *)(0xffa80800 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
 }
-static inline volatile u32 *msch_base_for(u32 channel) {
+/*static inline volatile u32 *msch_base_for(u32 channel) {
 	return (volatile u32 *)(0xffa84000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
-}
+}*/
 
 static void set_ddr_reset_request(_Bool controller, _Bool phy) {
 	cru[CRU_SOFTRST_CON + 4] = 0x33000000 | (controller << 12) | (controller << 8) | (phy << 13) | (phy << 9);
@@ -103,26 +103,26 @@ static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct ch
 	}
 }
 
-static void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
+void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
 	printf(".regs = {\n  .pctl = {\n");
-	for_range(i, 0, NUM_PCTL_REGS) {printf("     %08x,\n", pctl[i]);}
+	for_range(i, 0, NUM_PCTL_REGS) {printf("    0x%08x, // PCTL%03u\n", pctl[i], i);}
 	printf("  },\n  .pi = {\n");
-	for_range(i, 0, NUM_PI_REGS) {printf("     %08x,\n", pi[i]);}
+	for_range(i, 0, NUM_PI_REGS) {printf("    0x%08x, // PI%03u\n", pi[i], i);}
 	printf("  },\n  .phy = {\n    .dslice = {\n");
 	for_dslice(i) {
 		printf("      {\n");
-		for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("     %08x,\n", phy->dslice[i][j]);}
-		printf("      },");
+		for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("        0x%08x, // DSLC%u_%u\n", phy->dslice[i][j], i, j);}
+		printf("      },\n");
 	}
 	printf("    },\n    .aslice = {\n");
 	for_aslice(i) {
 		printf("      {\n");
-		for_range(j, 0, NUM_PHY_ASLICE_REGS) {printf("     %08x,\n", phy->aslice[i][j]);}
-		printf("      },");
+		for_range(j, 0, NUM_PHY_ASLICE_REGS) {printf("        0x%08x, // ASLC%u_%u\n", phy->aslice[i][j], i, j);}
+		printf("      },\n");
 	}
 	printf("    },\n    .global = {\n");
-	for_range(i, 0, NUM_PHY_GLOBAL_REGS) {printf("     %08x,\n", phy->global[i]);}
-	printf("    }\n  }\n}");
+	for_range(i, 0, NUM_PHY_GLOBAL_REGS) {printf("      0x%08x, // PHY%u\n", phy->global[i], i + 896);}
+	printf("    }\n  }\n}\n");
 }
 
 #define PWRUP_SREF_EXIT (1 << 16)
@@ -141,7 +141,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg) {
 			lpddr4_modify_config(cfg);
 			break;
 		default:
-			die("unsupported DDR type");
+			die("unsupported DDR type %u\n", (u32)cfg->type);
 		}
 		dump_cfg(&cfg->regs.pctl[0], &cfg->regs.pi[0], &cfg->regs.phy);
 		copy_reg_range(
@@ -227,9 +227,10 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg) {
 }
 
 void ddrinit() {
-	log("initializing DRAM\n");
+	log("initializing DRAM%s\n", "");
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
 	/* not doing this will make the CPU hang during the DLL bypass step */
 	*(volatile u32*)0xff330040 = 0xc000c000;
+	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
 	try_init(3, &init_cfg);
 }

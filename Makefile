@@ -1,5 +1,6 @@
 EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib
-CFLAGS ?= -Os  -mcmodel=tiny -fno-stack-protector -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter
+CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fno-stack-protector
+# -mcmodel=tiny -fstack-usage
 BUILD_CFLAGS ?= -Os 
 LDFLAGS ?= 
 O ?= .
@@ -35,4 +36,7 @@ boot: $(O)/usbtool $(O)/levinboot.bin
 install: $(O)/levinboot.img $(O)/levinboot.elf $(O)/levinboot.bin $(O)/usbtool
 	cp $^ $(out)
 
-.PHONY: install all default boot
+clean:
+	rm -f $(O)/*.o $(O)/{levinboot.img,levinboot.elf,levinboot.bin,idbtool,usbtool}
+
+.PHONY: install all default boot clean

@@ -55,7 +55,7 @@ static u32 fmt_hex(u64 val, char pad, u8 width, u32 queue_space) {
 	}
 }
 
-static u32 fmt_dec(u64 val, u32 queue_space) {
+u32 fmt_dec(u64 val, char pad, u8 width, u32 queue_space) {
 	char buf[24];
 	buf[23] = 0;
 	char *ptr = &buf[23];
@@ -63,6 +63,14 @@ static u32 fmt_dec(u64 val, u32 queue_space) {
 		*--ptr = '0' + (val % 10);
 		val /= 10;
 	} while (val);
+	u8 digits = 23 - (ptr - buf);
+	if (digits < width) {
+		u8 padlength = width - digits;
+		if (queue_space < width) {
+			queue_space = wait_until_fifo_free(width) - width;
+		}
+		while (padlength--) {uart->tx = pad;}
+	}
 	return fmt_str(ptr, queue_space);
 }
 
@@ -93,16 +101,19 @@ static u32 fmt_format(const char *fmt, va_list va, u32 queue_space) {
 					break;
 				}
 			}
-			u64 val = flags & FLAG_SIZE_T ? va_arg(va, u64) : va_arg(va, u32);
-			if (c == 'u') {
-				queue_space = fmt_dec(val, queue_space);
-			} else if (c == 'x') {
-				queue_space = fmt_hex(val, pad, width, queue_space);
-			} else if (c == 's') {
-				queue_space = fmt_str(va_arg(va, const char *), queue_space);
+			if (c == 's') {
+				const char *str = va_arg(va, const char *);
+				queue_space = fmt_str(str, queue_space);
 			} else {
-				queue_space = fmt_str("ERROR: unknown format specifier", queue_space);
-				halt_and_catch_fire();
+				u64 val = flags & FLAG_SIZE_T ? va_arg(va, u64) : va_arg(va, u32);
+				if (c == 'u') {
+					queue_space = fmt_dec(val, pad, width, queue_space);
+				} else if (c == 'x') {
+					queue_space = fmt_hex(val, pad, width, queue_space);
+				} else {
+					queue_space = fmt_str("ERROR: unknown format specifier", queue_space);
+					halt_and_catch_fire();
+				}
 			}
 		} else {
 			if (c == '\n') {
