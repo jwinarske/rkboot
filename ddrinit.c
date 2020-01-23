@@ -69,7 +69,7 @@ static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct ch
 	u32 csmask = ch_cfg->csmask;
 	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
 	u32 row_diff = 16 - bounds_checked(row_bits_table, ch_cfg->ddrconfig);
-	_Bool reduc = ch_cfg->bw == 2;
+	_Bool reduc = ch_cfg->bw != 2;
 	u32 bk_diff = 3 - ch_cfg->bk, col_diff = 12 - ch_cfg->col;
 
 	printf("set_memory_map: pctl@%zx pi@%zx reduc%u col%u row%u bk%u cs%u\n", (u64)pctl, (u64)pi, (u32)reduc, col_diff, row_diff, (u32)bk_diff, csmask);
