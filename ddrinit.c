@@ -143,6 +143,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg) {
 		default:
 			die("unsupported DDR type %u\n", (u32)cfg->type);
 		}
+		/*set_phy_io(phy, &reg_layout, &odt);*/
 		dump_cfg(&cfg->regs.pctl[0], &cfg->regs.pi[0], &cfg->regs.phy);
 		copy_reg_range(
 			&cfg->regs.pctl[REG_PCTL_DRAM_CLASS + 1],

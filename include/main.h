@@ -30,3 +30,6 @@ static inline void clrset32m(u32 *addr, u32 clear, u32 set) {
 static inline void apply32m(u32 *addr, u64 op) {
 	clrset32(addr, op >> 32, (u32)op);
 }
+
+#define NO_ASAN __attribute__((no_sanitize_address))
+#define UNUSED __attribute__((unused))

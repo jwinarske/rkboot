@@ -32,7 +32,7 @@ _Static_assert(sizeof(struct timer) == 32, "wrong size for timer struct");
 
 static volatile struct timer *const stimer6 = (volatile struct timer *)0xff868000;
 
-void setup_timer() {
+void NO_ASAN setup_timer() {
 	u64 freq = 0x016e3600;
 	__asm__ volatile("msr CNTFRQ_EL0, %0": : "r"(freq));
 	stimer6[5].control = 0;

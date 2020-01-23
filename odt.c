@@ -29,7 +29,7 @@ void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_
 	apply32v(pctl+145, cs0_op);
 	apply32v(pctl+146, cs0_op << 16 | cs0_op);
 	u64 cs1_op = SET_BITS32(8, odt->soc_odt | CS1_MR22_VAL << 3);
-	apply32v(pctl+159, cs1_op);
+	apply32v(pctl+159, cs1_op << 16);
 	apply32v(pctl+160, cs1_op << 16 | cs1_op);
 	
 	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};

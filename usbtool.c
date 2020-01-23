@@ -8,7 +8,7 @@ uint16_t crc = 0xffff;
 uint8_t buf[4096];
 u8 rc4state[258];
 
-int main(int argc, char **argv) {
+int main(int UNUSED argc, char UNUSED **argv) {
 	rc4_init(rc4state);
 	libusb_context *ctx;
 	if (libusb_init(&ctx)) {

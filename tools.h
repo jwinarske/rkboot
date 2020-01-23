@@ -1,4 +1,5 @@
 #pragma once
+#define UNUSED __attribute__((unused))
 
 typedef unsigned char u8;
 
@@ -30,4 +31,4 @@ static inline void rc4_init(u8 *state) {
 		state[i] = state[j];
 		state[j] = tmp;
 	}
-} 
+}

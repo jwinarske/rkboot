@@ -1,6 +1,6 @@
 EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib
-CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fno-stack-protector
-# -mcmodel=tiny -fstack-usage
+CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fstack-protector-all -fsanitize=undefined
+# -mcmodel=tiny -fstack-usage -fsanitize=kernel-address
 BUILD_CFLAGS ?= -Os 
 LDFLAGS ?= 
 O ?= .
@@ -28,7 +28,7 @@ $(O)/idbtool: idbtool.c
 	$(BUILD_CC) $(BUILD_CFLAGS) -o $@ $^
 
 $(O)/usbtool: usbtool.c
-	$(CC) $(CFLAGS) $(shell pkg-config --libs --cflags libusb-1.0) -o $@ $^
+	$(CC) $(CFLAGS) $(shell pkg-config --libs --cflags libusb-1.0) -o $@ $^ -fno-sanitize=kernel-address
 
 boot: $(O)/usbtool $(O)/levinboot.bin
 	$< <"$(O)/levinboot.bin"

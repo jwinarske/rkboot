@@ -108,11 +108,6 @@ void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *
 		odt->value_dq = ((u32)preset->phy.rd_vref * 1000 - 15300) / 521;
 		odt->drive_mode = 4;
 	}
-	yield();
-	printf("dqn %x %zx\n", (u32)odt->ds[ODT_WR_DQ][ODT_N], (u64)odt);
-	printf("dqn %x\n", (u32)odt->ds[ODT_WR_DQ][ODT_N]);
-	printf("mode %x value %x drive_mode %x\n", (u32)odt->mode_dq, (u32)odt->value_dq, (u32)odt->drive_mode);
-	printf("dqn %u\n", (u32)odt->ds[ODT_WR_DQ][ODT_N]);
 }
 
 void lpddr4_modify_config(struct dram_cfg *cfg) {
@@ -127,7 +122,6 @@ void lpddr4_modify_config(struct dram_cfg *cfg) {
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
 	odt.flags |= ODT_SET_RST_DRIVE;
-	printf("dqn %x\n", (u32)odt.ds[ODT_WR_DQ][ODT_N]);
 	set_drive_strength(pctl, (u32*)phy, &cfg_layout, &odt);
 	/*set_phy_io((u32 *)phy, &cfg_layout, &odt);*/
 	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
