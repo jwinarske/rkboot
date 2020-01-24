@@ -4,7 +4,7 @@ CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -
 BUILD_CFLAGS ?= -Os 
 LDFLAGS ?= 
 O ?= .
-OBJECTS = $(O)/main.o $(O)/timer.o $(O)/uart.o $(O)/pll.o $(O)/ddrinit.o $(O)/odt.o $(O)/lpddr4.o
+OBJECTS = $(O)/main.o $(O)/timer.o $(O)/uart.o $(O)/pll.o $(O)/ddrinit.o $(O)/odt.o $(O)/lpddr4.o $(O)/moderegs.o
 
 default: $(O)/levinboot.img
 all: $(O)/levinboot.img $(O)/levinboot.bin $(O)/usbtool

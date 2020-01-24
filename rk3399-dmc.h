@@ -185,8 +185,16 @@ enum {
 #define FORCE_ORDER(n) ((n) << 8)
 #define FORCE_ORDER_STATE(n) ((n) << 16
 
-extern const struct odt_preset odt_50mhz;
+struct mr_adjustments;
+void mr_adjust(volatile u32 *pctl, volatile u32 *pi, const struct mr_adjustments *adj, u32 regset, u32 val);
+extern const struct mr_adjustments dq_odt_adj, ca_odt_adj, mr3_adj, mr12_adj, mr14_adj;
+
+struct regshift {u16 reg;u8 shift;};
+extern const struct regshift speed_regs[8];
+void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op);
+extern const struct odt_preset odt_50mhz, odt_600mhz;
 void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
+void lpddr4_set_odt(volatile u32 *pctl, volatile u32 *pi, u32 freqset, const struct odt_preset *preset);
 void lpddr4_modify_config(struct dram_cfg *cfg, const struct odt_settings *odt);
 void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
 void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);

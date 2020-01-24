@@ -18,6 +18,10 @@ struct dram_cfg init_cfg = {
 #include "initcfg.inc.c"
 };
 
+struct phy_cfg phy_400mhz = {
+#include "phy_cfg2.inc.c"
+};
+
 enum {MC_NUM_CHANNELS = 2, MC_CHANNEL_STRIDE = 0x8000, MC_NUM_FREQUENCIES = 3};
 static inline volatile struct phy_regs *phy_for(u32 channel) {
 	return (volatile struct phy_regs *)(0xffa82000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
@@ -47,6 +51,18 @@ static void softreset_memory_controller() {
 
 static void copy_reg_range(const volatile u32 *a, volatile u32 *b, u32 n) {
 	while (n--) {*b++ = *a++;}
+}
+
+const struct regshift speed_regs[8] = {
+	{924, 21}, {926, 9}, {927, 9}, {928, 17},
+	{929, 17}, {935, 17}, {937, 17}, {939, 17},
+};
+void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op) {
+	u32 mask = op >> 32, val = (u32)op;
+	for_range(i, 0, count) {
+		printf("reg %u (delta %u) mask %x val %x shift %u\n", (u32)regs[i].reg, delta, mask, val, regs[i].shift);
+		clrset32(base + (regs[i].reg - delta), mask << regs[i].shift, val << regs[i].shift);
+	}
 }
 
 static void set_phy_dll_bypass(volatile struct phy_regs *phy, _Bool enable) {
@@ -160,6 +176,89 @@ void dump_mrs() {
 	}
 }
 
+/*void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
+	if (phy[84] & (1 << 16)) {
+		printf("set per-cs training\n");
+		for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, rank));}
+	}
+}
+
+_Bool read_gate_training(u32 idx, volatile u32 *pi, volatile u32 *phy) {
+	clrset32(pi + 80, SET_BITS32(2, 2) << 24);
+	clrset32(pi + 74, (SET_BITS32(1, 1) << 16) | (SET_BITS32(2, idx) << 24));
+	while (1) {
+		u32 status = pi[174];
+		if ((phy[43] | phy[171] | phy[299] | phy[427]) & (3 << 22)) {puts("obs error\n");return 0;}
+		if (status & (1 << 11)) {puts("flag error\n");return 0;}
+		if ((status & (1 << 17)) && (status & (1 << 21))) {break;}
+	}
+	pi[175] = 0x3f7c;
+	/*clrset32(pi + 80, SET_BITS32(2, 0) << 24);*
+	return 1;
+}*/
+
+void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_cfg *cfg, u32 speed) {
+	phy->PHY_GLOBAL(896) = (cfg->PHY_GLOBAL(896) & 0xffff00ff) | bank << 8;
+	phy->PHY_GLOBAL(911) = cfg->PHY_GLOBAL(911);
+	apply32v(&phy->PHY_GLOBAL(913), SET_BITS32(1, cfg->PHY_GLOBAL(913)));
+	copy_reg_range(&cfg->PHY_GLOBAL(916), &phy->PHY_GLOBAL(916), 3);
+	for_aslice(i) {
+		phy->aslice[i][0] = cfg->aslice[i][0];
+		apply32v(&phy->aslice[i][1], SET_BITS32(16, cfg->aslice[i][1]));
+	}
+	for_aslice(i) {copy_reg_range(&cfg->aslice[i][32], &phy->aslice[i][32], 4);}
+	for_aslice(i) {phy->aslice[i][36] = cfg->aslice[i][36];}
+	for_aslice(i) {phy->aslice[i][37] = cfg->aslice[i][37];}
+	for_dslice(i) {copy_reg_range(&cfg->dslice[i][59], &phy->dslice[i][59], 5);}
+	for_dslice(i) {
+		phy->dslice[i][83] = cfg->dslice[i][83] + 0x00100000;
+		phy->dslice[i][84] = cfg->dslice[i][84] + 0x1000;
+		phy->dslice[i][85] = cfg->dslice[i][85];
+	}
+	for_dslice(i) {copy_reg_range(&cfg->dslice[i][87], &phy->dslice[i][87], 4);}
+	for_dslice(i) {copy_reg_range(&cfg->dslice[i][80], &phy->dslice[i][80], 2);}
+	for_dslice(i) {phy->dslice[i][86] = cfg->dslice[i][86];}
+	for_dslice(i) {
+		copy_reg_range(&cfg->dslice[i][64], &phy->dslice[i][64], 4);
+		clrset32(&phy->dslice[i][68], 0xfffffc00, cfg->dslice[i][68] & 0xfffffc00);
+		copy_reg_range(&cfg->dslice[i][69], &phy->dslice[i][69], 11);
+	}
+	for_dslice(i) {clrset32(&phy->dslice[i][7], 0x03000000, cfg->dslice[i][7] & 0x03000000);}
+
+	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
+}
+
+void fast_freq_switch(u8 freqset, u32 freq) {
+	grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
+	pmu[PMU_NOC_AUTO_ENA] |= 0x180;
+	pmu[PMU_BUS_IDLE_REQ] |= 3 << 18;
+	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {puts("waiting for bus idle\n");}
+	cic[0] = (SET_BITS16(2, freqset) << 4) | (SET_BITS16(1, 1) << 2) | SET_BITS16(1, 1);
+	while (!(cic[CIC_STATUS] & 4)) {puts("waiting for CIC ready\n");}
+	if (!setup_pll(cru + CRU_DPLL_CON, freq)) {halt_and_catch_fire();}
+	cic[0] = SET_BITS16(1, 1) << 1;
+	puts("waiting for CIC finish … ");
+	u32 status;
+	for (size_t i = 0; i < 100000; i += 1) {
+		status = cic[CIC_STATUS];
+		if (status & 2) {
+			puts("fail");
+			halt_and_catch_fire();
+		} else if (status & 1) {
+			break;
+		}
+		udelay(1);
+	}
+	if (!(status & 1)) {
+		puts("timeout\n");
+		halt_and_catch_fire();
+	}
+	puts("done\n");
+	pmu[PMU_BUS_IDLE_REQ] &= ~((u32)3 << 18);
+	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != 0) {puts("waiting for bus un-idle\n");}
+	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
+}
+
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
@@ -253,6 +352,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
 			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
 		}
+		clrset32(pctl + 68, PWRUP_SREF_EXIT, cfg->channels[ch].pwrup_sref_exit * PWRUP_SREF_EXIT);
 		log("channel %u initialized\n", ch);
 	}
 	dump_mrs();
@@ -279,6 +379,22 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 	}
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
 	apply32v((volatile u32*)0xff33e010, SET_BITS32(5, 0xd));
+	for_channel(ch) {
+		volatile struct phy_regs *phy = phy_for(ch);
+		volatile u32 *pctl = pctl_base_for(ch);
+		update_phy_bank(phy, 1, &phy_400mhz, 1);
+		lpddr4_set_odt(pctl, pi_base_for(ch), 0, &odt_600mhz);
+		if (!(phy_400mhz.dslice[0][86] & 0x0400)) {
+			for_dslice(i) {phy->dslice[0][10] &= ~(1 << 16);}
+		}
+		if (phy_400mhz.dslice[0][84] & (1 << 16)) {
+			u32 val = pctl[217];
+			if (((val >> 16) & 0x1f) < 8) {
+				pctl[217] = (val & 0xff70ffff) | (8 << 16);
+			}
+		}
+		fast_freq_switch(0, 400);
+	}
 	return 1;
 }
 

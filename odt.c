@@ -21,6 +21,25 @@ const struct odt_preset odt_50mhz = {
 	}
 };
 
+const struct odt_preset odt_600mhz = {
+	.dram = {
+		.dq_odt = 1,
+		.ca_odt = 0,
+		.pdds = 6,
+		.dq_vref = 0x72,
+		.ca_vref = 0x72,
+	},
+	.phy = {
+		.rd_odt = ODT_DS_HI_Z,
+		.wr_dq_drv = ODT_DS_48,
+		.wr_ca_drv = ODT_DS_40,
+		.wr_ckcs_drv = ODT_DS_40,
+		.rd_vref = 32,
+		.rd_odt_en = 0,
+		.soc_odt = 0
+	}
+};
+
 #define CS0_MR22_VAL		0
 #define CS1_MR22_VAL		3
 
@@ -88,15 +107,6 @@ void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_
 	}
 }
 
-struct regshift {u16 reg;u8 shift;};
-static void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op) {
-	u32 mask = op >> 32, val = (u32)op;
-	for_range(i, 0, count) {
-		printf("reg %u (delta %u) mask %x val %x shift %u\n", (u32)regs[i].reg, delta, mask, val, regs[i].shift);
-		clrset32(base + (regs[i].reg - delta), mask << regs[i].shift, val << regs[i].shift);
-	}
-}
-
 void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
 	u32 delta = layout->global_diff;
 	static const struct regshift dq_regs[] = {
@@ -131,10 +141,7 @@ void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct
 		);
 	}
 
-	static const struct regshift speed_regs[] = {
-		{924, 21}, {926, 9}, {927, 9}, {928, 17},
-		{929, 17}, {935, 17}, {937, 17}, {939, 17},
-	}; apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), phy, delta,
+	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), phy, delta,
 		SET_BITS32(2, 2)
 	);
 	
