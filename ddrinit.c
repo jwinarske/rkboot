@@ -198,26 +198,79 @@ void dump_mrs() {
 	}
 }
 
-/*void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
-	if (phy[84] & (1 << 16)) {
+void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
+	if (phy->dslice[0][84] & (1 << 16)) {
 		printf("set per-cs training\n");
 		for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, rank));}
 	}
 }
 
-_Bool read_gate_training(u32 idx, volatile u32 *pi, volatile u32 *phy) {
-	clrset32(pi + 80, SET_BITS32(2, 2) << 24);
-	clrset32(pi + 74, (SET_BITS32(1, 1) << 16) | (SET_BITS32(2, idx) << 24));
+_Bool ca_training(u32 idx, volatile u32 *pi, volatile struct phy_regs *phy) {
+	apply32v(pi + 100, SET_BITS32(2, 2) << 8);
+	apply32v(pi + 92, (SET_BITS32(1, 1) << 16) | (SET_BITS32(2, idx) << 24));
 	while (1) {
 		u32 status = pi[174];
-		if ((phy[43] | phy[171] | phy[299] | phy[427]) & (3 << 22)) {puts("obs error\n");return 0;}
+		u32 obs0 = phy->aslice[0][20];
+		u32 obs1 = phy->aslice[1][20];
+		u32 obs2 = phy->aslice[2][20];
+		if (((obs0 | obs1 | obs2) >> 30) != 0) {puts("obs error\n");return 0;}
+		if (status & (1 << 13)) {puts("flag error\n");return 0;}
+		if ((status & (1 << 19)) && (status & (1 << 21))) {break;}
+	}
+	pi[175] = 0x3f7c;
+	return 1;
+}
+
+_Bool write_leveling(u32 idx, volatile u32 *pi, volatile struct phy_regs *phy) {
+	apply32v(pi + 60, SET_BITS32(2, 2) << 8);
+	apply32v(pi + 59, (SET_BITS32(1, 1) << 8) | (SET_BITS32(2, idx) << 16));
+	while (1) {
+		u32 status = pi[174];
+		for_dslice(i) {if (phy->dslice[i][40] & (1 << 12)) {puts("obs error");return 0;}}
+		if (status & (1 << 12)) {puts("flag error\n");return 0;}
+		if ((status & (1 << 18)) && (status & (1 << 21))) {break;}
+	}
+	pi[175] = 0x3f7c;
+	return 1;
+}
+
+_Bool read_gate_training(u32 idx, volatile u32 *pi, volatile struct phy_regs *phy) {
+	apply32v(pi + 80, SET_BITS32(2, 2) << 24);
+	apply32v(pi + 74, (SET_BITS32(1, 1) << 16) | (SET_BITS32(2, idx) << 24));
+	while (1) {
+		u32 status = pi[174];
+		for_dslice(i) {if (phy->dslice[i][43] & (3 << 22)) {puts("obs error\n"); return 0;}}
 		if (status & (1 << 11)) {puts("flag error\n");return 0;}
 		if ((status & (1 << 17)) && (status & (1 << 21))) {break;}
 	}
 	pi[175] = 0x3f7c;
-	/*clrset32(pi + 80, SET_BITS32(2, 0) << 24);*
 	return 1;
-}*/
+}
+
+_Bool read_leveling(u32 idx, volatile u32 *pi) {
+	apply32v(pi + 80, SET_BITS32(2, 2) << 16);
+	apply32v(pi + 74, (SET_BITS32(1, 1) << 8) | (SET_BITS32(2, idx) << 24));
+	while (1) {
+		u32 status = pi[174];
+		if (status & (1 << 10)) {puts("flag error\n");return 0;}
+		if ((status & (1 << 16)) && (status & (1 << 21))) {break;}
+	}
+	pi[175] = 0x3f7c;
+	return 1;
+}
+
+_Bool wdq_leveling(u32 idx, volatile u32 *pi) {
+	pi[117] |= 1 << 8;
+	apply32v(pi + 124, SET_BITS32(2, 2) << 16);
+	apply32v(pi + 121, (SET_BITS32(1, 1) << 8) | (SET_BITS32(2, idx) << 16));
+	while (1) {
+		u32 status = pi[174];
+		if (status & (1 << 14)) {puts("flag error\n");return 0;}
+		if ((status & (1 << 20)) && (status & (1 << 21))) {break;}
+	}
+	pi[175] = 0x3f7c;
+	return 1;
+}
 
 void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_cfg *cfg, u32 speed) {
 	phy->PHY_GLOBAL(896) = (cfg->PHY_GLOBAL(896) & 0xffff00ff) | bank << 8;
@@ -385,11 +438,11 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		for_range(cs, 0, 2) {
 			if (!(ch_cfg->csmask & (1 << cs))) {continue;}
 			u8 address_bits = address_bits_both + ch_cfg->row[cs];
-			ddrsize |= 1 << (address_bits - 25) << (16 * cs);
+			ddrsize |= 1 << (address_bits - 25) << (8 * cs);
 		}
 		printf("ch%u ddrconfig %08x ddrsize %08x\n", ch, ddrconfig, ddrsize);
 		volatile u32 *msch = msch_base_for(ch);
-		msch[MSCH_DDRCONF] = ddrconfig;
+		msch[MSCH_DDRCONF] = ddrconfig | ddrconfig << 8;
 		msch[MSCH_DDRSIZE] = ddrsize;
 		msch[MSCH_TIMING1] = ch_cfg->timing1;
 		msch[MSCH_TIMING2] = ch_cfg->timing2;
@@ -421,9 +474,82 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
 			}
 		}
-		dump_regs(pctl, pi, phy);
+		/*dump_regs(pctl, pi, phy);*/
 	}
 	fast_freq_switch(0, 400);
+	_Bool training_fail = 0;
+	for_channel(ch) {
+		volatile struct phy_regs *phy = phy_for(ch);
+		volatile u32 UNUSED *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
+		phy->PHY_GLOBAL(927) |= 1 << 22;
+
+		/*pi[175] = 0x3f7c;
+		for_range(idx, 0, 4) {
+			set_per_cs_training_index(phy, idx);
+			if (!ca_training(idx, pi, phy)) {
+				printf("channel %u CA training failed\n", ch);
+				training_fail = 1;
+			}
+		}
+		apply32v(pi + 100, SET_BITS32(2, 0) << 8);*/
+
+		pi[175] = 0x3f7c; /* clear interrupt flags */
+		for_range(idx, 0, 4) {
+			set_per_cs_training_index(phy, idx);
+			if (!write_leveling(idx, pi, phy)) {
+				printf("channel %u write leveling failed\n", ch);
+				training_fail = 1;
+			} else {
+				printf("write leveling finished for channel %u\n", ch);
+			}
+		}
+		/* override write leveling value */
+		phy->PHY_GLOBAL(896) |= 1;
+		for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, 1) << 16);}
+		for_dslice(i) {apply32v(&phy->dslice[i][63], SET_BITS32(16, 0x0200) << 16);}
+		phy->PHY_GLOBAL(896) &= ~(u32)1;
+		pctl[200] |= 1 << 8;
+		apply32v(pi + 60, SET_BITS32(2, 0) << 8);
+
+		pi[175] = 0x3f7c; /* clear interrupt flags */
+		for_range(idx, 0, 4) {
+			set_per_cs_training_index(phy, idx);
+			if (!read_gate_training(idx, pi, phy)) {
+				printf("channel %u read gate training failed\n", ch);
+				training_fail = 1;
+			} else {
+				printf("read gate training finished for channel %u\n", ch);
+			}
+		}
+		apply32v(pi + 80, SET_BITS32(2, 0) << 24);
+
+		pi[175] = 0x3f7c; /* clear interrupt flags */
+		for_range(idx, 0, 4) {
+			set_per_cs_training_index(phy, idx);
+			if (!read_leveling(idx, pi)) {
+				printf("channel %u read leveling failed\n", ch);
+				training_fail = 1;
+			} else {
+				printf("read leveling finished for channel %u\n", ch);
+			}
+		}
+		apply32v(pi + 80, SET_BITS32(2, 0) << 16);
+
+		pi[175] = 0x3f7c; /* clear interrupt flags */
+		for_range(idx, 0, 4) {
+			set_per_cs_training_index(phy, idx);
+			if (!wdq_leveling(idx, pi)) {
+				printf("channel %u wdq leveling failed\n", ch);
+				training_fail = 1;
+			} else {
+				printf("wdq leveling finished for channel %u\n", ch);
+			}
+		}
+		apply32v(pi + 124, SET_BITS32(2, 0) << 16);
+
+		phy->PHY_GLOBAL(927) &= ~(1 << 22);
+	}
+	if (!training_fail) {printf("trained.\n");}
 	return 1;
 }
 
@@ -440,8 +566,8 @@ static uint64_t splittable64(uint64_t x)
 static _Bool memtest(u64 salt) {
 	_Bool res = 1;
 	for_range(block, 0, 31) {
-		u32 block_start = block * 0x08000000;
-		printf("testing %x–%x … ", block_start, block_start + 0x07ffffff);
+		u64 block_start = block * 0x08000000;
+		printf("testing %08zx–%08zx … ", block_start, block_start + 0x07ffffff);
 		volatile u64 *block_ptr = (volatile u64*)block_start;
 		for_range(word, !block, 0x01000000) {
 			block_ptr[word] = splittable64(salt ^ (word | block << 24));
@@ -449,10 +575,11 @@ static _Bool memtest(u64 salt) {
 		for_range(word, !block, 0x01000000) {
 			u64 got = block_ptr[word], expected = splittable64(salt ^ (word | block << 24));
 			if (unlikely(got != expected)) {
-				printf("@%x: expected %zx, got %zx\n", block_start | word << 3, expected, got);
-				res = 0;
+				printf("@%zx: expected %zx, got %zx\n", block_start | word << 3, expected, got);
+				break;
 			}
 		}
+		puts("\n");
 	}
 	return res;
 }
