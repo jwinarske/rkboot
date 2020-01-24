@@ -28,9 +28,9 @@ static inline volatile u32 *pctl_base_for(u32 channel) {
 static inline volatile u32 *pi_base_for(u32 channel) {
 	return (volatile u32 *)(0xffa80800 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
 }
-/*static inline volatile u32 *msch_base_for(u32 channel) {
+static inline volatile u32 *msch_base_for(u32 channel) {
 	return (volatile u32 *)(0xffa84000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
-}*/
+}
 
 static void set_ddr_reset_request(_Bool controller, _Bool phy) {
 	cru[CRU_SOFTRST_CON + 4] = 0x33000000 | (controller << 12) | (controller << 8) | (phy << 13) | (phy << 9);
@@ -256,7 +256,60 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		log("channel %u initialized\n", ch);
 	}
 	dump_mrs();
+	for_channel(ch) {
+		const struct channel_config *ch_cfg = &cfg->channels[ch];
+		u32 ddrconfig = ch_cfg->ddrconfig, ddrsize = 0;
+		u8 address_bits_both = ch_cfg->bw + ch_cfg->col + ch_cfg->bk;
+		for_range(cs, 0, 2) {
+			if (!(ch_cfg->csmask & (1 << cs))) {continue;}
+			u8 address_bits = address_bits_both + ch_cfg->row[cs];
+			ddrsize |= 1 << (address_bits - 25) << (16 * cs);
+		}
+		printf("ch%u ddrconfig %08x ddrsize %08x\n", ch, ddrconfig, ddrsize);
+		volatile u32 *msch = msch_base_for(ch);
+		msch[MSCH_DDRCONF] = ddrconfig;
+		msch[MSCH_DDRSIZE] = ddrsize;
+		msch[MSCH_TIMING1] = ch_cfg->timing1;
+		msch[MSCH_TIMING2] = ch_cfg->timing2;
+		msch[MSCH_TIMING3] = ch_cfg->timing3;
+		msch[MSCH_DEV2DEV] = ch_cfg->dev2dev;
+		msch[MSCH_DDRMODE] = ch_cfg->ddrmode;
+		/*msch[MSCH_AGING] = ch_cfg->aging;*/
+		assert(cfg->type == LPDDR4); /* see dram_all_config */
+	}
+	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
+	apply32v((volatile u32*)0xff33e010, SET_BITS32(5, 0xd));
 	return 1;
+}
+
+static uint64_t splittable64(uint64_t x)
+{
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111eb;
+    x ^= x >> 31;
+    return x;
+}
+
+static _Bool memtest(u64 salt) {
+	_Bool res = 1;
+	for_range(block, 0, 31) {
+		u32 block_start = block * 0x08000000;
+		printf("testing %x–%x … ", block_start, block_start + 0x07ffffff);
+		volatile u64 *block_ptr = (volatile u64*)block_start;
+		for_range(word, !block, 0x01000000) {
+			block_ptr[word] = splittable64(salt ^ (word | block << 24));
+		}
+		for_range(word, !block, 0x01000000) {
+			u64 got = block_ptr[word], expected = splittable64(salt ^ (word | block << 24));
+			if (unlikely(got != expected)) {
+				printf("@%x: expected %zx, got %zx\n", block_start | word << 3, expected, got);
+				res = 0;
+			}
+		}
+	}
+	return res;
 }
 
 void ddrinit() {
@@ -277,4 +330,8 @@ void ddrinit() {
 	}
 	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
 	try_init(3, &init_cfg, &odt);
+	u64 round = 0;
+	while (1) {
+		memtest(round++ << 29);
+	}
 }

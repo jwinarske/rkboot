@@ -110,7 +110,12 @@ enum dramtype {
 struct channel_config {
 	_Bool pwrup_sref_exit;
 	u8 ddrconfig, csmask;
-	u8 bw, col, row, bk;
+	u8 bw, col, bk;
+	u8 row[2];
+	u32 timing1, timing2, timing3;
+	u32 dev2dev;
+	u32 ddrmode;
+	u32 aging;
 };
 struct dram_cfg {
 	u32 mhz;
@@ -142,6 +147,43 @@ enum {
 enum {
 	PHY_ADR_SW_MASTER_MODE = 35,
 };
+
+enum {
+	MSCH_DDRCONF = 2,
+	MSCH_DDRSIZE = 3,
+	MSCH_TIMING1 = 4,
+	MSCH_TIMING2 = 5,
+	MSCH_TIMING3 = 6,
+	MSCH_DEV2DEV = 7,
+	MSCH_DDRMODE = 0x110 / 4,
+	MSCH_AGING = 0x1000 / 4,
+};
+
+#define ACT2ACT(n) (n)
+#define RD2MISS(n) ((n) << 8)
+#define WR2MISS(n) ((n) << 16)
+#define READ_LATENCY(n) ((n) << 24)
+
+#define RD2WR(n) (n)
+#define WR2RD(n) ((n) << 8)
+#define RRD(n) ((n) << 16)
+#define FAW(n) ((n) << 24)
+
+#define BURST_PENALTY(n) (n)
+#define WR2MWR(n) ((n) << 8)
+
+#define BUSRD2RD(n) (n)
+#define BUSRD2WR(n) ((n) << 4)
+#define BUSWR2RD(n) ((n) << 8)
+#define BUSWR2WR(n) ((n) << 12)
+
+#define AUTO_PRECHARGE 1
+#define BYPASS_FILTERING 2
+#define FAW_BANK 4
+#define BURST_SIZE(n) ((n) << 3)
+#define MWR_SIZE(n) ((n) << 5)
+#define FORCE_ORDER(n) ((n) << 8)
+#define FORCE_ORDER_STATE(n) ((n) << 16
 
 extern const struct odt_preset odt_50mhz;
 void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
