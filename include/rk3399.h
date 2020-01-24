@@ -31,17 +31,7 @@ enum {
 	CIC_STATUS = 4
 };
 
-enum {
-	CFG_PCTL_OFFSET = 0x14,
-	CFG_PI_OFFSET = 0x160,
-	CFG_PHY_OFFSET = 0x228,
-	CFG_SIZE = 0x17a0 >> 2
-};
-
 enum {CYCLES_PER_MICROSECOND = 24};
-
-extern u32 lpddr4_cfg1[CFG_SIZE];
-extern const u32 lpddr4_cfg2[CFG_SIZE];
 
 static volatile u32 *const pmu = (volatile u32 *)0xff310000;
 static volatile u32 *const pmugrf = (volatile u32 *)0xff320000;
