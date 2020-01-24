@@ -132,6 +132,28 @@ void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
 	printf("    }\n  }\n}\n");
 }
 
+void dump_regs(volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy) {
+	printf(".regs = {\n  .pctl = {\n");
+	for_range(i, 0, NUM_PCTL_REGS) {printf("    0x%08x, // PCTL%03u\n", pctl[i], i);}
+	printf("  },\n  .pi = {\n");
+	for_range(i, 0, NUM_PI_REGS) {printf("    0x%08x, // PI%03u\n", pi[i], i);}
+	printf("  },\n  .phy = {\n    .dslice = {\n");
+	for_dslice(i) {
+		printf("      {\n");
+		for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("        0x%08x, // DSLC%u_%u\n", phy->dslice[i][j], i, j);}
+		printf("      },\n");
+	}
+	printf("    },\n    .aslice = {\n");
+	for_aslice(i) {
+		printf("      {\n");
+		for_range(j, 0, NUM_PHY_ASLICE_REGS) {printf("        0x%08x, // ASLC%u_%u\n", phy->aslice[i][j], i, j);}
+		printf("      },\n");
+	}
+	printf("    },\n    .global = {\n");
+	for_range(i, 0, NUM_PHY_GLOBAL_REGS) {printf("      0x%08x, // PHY%u\n", phy->global[i], i + 896);}
+	printf("    }\n  }\n}\n");
+}
+
 inline u32 mr_read_command(u8 mr, u8 cs) {
 	return (u32)mr | ((u32)cs << 8) | (1 << 16);
 }
@@ -378,14 +400,20 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		assert(cfg->type == LPDDR4); /* see dram_all_config */
 	}
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
+	u32 val = *(volatile u32 *)0x100;
+	*(volatile u32 *)0x100 = val + 1;
 	apply32v((volatile u32*)0xff33e010, SET_BITS32(5, 0xd));
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
-		volatile u32 *pctl = pctl_base_for(ch);
+		volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
 		update_phy_bank(phy, 1, &phy_400mhz, 1);
-		lpddr4_set_odt(pctl, pi_base_for(ch), 0, &odt_600mhz);
+		struct odt_settings odt;
+		lpddr4_get_odt_settings(&odt, &odt_600mhz);
+		set_drive_strength(pctl, &phy->dslice[0][0], &reg_layout, &odt);
+		set_phy_io(&phy->dslice[0][0], &reg_layout, &odt);
+		lpddr4_set_odt(pctl, pi, 0, &odt_600mhz);
 		if (!(phy_400mhz.dslice[0][86] & 0x0400)) {
-			for_dslice(i) {phy->dslice[0][10] &= ~(1 << 16);}
+			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
 		}
 		if (phy_400mhz.dslice[0][84] & (1 << 16)) {
 			u32 val = pctl[217];
@@ -393,8 +421,9 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
 			}
 		}
-		fast_freq_switch(0, 400);
+		dump_regs(pctl, pi, phy);
 	}
+	fast_freq_switch(0, 400);
 	return 1;
 }
 

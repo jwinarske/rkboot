@@ -1,5 +1,5 @@
 EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib
-CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fstack-protector-all -fsanitize=undefined
+CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fstack-protector-all -fsanitize=undefined -Werror=discarded-qualifiers -Werror=incompatible-pointer-types
 # -mcmodel=tiny -fstack-usage -fsanitize=kernel-address
 BUILD_CFLAGS ?= -Os 
 LDFLAGS ?= 
