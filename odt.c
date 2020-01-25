@@ -40,6 +40,25 @@ const struct odt_preset odt_600mhz = {
 	}
 };
 
+const struct odt_preset odt_933mhz = {
+	.dram = {
+		.dq_odt = 1,
+		.ca_odt = 0,
+		.pdds = 3,
+		.dq_vref = 0x72,
+		.ca_vref = 0x72,
+	},
+	.phy = {
+		.rd_odt = ODT_DS_80,
+		.wr_dq_drv = ODT_DS_48,
+		.wr_ca_drv = ODT_DS_40,
+		.wr_ckcs_drv = ODT_DS_40,
+		.rd_vref = 20,
+		.rd_odt_en = 1,
+		.soc_odt = 3
+	}
+};
+
 #define CS0_MR22_VAL		0
 #define CS1_MR22_VAL		3
 
@@ -50,9 +69,6 @@ void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_
 	u64 cs1_op = SET_BITS32(8, odt->soc_odt | CS1_MR22_VAL << 3);
 	apply32v(pctl+159, cs1_op << 16);
 	apply32v(pctl+160, cs1_op << 16 | cs1_op);
-	
-	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
-	for_array(i, arr) {printf("%s n=%u p=%u\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
 
 	u32 tsel_dq = (u32)odt->ds[ODT_WR_DQ][ODT_N]
 		| (u32)odt->ds[ODT_WR_DQ][ODT_P] << 4;
@@ -64,12 +80,12 @@ void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_
 	for_dslice(i) {clrset32(phy+layout->dslice*i + 6, 0xffffff, tsel_val);}
 	for_dslice(i) {clrset32(phy+layout->dslice*i + 7, 0xffffff, tsel_val);}
 
-	for_array(i, arr) {printf("%s n=%u p=%u\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
+	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
+	for_array(i, arr) {debug("%s n=%x p=%x\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
 	
 	u32 tsel_ca = (u32)odt->ds[ODT_WR_CA][ODT_N]
 		| (u32)odt->ds[ODT_WR_CA][ODT_P] << 4;
 	volatile u32 *ca_base = phy + layout->ca_offs;
-	printf("tsel_ca: %x", tsel_ca);
 	if (odt->flags & ODT_TSEL_CLEAN) {
 		for_aslice(i) {ca_base[layout->aslice * i + 32] = 0x30000 | tsel_ca;}
 	} else {
@@ -124,7 +140,7 @@ void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct
 	);
 	
 	if (odt->flags & ODT_SET_BOOST_SLEW) {
-		puts("setting boost + slew\n");
+		debugs("setting boost + slew\n");
 		static const struct regshift boost_regs[] = {
 			{925, 8}, {926, 12}, {927, 14}, {928, 20},
 			{929, 22}, {935, 20}, {937, 20}, {939, 20},

@@ -32,7 +32,7 @@ _Bool setup_pll(volatile u32 *base, u32 mhz) {
 	const u32 vco = (u32)mhz * postdiv1 * postdiv2;
 	const u16 fbdiv = vco / 24;
 	const u8 refdiv = 1;
-	printf("PLL@%08zx: vco=%u pd1=%u pd2=%u ⇒ %u MHz … ", (u64)base, (unsigned)vco, (unsigned)postdiv1, (unsigned)postdiv2, (unsigned)mhz);
+	debug("PLL@%08zx: vco=%u pd1=%u pd2=%u ⇒ %u MHz … ", (u64)base, (unsigned)vco, (unsigned)postdiv1, (unsigned)postdiv2, (unsigned)mhz);
 	base[3] = SET_BITS16(2, PLL_SLOW) << 8; /* | SET_BITS16(1, 1) << 3; */
 	base[0] = SET_BITS16(12, fbdiv);
 	base[1] = (SET_BITS16(3, postdiv2) << 12) | (SET_BITS16(3, postdiv1) << 8) | SET_BITS16(6, refdiv);
@@ -43,9 +43,9 @@ _Bool setup_pll(volatile u32 *base, u32 mhz) {
 		udelay(1);
 	}
 	if (!locked) {
-		puts("lock failed\n");
+		debugs("lock failed\n");
 	} else {
-		puts("locked on\n");
+		debugs("locked on\n");
 		base[3] = SET_BITS16(2, PLL_NORMAL) << 8;
 	}
 	return locked;

@@ -2,7 +2,7 @@
 #include "rk3399-dmc.h"
 
 void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset) {
-	printf("odt %zx\n", (u64)odt);
+	debug("odt %zx\n", (u64)odt);
 	odt->flags = ODT_TSEL_CLEAN | ODT_SET_BOOST_SLEW | ODT_SET_RX_CM_INPUT
 		| ODT_RD_EN * (preset->phy.rd_odt_en == 1);
 	odt->soc_odt = preset->phy.soc_odt;
@@ -47,7 +47,7 @@ void lpddr4_modify_config(struct dram_cfg *cfg, const struct odt_settings *odt) 
 	set_drive_strength(pctl, (u32*)phy, &cfg_layout, odt);
 	/*set_phy_io((u32 *)phy, &cfg_layout, &odt);*/
 	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
-	for_array(i, arr) {printf("%s n=%x p=%x\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
+	for_array(i, arr) {debug("%s n=%x p=%x\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
 
 	/* read 2-cycle preamble */
 	pctl[200] |= 3 << 24;

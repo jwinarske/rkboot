@@ -1,10 +1,10 @@
 EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib
-CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fstack-protector-all -fsanitize=undefined -Werror=discarded-qualifiers -Werror=incompatible-pointer-types
-# -mcmodel=tiny -fstack-usage -fsanitize=kernel-address
+CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fstack-protector-all -Werror=discarded-qualifiers -Werror=incompatible-pointer-types -fsanitize=undefined
+# -mcmodel=tiny -fstack-usage -fsanitize=kernel-address -DDEBUG_MSG
 BUILD_CFLAGS ?= -Os 
 LDFLAGS ?= 
 O ?= .
-OBJECTS = $(O)/main.o $(O)/timer.o $(O)/uart.o $(O)/pll.o $(O)/ddrinit.o $(O)/odt.o $(O)/lpddr4.o $(O)/moderegs.o
+OBJECTS = $(O)/main.o $(O)/timer.o $(O)/uart.o $(O)/pll.o $(O)/ddrinit.o $(O)/odt.o $(O)/lpddr4.o $(O)/moderegs.o $(O)/training.o
 
 default: $(O)/levinboot.img
 all: $(O)/levinboot.img $(O)/levinboot.bin $(O)/usbtool
