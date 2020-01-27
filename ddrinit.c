@@ -301,10 +301,24 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 	if (!training_fail) {puts("trained.\n");}
 }
 
+void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
+	copy_reg_range(&cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
+	for_dslice(i) {copy_reg_range(&cfg->dslice[i][0], &phy->dslice[i][0], NUM_PHY_DSLICE_REGS);}
+	for_aslice(i) {copy_reg_range(&cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
+
+	phy->global[0] = cfg->global[0] & ~(u32)0x0300;
+
+	for_dslice(i) {
+		phy->dslice[i][83] = cfg->dslice[i][83] + 0x00100000;
+		phy->dslice[i][84] = cfg->dslice[i][84] + 0x1000;
+	}
+}
+
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
 _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt) {
+	u32 sref_save[MC_NUM_CHANNELS];
 	softreset_memory_controller();
 	for_channel(ch) {
 		if (!((1 << ch) & chmask)) {continue;}
@@ -339,9 +353,8 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 			phy->PHY_GLOBAL(919) = phy_cfg->PHY_GLOBAL(919);
 		}
 
-		u32 val = pctl[68];
-		cfg->channels[ch].pwrup_sref_exit = val & PWRUP_SREF_EXIT;
-		pctl[68] = val & ~PWRUP_SREF_EXIT;
+		sref_save[ch] = pctl[68];
+		pctl[68] = sref_save[ch] & ~PWRUP_SREF_EXIT;
 		
 		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 1) << 24);
 
@@ -350,17 +363,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 
 		assert(cfg->type == LPDDR4);
 
-		copy_reg_range(&phy_cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
-		for_dslice(i) {copy_reg_range(&phy_cfg->dslice[i][0], &phy->dslice[i][0], NUM_PHY_DSLICE_REGS);}
-		for_aslice(i) {copy_reg_range(&phy_cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
-
-		phy->global[0] = phy_cfg->global[0] & ~(u32)0x0300;
-
-		for_dslice(i) {
-			phy->dslice[i][83] = phy_cfg->dslice[i][83] + 0x00100000;
-			phy->dslice[i][84] = phy_cfg->dslice[i][84] + 0x1000;
-		}
-		
+		configure_phy(phy, phy_cfg);
 		if (cfg->type == LPDDR4) {
 			/* improve dqs and dq phase */
 			for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(12, 0x680) << 8);}
@@ -392,39 +395,9 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
 			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
 		}
-		clrset32(pctl + 68, PWRUP_SREF_EXIT, cfg->channels[ch].pwrup_sref_exit * PWRUP_SREF_EXIT);
+		clrset32(pctl + 68, PWRUP_SREF_EXIT, sref_save[ch] & PWRUP_SREF_EXIT);
 		log("channel %u initialized\n", ch);
 	}
-	dump_mrs();
-	for_channel(ch) {
-		const struct channel_config *ch_cfg = &cfg->channels[ch];
-		u32 ddrconfig = ch_cfg->ddrconfig, ddrsize = 0;
-		u8 address_bits_both = ch_cfg->bw + ch_cfg->col + ch_cfg->bk;
-		for_range(cs, 0, 2) {
-			if (!(ch_cfg->csmask & (1 << cs))) {continue;}
-			u8 address_bits = address_bits_both + ch_cfg->row[cs];
-			ddrsize |= 1 << (address_bits - 25) << (8 * cs);
-		}
-		debug("ch%u ddrconfig %08x ddrsize %08x\n", ch, ddrconfig, ddrsize);
-		volatile u32 *msch = msch_base_for(ch);
-		msch[MSCH_DDRCONF] = ddrconfig | ddrconfig << 8;
-		msch[MSCH_DDRSIZE] = ddrsize;
-		msch[MSCH_TIMING1] = ch_cfg->timing1;
-		msch[MSCH_TIMING2] = ch_cfg->timing2;
-		msch[MSCH_TIMING3] = ch_cfg->timing3;
-		msch[MSCH_DEV2DEV] = ch_cfg->dev2dev;
-		msch[MSCH_DDRMODE] = ch_cfg->ddrmode;
-		/*msch[MSCH_AGING] = ch_cfg->aging;*/
-		assert(cfg->type == LPDDR4); /* see dram_all_config */
-	}
-	u32 val = *(volatile u32 *)0x100;
-	*(volatile u32 *)0x100 = val + 1;
-	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
-	freq_step(400, 0, 1, &odt_600mhz, &phy_400mhz);
-	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
-	log("finished.%s\n", "");
-	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
-	*(volatile u32*)0xff33e010 = SET_BITS16(5, 0xd) << 10;
 	return 1;
 }
 
@@ -476,7 +449,37 @@ void ddrinit() {
 		die("unsupported DDR type %u\n", (u32)init_cfg.type);
 	}
 	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
-	try_init(3, &init_cfg, &odt);
+	if (!try_init(3, &init_cfg, &odt)) {halt_and_catch_fire();}
+
+	dump_mrs();
+	for_channel(ch) {
+		const struct channel_config *ch_cfg = &init_cfg.channels[ch];
+		u32 ddrconfig = ch_cfg->ddrconfig, ddrsize = 0;
+		u8 address_bits_both = ch_cfg->bw + ch_cfg->col + ch_cfg->bk;
+		for_range(cs, 0, 2) {
+			if (!(ch_cfg->csmask & (1 << cs))) {continue;}
+			u8 address_bits = address_bits_both + ch_cfg->row[cs];
+			ddrsize |= 1 << (address_bits - 25) << (8 * cs);
+		}
+		debug("ch%u ddrconfig %08x ddrsize %08x\n", ch, ddrconfig, ddrsize);
+		volatile u32 *msch = msch_base_for(ch);
+		msch[MSCH_DDRCONF] = ddrconfig | ddrconfig << 8;
+		msch[MSCH_DDRSIZE] = ddrsize;
+		msch[MSCH_TIMING1] = ch_cfg->timing1;
+		msch[MSCH_TIMING2] = ch_cfg->timing2;
+		msch[MSCH_TIMING3] = ch_cfg->timing3;
+		msch[MSCH_DEV2DEV] = ch_cfg->dev2dev;
+		msch[MSCH_DDRMODE] = ch_cfg->ddrmode;
+		/*msch[MSCH_AGING] = ch_cfg->aging;*/
+		assert(init_cfg.type == LPDDR4); /* see dram_all_config */
+	}
+	u32 val = *(volatile u32 *)0x100;
+	*(volatile u32 *)0x100 = val + 1;
+	freq_step(400, 0, 1, &odt_600mhz, &phy_400mhz);
+	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
+	log("finished.%s\n", "");
+	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
+	*(volatile u32*)0xff33e010 = SET_BITS16(5, 0xd) << 10;
 	u64 round = 0;
 	while (1) {
 		memtest(round++ << 29);
