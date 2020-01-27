@@ -366,7 +366,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		configure_phy(phy, phy_cfg);
 		if (cfg->type == LPDDR4) {
 			/* improve dqs and dq phase */
-			for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(12, 0x680) << 8);}
+			for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
 		}
 		if (ch == 1) {
 			/* workaround 366 ball reset */
