@@ -195,7 +195,7 @@ void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base,
 extern const struct odt_preset odt_50mhz, odt_600mhz, odt_933mhz;
 void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
 void lpddr4_set_odt(volatile u32 *pctl, volatile u32 *pi, u32 freqset, const struct odt_preset *preset);
-void lpddr4_modify_config(struct dram_cfg *cfg, const struct odt_settings *odt);
+void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct odt_settings *odt);
 void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
 void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
 

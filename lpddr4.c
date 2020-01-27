@@ -39,9 +39,7 @@ void lpddr4_set_odt(volatile u32 *pctl, volatile u32 *pi, u32 freqset, const str
 	mr_adjust(pctl, pi, &mr14_adj, freqset, preset->dram.dq_vref);
 }
 
-void lpddr4_modify_config(struct dram_cfg *cfg, const struct odt_settings *odt) {
-	u32 *pctl = &cfg->regs.pctl[0], *pi = &cfg->regs.pi[0];
-	struct phy_cfg *phy = &cfg->regs.phy;
+void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct odt_settings *odt) {
 	lpddr4_set_odt(pctl, pi, 2, &odt_50mhz);
 
 	set_drive_strength(pctl, (u32*)phy, &cfg_layout, odt);

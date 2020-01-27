@@ -470,7 +470,7 @@ void ddrinit() {
 	odt.flags |= ODT_SET_RST_DRIVE;
 	switch (init_cfg.type) {
 	case LPDDR4:
-		lpddr4_modify_config(&init_cfg, &odt);
+		lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 		break;
 	default:
 		die("unsupported DDR type %u\n", (u32)init_cfg.type);
