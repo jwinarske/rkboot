@@ -420,12 +420,11 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 	u32 val = *(volatile u32 *)0x100;
 	*(volatile u32 *)0x100 = val + 1;
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
-	apply32v((volatile u32*)0xff33e010, SET_BITS32(5, 0xd) << 10);
 	freq_step(400, 0, 1, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
 	log("finished.%s\n", "");
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
-	apply32v((volatile u32*)0xff33e010, SET_BITS32(5, 0x17) << 10);
+	*(volatile u32*)0xff33e010 = SET_BITS16(5, 0xd) << 10;
 	return 1;
 }
 
