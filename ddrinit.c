@@ -192,10 +192,8 @@ void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_c
 	for_aslice(i) {
 		phy->aslice[i][0] = cfg->aslice[i][0];
 		apply32v(&phy->aslice[i][1], SET_BITS32(16, cfg->aslice[i][1]));
+		copy_reg_range(&cfg->aslice[i][32], &phy->aslice[i][32], 6);
 	}
-	for_aslice(i) {copy_reg_range(&cfg->aslice[i][32], &phy->aslice[i][32], 4);}
-	for_aslice(i) {phy->aslice[i][36] = cfg->aslice[i][36];}
-	for_aslice(i) {phy->aslice[i][37] = cfg->aslice[i][37];}
 	for_dslice(i) {copy_reg_range(&cfg->dslice[59], &phy->dslice[i][59], 5);}
 	for_dslice(i) {
 		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
