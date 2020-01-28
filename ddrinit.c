@@ -69,22 +69,6 @@ void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base,
 	}
 }
 
-static void set_phy_dll_bypass(volatile struct phy_regs *phy, _Bool enable) {
-	u64 aop, dop;
-	if (enable) {
-		debugs("enabling DLL bypass …");
-		aop = SET_BITS32(2, 3) << 10;
-		dop = SET_BITS32(2, 3) << 18;
-	} else {
-		debugs("disabling DLL bypass …");
-		aop = SET_BITS32(2, 0) << 10;
-		dop = SET_BITS32(2, 0) << 18;
-	}
-	for_dslice(i) {apply32v(&phy->dslice[i][PHY_SW_MASTER_MODE], dop);}
-	for_aslice(i) {apply32v(&phy->aslice[i][PHY_ADR_SW_MASTER_MODE], aop);}
-	debugs(" done.\n");
-}
-
 static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct channel_config *ch_cfg, enum dramtype type) {
 	u32 csmask = ch_cfg->csmask;
 	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
@@ -282,7 +266,6 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
 			}
 		}
-		/*dump_regs(pctl, pi, phy);*/
 	}
 	puts("ready … ");
 	fast_freq_switch(ctl_freqset, mhz);
@@ -292,7 +275,6 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
 		training_fail |= !train_channel(ch, pctl, pi, phy);
-		/*set_memory_map(pctl, pi, &cfg->channels[ch], cfg->type);*/
 	}
 	if (!training_fail) {puts("trained.\n");}
 }
@@ -305,8 +287,6 @@ void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 		copy_reg_range(&cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE + 1], &phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE + 1], NUM_PHY_DSLICE_REGS - PHY_CALVL_VREF_DRIVING_SLICE - 1);
 	}
 	for_aslice(i) {copy_reg_range(&cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
-
-	phy->global[0] = cfg->global[0] & ~(u32)0x0300;
 
 	for_dslice(i) {
 		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
@@ -325,9 +305,8 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		volatile u32 *pctl = pctl_base_for(ch);
 		volatile u32 *pi = pi_base_for(ch);
 		volatile struct phy_regs *phy = phy_for(ch);
-		set_phy_dll_bypass(phy, cfg->mhz < 125);
 
-		set_phy_io((volatile u32 *)phy, &reg_layout, odt);
+		assert(cfg->type == LPDDR4); /* set DLL bypass and phy IO */
 
 		copy_reg_range(
 			&cfg->regs.pctl[PCTL_DRAM_CLASS + 1],
@@ -361,7 +340,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		pi[0] |= START;
 		pctl[0] |= START;
 
-		assert(cfg->type == LPDDR4);
+		assert(cfg->type == LPDDR4); /* wait for DLL lock */
 
 		configure_phy(phy, phy_cfg);
 		if (cfg->type == LPDDR4) {
@@ -437,7 +416,6 @@ void ddrinit() {
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
 	/* not doing this will make the CPU hang during the DLL bypass step */
 	*(volatile u32*)0xff330040 = 0xc000c000;
-	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
 	odt.flags |= ODT_SET_RST_DRIVE;
@@ -448,7 +426,7 @@ void ddrinit() {
 	default:
 		die("unsupported DDR type %u\n", (u32)init_cfg.type);
 	}
-	/*dump_cfg(&init_cfg.regs.pctl[0], &init_cfg.regs.pi[0], &init_cfg.regs.phy);*/
+
 	if (!try_init(3, &init_cfg, &odt)) {halt_and_catch_fire();}
 
 	dump_mrs();
@@ -470,7 +448,6 @@ void ddrinit() {
 		msch[MSCH_TIMING3] = ch_cfg->timing3;
 		msch[MSCH_DEV2DEV] = ch_cfg->dev2dev;
 		msch[MSCH_DDRMODE] = ch_cfg->ddrmode;
-		/*msch[MSCH_AGING] = ch_cfg->aging;*/
 		assert(init_cfg.type == LPDDR4); /* see dram_all_config */
 	}
 	u32 val = *(volatile u32 *)0x100;
