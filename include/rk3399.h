@@ -1,4 +1,5 @@
 #pragma once
+#include <defs.h>
 
 enum {
 	GRF_GPIO2C_IOMUX = 0xe008 >> 2,

@@ -1,5 +1,5 @@
 #pragma once
-#include <types.h>
+#include <defs.h>
 
 #define for_dslice(i) for (u32 i = 0; i < 4; ++i)
 #define for_aslice(i) for (u32 i = 0; i < 3; ++i)
