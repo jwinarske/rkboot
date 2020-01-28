@@ -123,8 +123,7 @@ void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_
 	}
 }
 
-void set_phy_io(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
-	u32 delta = layout->global_diff;
+void set_phy_io(volatile u32 *phy, u32 delta, const struct odt_settings *odt) {
 	static const struct regshift dq_regs[] = {
 		{913, 8}, {914, 0}, {914, 16}, {915, 0}
 	}; apply32_multiple(dq_regs, ARRAY_SIZE(dq_regs), phy, delta,

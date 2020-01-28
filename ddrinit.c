@@ -3,10 +3,10 @@
 #include "rk3399-dmc.h"
 
 const struct phy_layout cfg_layout = {
-	.dslice = NUM_PHY_DSLICE_REGS,
+	.dslice = 0,
 	.aslice = NUM_PHY_ASLICE_REGS,
-	.global_diff = (128 - NUM_PHY_DSLICE_REGS) * 4 + (128 - NUM_PHY_ASLICE_REGS) * 3,
-	.ca_offs = NUM_PHY_DSLICE_REGS*4
+	.global_diff = 128 * 4 - NUM_PHY_DSLICE_REGS + (128 - NUM_PHY_ASLICE_REGS) * 3,
+	.ca_offs = NUM_PHY_DSLICE_REGS
 }, reg_layout = {
 	.dslice = 128,
 	.aslice = 128,
@@ -120,11 +120,7 @@ void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
 	printf("  },\n  .pi = {\n");
 	for_range(i, 0, NUM_PI_REGS) {printf("    0x%08x, // PI%03u\n", pi[i], i);}
 	printf("  },\n  .phy = {\n    .dslice = {\n");
-	for_dslice(i) {
-		printf("      {\n");
-		for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("        0x%08x, // DSLC%u_%u\n", phy->dslice[i][j], i, j);}
-		printf("      },\n");
-	}
+	for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("        0x%08x, // DSLC0_%u\n", phy->dslice[j], j);}
 	printf("    },\n    .aslice = {\n");
 	for_aslice(i) {
 		printf("      {\n");
@@ -216,21 +212,21 @@ void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_c
 	for_aslice(i) {copy_reg_range(&cfg->aslice[i][32], &phy->aslice[i][32], 4);}
 	for_aslice(i) {phy->aslice[i][36] = cfg->aslice[i][36];}
 	for_aslice(i) {phy->aslice[i][37] = cfg->aslice[i][37];}
-	for_dslice(i) {copy_reg_range(&cfg->dslice[i][59], &phy->dslice[i][59], 5);}
+	for_dslice(i) {copy_reg_range(&cfg->dslice[59], &phy->dslice[i][59], 5);}
 	for_dslice(i) {
-		phy->dslice[i][83] = cfg->dslice[i][83] + 0x00100000;
-		phy->dslice[i][84] = cfg->dslice[i][84] + 0x1000;
-		phy->dslice[i][85] = cfg->dslice[i][85];
+		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
+		phy->dslice[i][84] = cfg->dslice[84] + 0x1000;
+		phy->dslice[i][85] = cfg->dslice[85];
 	}
-	for_dslice(i) {copy_reg_range(&cfg->dslice[i][87], &phy->dslice[i][87], 4);}
-	for_dslice(i) {copy_reg_range(&cfg->dslice[i][80], &phy->dslice[i][80], 2);}
-	for_dslice(i) {phy->dslice[i][86] = cfg->dslice[i][86];}
+	for_dslice(i) {copy_reg_range(&cfg->dslice[87], &phy->dslice[i][87], 4);}
+	for_dslice(i) {copy_reg_range(&cfg->dslice[80], &phy->dslice[i][80], 2);}
+	for_dslice(i) {phy->dslice[i][86] = cfg->dslice[86];}
 	for_dslice(i) {
-		copy_reg_range(&cfg->dslice[i][64], &phy->dslice[i][64], 4);
-		clrset32(&phy->dslice[i][68], 0xfffffc00, cfg->dslice[i][68] & 0xfffffc00);
-		copy_reg_range(&cfg->dslice[i][69], &phy->dslice[i][69], 11);
+		copy_reg_range(&cfg->dslice[64], &phy->dslice[i][64], 4);
+		clrset32(&phy->dslice[i][68], 0xfffffc00, cfg->dslice[68] & 0xfffffc00);
+		copy_reg_range(&cfg->dslice[69], &phy->dslice[i][69], 11);
 	}
-	for_dslice(i) {clrset32(&phy->dslice[i][7], 0x03000000, cfg->dslice[i][7] & 0x03000000);}
+	for_dslice(i) {clrset32(&phy->dslice[i][7], 0x03000000, cfg->dslice[7] & 0x03000000);}
 
 	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
 }
@@ -275,12 +271,12 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 		struct odt_settings odt;
 		lpddr4_get_odt_settings(&odt, preset);
 		set_drive_strength(pctl, &phy->dslice[0][0], &reg_layout, &odt);
-		set_phy_io(&phy->dslice[0][0], &reg_layout, &odt);
+		set_phy_io(&phy->dslice[0][0], reg_layout.global_diff, &odt);
 		lpddr4_set_odt(pctl, pi, ctl_freqset, preset);
-		if (!(phy_cfg->dslice[0][86] & 0x0400)) {
+		if (!(phy_cfg->dslice[86] & 0x0400)) {
 			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
 		}
-		if (phy_cfg->dslice[0][84] & (1 << 16)) {
+		if (phy_cfg->dslice[84] & (1 << 16)) {
 			u32 val = pctl[217];
 			if (((val >> 16) & 0x1f) < 8) {
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
@@ -303,14 +299,18 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 
 void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 	copy_reg_range(&cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
-	for_dslice(i) {copy_reg_range(&cfg->dslice[i][0], &phy->dslice[i][0], NUM_PHY_DSLICE_REGS);}
+	for_dslice(i) {
+		copy_reg_range(&cfg->dslice[0], &phy->dslice[i][0], PHY_CALVL_VREF_DRIVING_SLICE);
+		phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE] = (i % 2 == 0) << PHY_SHIFT_CALVL_VREF_DRIVING_SLICE | cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE];
+		copy_reg_range(&cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE + 1], &phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE + 1], NUM_PHY_DSLICE_REGS - PHY_CALVL_VREF_DRIVING_SLICE - 1);
+	}
 	for_aslice(i) {copy_reg_range(&cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
 
 	phy->global[0] = cfg->global[0] & ~(u32)0x0300;
 
 	for_dslice(i) {
-		phy->dslice[i][83] = cfg->dslice[i][83] + 0x00100000;
-		phy->dslice[i][84] = cfg->dslice[i][84] + 0x1000;
+		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
+		phy->dslice[i][84] = cfg->dslice[84] + 0x1000;
 	}
 }
 

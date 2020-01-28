@@ -49,15 +49,15 @@ void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct 
 
 	/* read 2-cycle preamble */
 	pctl[200] |= 3 << 24;
-	for_dslice(i) {phy->dslice[i][7] |= 3 << 24;}
+	phy->dslice[7] |= 3 << 24;
 	/* boot frequency 2-cycle preamble */
-	for_dslice(i) {phy->dslice[i][2] |= 3 << 16;}
+	phy->dslice[2] |= 3 << 16;
 	
 	pi[45] |= 3 << 8;
 	pi[58] |= 1;
 
 	/* disable power reduction to use bypass mode */
-	for_dslice(i) {phy->dslice[i][10] |= 1 << 16;}
+	phy->dslice[10] |= 1 << 16;
 	pi[45] |= 1 << 24;
 	pi[61] |= 1 << 24;
 	pi[76] |= 1 << 24;
