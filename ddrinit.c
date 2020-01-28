@@ -194,21 +194,15 @@ void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_c
 		apply32v(&phy->aslice[i][1], SET_BITS32(16, cfg->aslice[i][1]));
 		copy_reg_range(&cfg->aslice[i][32], &phy->aslice[i][32], 6);
 	}
-	for_dslice(i) {copy_reg_range(&cfg->dslice[59], &phy->dslice[i][59], 5);}
 	for_dslice(i) {
+		clrset32(&phy->dslice[i][7], 0x03000000, cfg->dslice[7] & 0x03000000);
+		copy_reg_range(&cfg->dslice[59], &phy->dslice[i][59], 9);
+		clrset32(&phy->dslice[i][68], 0xfffffc00, cfg->dslice[68] & 0xfffffc00);
+		copy_reg_range(&cfg->dslice[69], &phy->dslice[i][69], 13);
 		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
 		phy->dslice[i][84] = cfg->dslice[84] + 0x1000;
-		phy->dslice[i][85] = cfg->dslice[85];
+		copy_reg_range(&cfg->dslice[85], &phy->dslice[i][85], 6);
 	}
-	for_dslice(i) {copy_reg_range(&cfg->dslice[87], &phy->dslice[i][87], 4);}
-	for_dslice(i) {copy_reg_range(&cfg->dslice[80], &phy->dslice[i][80], 2);}
-	for_dslice(i) {phy->dslice[i][86] = cfg->dslice[86];}
-	for_dslice(i) {
-		copy_reg_range(&cfg->dslice[64], &phy->dslice[i][64], 4);
-		clrset32(&phy->dslice[i][68], 0xfffffc00, cfg->dslice[68] & 0xfffffc00);
-		copy_reg_range(&cfg->dslice[69], &phy->dslice[i][69], 11);
-	}
-	for_dslice(i) {clrset32(&phy->dslice[i][7], 0x03000000, cfg->dslice[7] & 0x03000000);}
 
 	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
 }
