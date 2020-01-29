@@ -18,11 +18,11 @@ struct dram_cfg init_cfg = {
 #include "initcfg.inc.c"
 };
 
-struct phy_cfg phy_400mhz = {
+const struct phy_update phy_400mhz = {
 #include "phy_cfg2.inc.c"
 };
 
-struct phy_cfg phy_800mhz = {
+const struct phy_update phy_800mhz = {
 #include "phy_cfg3.inc.c"
 };
 
@@ -184,24 +184,25 @@ void dump_mrs() {
 #endif
 }
 
-void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_cfg *cfg, u32 speed) {
-	phy->PHY_GLOBAL(896) = (cfg->PHY_GLOBAL(896) & 0xffff00ff) | bank << 8;
-	phy->PHY_GLOBAL(911) = cfg->PHY_GLOBAL(911);
-	apply32v(&phy->PHY_GLOBAL(913), SET_BITS32(1, cfg->PHY_GLOBAL(913)));
-	copy_reg_range(&cfg->PHY_GLOBAL(916), &phy->PHY_GLOBAL(916), 3);
+void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd, u32 speed) {
+	phy->PHY_GLOBAL(896) = (u32)upd->grp_shift01 << 16 | bank << 8;
+	phy->PHY_GLOBAL(911) = upd->pll_ctrl;
+	apply32v(&phy->PHY_GLOBAL(913), SET_BITS32(1, upd->negedge_pll_switch));
+	copy_reg_range(upd->grp_slave_delay, &phy->PHY_GLOBAL(916), 3);
 	for_aslice(i) {
-		phy->aslice[i][0] = cfg->aslice[i][0];
-		apply32v(&phy->aslice[i][1], SET_BITS32(16, cfg->aslice[i][1]));
-		copy_reg_range(&cfg->aslice[i][32], &phy->aslice[i][32], 6);
+		phy->aslice[i][0] = upd->wraddr_shift0123;
+		apply32v(&phy->aslice[i][1], SET_BITS32(16, upd->wraddr_shift45));
+		copy_reg_range(upd->slave_master_delays, &phy->aslice[i][32], 6);
 	}
 	for_dslice(i) {
-		clrset32(&phy->dslice[i][7], 0x03000000, cfg->dslice[7] & 0x03000000);
-		copy_reg_range(&cfg->dslice[59], &phy->dslice[i][59], 9);
-		clrset32(&phy->dslice[i][68], 0xfffffc00, cfg->dslice[68] & 0xfffffc00);
-		copy_reg_range(&cfg->dslice[69], &phy->dslice[i][69], 13);
-		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
-		phy->dslice[i][84] = cfg->dslice[84] + 0x1000;
-		copy_reg_range(&cfg->dslice[85], &phy->dslice[i][85], 6);
+		apply32v(&phy->dslice[i][7], SET_BITS32(2, upd->two_cycle_preamble) << 24);
+		copy_reg_range(upd->dslice_update, &phy->dslice[i][59], 9);
+		clrset32(&phy->dslice[i][68], 0xfffffc00, upd->dslice_update[9] & 0xfffffc00);
+		copy_reg_range(&upd->dslice_update[10], &phy->dslice[i][69], 13);
+		/* one word unused (reserved) */
+		phy->dslice[i][83] = upd->dslice_update[24] + 0x00100000;
+		phy->dslice[i][84] = upd->dslice_update[25] + 0x1000;
+		copy_reg_range(&upd->dslice_update[26], &phy->dslice[i][85], 6);
 	}
 
 	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
@@ -238,21 +239,21 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
 }
 
-void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_cfg *phy_cfg) {
+void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
 	log("switching to %u MHz … ", mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
-		update_phy_bank(phy, phy_bank, phy_cfg, 1);
+		update_phy_bank(phy, phy_bank, phy_upd, 1);
 		struct odt_settings odt;
 		lpddr4_get_odt_settings(&odt, preset);
 		set_drive_strength(pctl, &phy->dslice[0][0], &reg_layout, &odt);
 		set_phy_io(&phy->dslice[0][0], reg_layout.global_diff, &odt);
 		lpddr4_set_odt(pctl, pi, ctl_freqset, preset);
-		if (!(phy_cfg->dslice[86] & 0x0400)) {
+		if (!(phy_upd->dslice_update[86 - 59] & 0x0400)) {
 			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
 		}
-		if (phy_cfg->dslice[84] & (1 << 16)) {
+		if (phy_upd->dslice_update[84 - 59] & (1 << 16)) {
 			u32 val = pctl[217];
 			if (((val >> 16) & 0x1f) < 8) {
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
