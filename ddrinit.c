@@ -69,13 +69,11 @@ void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base,
 	}
 }
 
-static void UNUSED set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csmask, const struct channel_config *ch_cfg, enum dramtype type) {
-	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
-	u32 row_diff = 16 - bounds_checked(row_bits_table, ch_cfg->ddrconfig);
-	_Bool reduc = ch_cfg->bw != 2;
-	u32 bk_diff = 3 - ch_cfg->bk, col_diff = 12 - ch_cfg->col;
-
-	debug("set_memory_map: pctl@%zx pi@%zx reduc%u col%u row%u bk%u cs%u\n", (u64)pctl, (u64)pi, (u32)reduc, col_diff, row_diff, (u32)bk_diff, csmask);
+static void set_memory_map_direct(volatile u32 *pctl, volatile u32 *pi, u32 csmask, u32 width_bits, u32 col, u32 bk, u32 row) {
+	u32 bk_diff = 3 - bk, col_diff = 12 - col;
+	u32 row_diff = 16 - row;
+	_Bool reduc = width_bits != 2;
+	debug("set_memory_map: pctl@%zx pi@%zx reduc%u col%u row%u bk%u cs%u\n", (u64)pctl, (u64)pi, (u32)reduc, col_diff, row_diff, bk_diff, csmask);
 	u64 col_op = SET_BITS32(4, col_diff);
 	u64 bk_row_op = SET_BITS32(2, bk_diff) << 16
 		| SET_BITS32(3, row_diff) << 24;
@@ -90,9 +88,14 @@ static void UNUSED set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csma
 	apply32v(pi + 199, col_op);
 	apply32v(pi + 155, bk_row_op);
 
-	if (type == LPDDR4) {csmask |= csmask << 2;}
-
+	csmask |= csmask << 2;
 	apply32v(pi + 41, SET_BITS32(4, csmask) << 24);
+}
+
+static void UNUSED set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csmask, const struct channel_config *ch_cfg, enum dramtype type) {
+	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
+	
+	set_memory_map_direct(pctl, pi, csmask, ch_cfg->bw, ch_cfg->col, ch_cfg->bk, bounds_checked(row_bits_table, ch_cfg->ddrconfig));
 
 	if (type == DDR3) {pi[34] = 0x2ec7ffff;}
 }
@@ -426,19 +429,10 @@ static void UNUSED set_col_bits(volatile u32 *pctl, volatile u32 *pi, u32 col) {
 	clrset32(pi + 199, 0xf, 12 - col);
 }
 
-static void set_col_bank_row(volatile u32 *pctl, volatile u32 *pi, u32 col, u32 bk, u32 row) {
-	assert(col <= 12 && col >= 9);
-	clrset32(pctl + 191, 0xf, 12 - col);
-	u64 op = SET_BITS32(2, 3 - bk) << 16 | SET_BITS32(3, 16 - row);
-	apply32v(pctl + 190, op);
-	clrset32(pi + 199, 0xf, 12 - col);
-	apply32v(pi + 155, op);
-}
-
 static _Bool test_mirror(u32 addr, u32 bit) {
 	volatile u32 *base = (volatile u32*)(uintptr_t)addr, *mirror = (volatile u32*)(uintptr_t)(addr ^ (1 << bit));
 	static const u32 pattern0 = 0, pattern1 = 0xf00f55aa;
-	printf("test_mirror(0x%08x,%u)", addr, bit);
+	debug("test_mirror(0x%08x,%u)", addr, bit);
 	*base = pattern0;
 	*mirror = pattern1;
 	u32 a = *base;
@@ -487,63 +481,52 @@ void ddrinit() {
 		u32 width_bits = 2;
 		const struct channel_config *ch_cfg = &init_cfg.channels[ch];
 		set_channel_stride(0x17+ch); /* map only this channel */
-		printf("channel %u:", ch);
+		printf("channel %u: ", ch);
 
 		if (!ch_csmask) {continue;}
 		assert(ch_csmask < 4);
 		assert(ch_csmask & 1);
-		msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
-		msch[MSCH_DDRCONF] = width_bits == 2 ? 0x0303 : 0x0202; /* map for max row size (16K for 32-bit width, 8K for 16-bit width) */
 		/* set bus width and CS mask */
 		assert(width_bits >= 1 && width_bits <= 2);
-		printf(" bw=%u", width_bits);
-		apply32v(pctl + 196, SET_BITS32(2, ch_csmask) | SET_BITS32(1, 2 - width_bits) << 16);
-		apply32v(pi + 41, SET_BITS32(4, ch_csmask | ch_csmask << 2) << 24);
-		//set_bank_row_bits(pctl, pi, 2, 12); /* min bank, row bits */
+		printf("bw=%u ", width_bits);
+		set_memory_map_direct(pctl, pi, ch_csmask, width_bits, 12, 3, 12);
+		msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
+		msch[MSCH_DDRCONF] = width_bits == 2 ? 0x0303 : 0x0202; /* map for max row size (16K for 32-bit width, 8K for 16-bit width) */
 		u32 col_bits = 12; /* max col bits */
-		//set_col_bits(pctl, pi, col_bits);
-		set_col_bank_row(pctl, pi, col_bits, 2, 12);
 		while (test_mirror(MIRROR_TEST_ADDR, col_bits + width_bits - 1)) {
 			if (col_bits == 9) {die("rows too small (<9 bits column address)!\n");}
 			col_bits -= 1;
 		}
-		printf(" col=%u", col_bits);
-		set_col_bits(pctl, pi, col_bits);
-		set_col_bank_row(pctl, pi, col_bits, 2, 12);
-		u32 bank_shift = col_bits + width_bits;
+		printf("col=%u ", col_bits);
+
+		u32 bank_shift = width_bits + col_bits;
 		assert(bank_shift >= 11 && bank_shift <= 14);
 		u32 ddrconf = bank_shift - 11;
-		printf(" ddrconf=%u", ddrconf);
-		msch[MSCH_DDRCONF] = ddrconf | ddrconf << 8;
+		printf("ddrconf=%u ", ddrconf);
+
 		u32 bank_bits = 3;
-		//set_bank_row_bits(pctl, pi, bank_bits, 12);
-		set_col_bank_row(pctl, pi, col_bits, bank_bits, 12);
-		if (test_mirror(MIRROR_TEST_ADDR, bank_shift + 2)) {
+		if (test_mirror(MIRROR_TEST_ADDR, width_bits + 14)) {
 			bank_bits = 2;
 		}
-		printf(" bank=%u", bank_bits);
-		u32 row_shift = bank_shift + bank_bits;
-		/* hardware limit */
-		u32 max_row_bits = 17 - ddrconf;
-		/* standard specifies only 16 address bits */
-		if (max_row_bits > 16) {max_row_bits = 16;}
-		/* don't try beyond 4G */
-		if (row_shift + max_row_bits > 32) {max_row_bits = 32 - row_shift;}
+		printf("bank=%u ", bank_bits);
+
+		u32 row_shift = width_bits + col_bits + bank_bits;
+		u32 max_row_bits = 16;
+		if (row_shift + 16 > 32) {max_row_bits = 32 - row_shift;}
+		set_memory_map_direct(pctl, pi, ch_csmask, width_bits, col_bits, bank_bits, max_row_bits);
+		msch[MSCH_DDRCONF] = ddrconf | ddrconf << 8;
+		msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
 
 		u32 cs0_size;
 		u32 cs0_row_bits = max_row_bits;
-		//set_bank_row_bits(pctl, pi, bank_bits, cs0_row_bits);
-		set_col_bank_row(pctl, pi, col_bits, bank_bits, cs0_row_bits);
 		udelay(1);
-		while (test_mirror(MIRROR_TEST_ADDR, row_shift + cs0_row_bits - 1)) {
+		while (test_mirror(MIRROR_TEST_ADDR, row_shift - 1 + cs0_row_bits)) {
 			if (cs0_row_bits == 12) {die("too few CS0 rows (<12 bits row address)!\n");}
 			printf(" row mirror");
 			cs0_row_bits -= 1;
 		}
-		printf(" cs0row=%u", cs0_row_bits);
+		printf("cs0row=%u ", cs0_row_bits);
 		cs0_row_bits=16;
-		set_col_bank_row(pctl, pi, col_bits, bank_bits, cs0_row_bits);
-		//set_bank_row_bits(pctl, pi, bank_bits, cs0_row_bits);
 		/* FIXME: assumes power-of-two row number */
 		cs0_size = 1 << (cs0_row_bits + row_shift - 25);
 		
@@ -552,15 +535,17 @@ void ddrinit() {
 			msch[MSCH_DDRSIZE] = cs0_size | (4096/32 - cs0_size) << 8;
 			u32 cs1_row_bits = cs0_row_bits;
 			u32 test_addr = MIRROR_TEST_ADDR + (cs0_size << 25);
-			while (test_mirror(test_addr, row_shift + cs1_row_bits - 1)) {
+			while (test_mirror(test_addr, row_shift - 1 + cs1_row_bits)) {
 				if (cs1_row_bits == 12) {die("too few CS1 rows (<12 bits row address)!\n");}
 				cs1_row_bits -= 1;
 			}
-			printf(" cs1row=%u", cs1_row_bits);
+			printf("cs1row=%u ", cs1_row_bits);
 			cs1_size = 1 << (cs1_row_bits + row_shift -  25);
 		}
 		u32 ddrsize = cs0_size | cs1_size << 8;
-		printf(" ddrsize=0x%04x\n", ddrsize);
+		printf("ddrsize=0x%04x\n", ddrsize);
+		set_memory_map_direct(pctl, pi, ch_csmask, width_bits, col_bits, bank_bits, cs0_row_bits);
+		msch[MSCH_DDRCONF] = ddrconf;
 		msch[MSCH_DDRSIZE] = ddrsize;
 
 		msch[MSCH_TIMING1] = ch_cfg->timing1;
@@ -572,14 +557,14 @@ void ddrinit() {
 	}
 	u32 val = *(volatile u32 *)0x100;
 	*(volatile u32 *)0x100 = val + 1;
-	for_range(bit, 10, 32) {
-		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
-	}
 	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
 	log("finished.%s\n", "");
 	/* 256B interleaving */
 	set_channel_stride(0xd);
+	for_range(bit, 10, 32) {
+		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
+	}
 	u64 round = 0;
 	while (1) {
 		memtest(round++ << 29);
