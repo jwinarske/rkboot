@@ -92,14 +92,6 @@ static void set_memory_map_direct(volatile u32 *pctl, volatile u32 *pi, u32 csma
 	apply32v(pi + 41, SET_BITS32(4, csmask) << 24);
 }
 
-static void UNUSED set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csmask, const struct channel_config *ch_cfg, enum dramtype type) {
-	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
-	
-	set_memory_map_direct(pctl, pi, csmask, ch_cfg->bw, ch_cfg->col, ch_cfg->bk, bounds_checked(row_bits_table, ch_cfg->ddrconfig));
-
-	if (type == DDR3) {pi[34] = 0x2ec7ffff;}
-}
-
 void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
 	printf(".regs = {\n  .pctl = {\n");
 	for_range(i, 0, NUM_PCTL_REGS) {printf("    0x%08x, // PCTL%03u\n", pctl[i], i);}
@@ -140,14 +132,11 @@ void dump_regs(volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *p
 	printf("    }\n  }\n}\n");
 }
 
-static inline u32 mr_read_command(u8 mr, u8 cs) {
-	return (u32)mr | ((u32)cs << 8) | (1 << 16);
-}
-
 enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
 
 enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
-	pctl[PCTL_READ_MODEREG] = mr_read_command(mr, cs) << 8;
+	u32 cmd = (u32)mr | ((u32)cs << 8) | (1 << 16);
+	pctl[PCTL_READ_MODEREG] = cmd << 8;
 	u32 status;
 	u64 start_time = get_timestamp();
 	while (!((status = pctl[PCTL_INT_STATUS]) & 0x00201000)) {
@@ -386,18 +375,6 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 	return 1;
 }
 
-static void UNUSED set_bank_row_bits(volatile u32 *pctl, volatile u32 *pi, u32 bk, u32 row) {
-	u64 op = SET_BITS32(2, 3 - bk) << 16 | SET_BITS32(3, 16 - row);
-	apply32v(pctl + 190, op);
-	apply32v(pi + 155, op);
-}
-
-static void UNUSED set_col_bits(volatile u32 *pctl, volatile u32 *pi, u32 col) {
-	assert(col <= 12 && col >= 9);
-	clrset32(pctl + 191, 0xf, 12 - col);
-	clrset32(pi + 199, 0xf, 12 - col);
-}
-
 static _Bool test_mirror(u32 addr, u32 bit) {
 	volatile u32 *base = (volatile u32*)(uintptr_t)addr, *mirror = (volatile u32*)(uintptr_t)(addr ^ (1 << bit));
 	static const u32 pattern0 = 0, pattern1 = 0xf00f55aa;
@@ -443,7 +420,7 @@ void ddrinit() {
 
 	dump_mrs();
 	u32 csmask = detect_csmask();
-	printf("csmask: %x\n", csmask);
+	debug("csmask: %x\n", csmask);
 	for_channel(ch) {
 		volatile u32 *msch = msch_base_for(ch), *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
 		u32 ch_csmask = (csmask >> (2*ch)) & 3;

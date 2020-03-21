@@ -1,5 +1,5 @@
 ERRFLAGS ?= -Wall -Wextra -Werror=all -Wno-error=unused-parameter -Wno-error=comment -Werror=discarded-qualifiers -Werror=incompatible-pointer-types
-EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -DENV_STAGE -isystem include $(ERRFLAGS) -DDEBUG_MSG
+EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -DENV_STAGE -isystem include $(ERRFLAGS)
 CFLAGS ?= -Og -march=armv8-a+nosimd -fstack-protector-all
 # -mcmodel=tiny -fstack-usage -fsanitize=kernel-address -DDEBUG_MSG -fsanitize=undefined
 BUILD_CFLAGS ?= -Os 
