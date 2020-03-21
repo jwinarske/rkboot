@@ -69,7 +69,7 @@ void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base,
 	}
 }
 
-static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csmask, const struct channel_config *ch_cfg, enum dramtype type) {
+static void UNUSED set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csmask, const struct channel_config *ch_cfg, enum dramtype type) {
 	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
 	u32 row_diff = 16 - bounds_checked(row_bits_table, ch_cfg->ddrconfig);
 	_Bool reduc = ch_cfg->bw != 2;
@@ -326,7 +326,6 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		}
 
 		copy_reg_range(&cfg->regs.pi[0], pi, NUM_PI_REGS);
-		set_memory_map(pctl, pi, 3, &cfg->channels[ch], cfg->type);
 		
 		const struct phy_cfg *phy_cfg = &cfg->regs.phy;
 		for_range(i, 0, 3) {phy->PHY_GLOBAL(910 + i) = phy_cfg->PHY_GLOBAL(910 + i);}
@@ -438,6 +437,7 @@ void ddrinit() {
 	printf("csmask: %x\n", csmask);
 	for_channel(ch) {
 		const struct channel_config *ch_cfg = &init_cfg.channels[ch];
+		set_memory_map(pctl_base_for(ch), pi_base_for(ch), (csmask >> (2*ch)) & 3, ch_cfg, init_cfg.type);
 		u32 ddrconfig = ch_cfg->ddrconfig, ddrsize = 0;
 		u8 address_bits_both = ch_cfg->bw + ch_cfg->col + ch_cfg->bk;
 		for_range(cs, 0, 2) {
