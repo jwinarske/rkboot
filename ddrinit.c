@@ -386,37 +386,6 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 	return 1;
 }
 
-static uint64_t splittable64(uint64_t x)
-{
-    x ^= x >> 30;
-    x *= 0xbf58476d1ce4e5b9;
-    x ^= x >> 27;
-    x *= 0x94d049bb133111eb;
-    x ^= x >> 31;
-    return x;
-}
-
-static _Bool memtest(u64 salt) {
-	_Bool res = 1;
-	for_range(block, 0, 31) {
-		u64 block_start = block * 0x08000000;
-		printf("testing %08zx–%08zx … ", block_start, block_start + 0x07ffffff);
-		volatile u64 *block_ptr = (volatile u64*)block_start;
-		for_range(word, !block, 0x01000000) {
-			block_ptr[word] = splittable64(salt ^ (word | block << 24));
-		}
-		for_range(word, !block, 0x01000000) {
-			u64 got = block_ptr[word], expected = splittable64(salt ^ (word | block << 24));
-			if (unlikely(got != expected)) {
-				printf("@%zx: expected %zx, got %zx\n", (u64)&block_ptr[word], expected, got);
-				break;
-			}
-		}
-		puts("\n");
-	}
-	return res;
-}
-
 static void UNUSED set_bank_row_bits(volatile u32 *pctl, volatile u32 *pi, u32 bk, u32 row) {
 	u64 op = SET_BITS32(2, 3 - bk) << 16 | SET_BITS32(3, 16 - row);
 	apply32v(pctl + 190, op);
@@ -564,9 +533,5 @@ void ddrinit() {
 	set_channel_stride(0xd);
 	for_range(bit, 10, 32) {
 		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
-	}
-	u64 round = 0;
-	while (1) {
-		memtest(round++ << 29);
 	}
 }

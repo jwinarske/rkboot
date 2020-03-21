@@ -15,16 +15,16 @@ static void NO_ASAN setup_uart() {
 
 enum {SCTLR_I = 0x1000};
 
-_Noreturn void ENTRY NO_ASAN main() {
+int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
-	puts("test\n");
 	u64 sctlr;
 	__asm__ volatile("mrs %0, sctlr_el3" : "=r"(sctlr));
-	printf("SCTLR_EL3: %016zx\n", sctlr);
+	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
 	ddrinit();
-	die("end\n");
+	puts("end\n");
+	return 0;
 }
 
 void yield() {
