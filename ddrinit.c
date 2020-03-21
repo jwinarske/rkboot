@@ -138,7 +138,7 @@ void dump_regs(volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *p
 	printf("    }\n  }\n}\n");
 }
 
-inline u32 mr_read_command(u8 mr, u8 cs) {
+static inline u32 mr_read_command(u8 mr, u8 cs) {
 	return (u32)mr | ((u32)cs << 8) | (1 << 16);
 }
 
