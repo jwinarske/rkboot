@@ -76,7 +76,8 @@ static _Bool wdq_leveling(u32 idx, volatile u32 *pi) {
 	return 1;
 }
 
-_Bool train_channel(u32 ch, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy) {
+_Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy) {
+	u32 mask = csmask | csmask << 2;
 	_Bool training_fail = 0;
 	phy->PHY_GLOBAL(927) |= 1 << 22;
 
@@ -92,6 +93,7 @@ _Bool train_channel(u32 ch, volatile u32 *pctl, volatile u32 *pi, volatile struc
 
 	pi[175] = 0x3f7c; /* clear interrupt flags */
 	for_range(idx, 0, 4) {
+		if (!(mask & 1 << idx)) {continue;}
 		set_per_cs_training_index(phy, idx);
 		if (!write_leveling(idx, pi, phy)) {
 			printf("channel %u write leveling failed\n", ch);
@@ -110,6 +112,7 @@ _Bool train_channel(u32 ch, volatile u32 *pctl, volatile u32 *pi, volatile struc
 
 	pi[175] = 0x3f7c; /* clear interrupt flags */
 	for_range(idx, 0, 4) {
+		if (!(mask & 1 << idx)) {continue;}
 		set_per_cs_training_index(phy, idx);
 		if (!read_gate_training(idx, pi, phy)) {
 			printf("channel %u read gate training failed\n", ch);
@@ -122,6 +125,7 @@ _Bool train_channel(u32 ch, volatile u32 *pctl, volatile u32 *pi, volatile struc
 
 	pi[175] = 0x3f7c; /* clear interrupt flags */
 	for_range(idx, 0, 4) {
+		if (!(mask & 1 << idx)) {continue;}
 		set_per_cs_training_index(phy, idx);
 		if (!read_leveling(idx, pi)) {
 			printf("channel %u read leveling failed\n", ch);
@@ -134,6 +138,7 @@ _Bool train_channel(u32 ch, volatile u32 *pctl, volatile u32 *pi, volatile struc
 
 	pi[175] = 0x3f7c; /* clear interrupt flags */
 	for_range(idx, 0, 4) {
+		if (!(mask & 1 << idx)) {continue;}
 		set_per_cs_training_index(phy, idx);
 		if (!wdq_leveling(idx, pi)) {
 			printf("channel %u wdq leveling failed\n", ch);

@@ -121,7 +121,7 @@ enum dramtype {
 };
 struct channel_config {
 	_Bool pwrup_sref_exit;
-	u8 ddrconfig, csmask;
+	u8 ddrconfig;
 	u8 bw, col, bk;
 	u8 row[2];
 	u32 timing1, timing2, timing3;
@@ -213,4 +213,4 @@ void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct 
 void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
 void set_phy_io(volatile u32 *phy, u32 delta, const struct odt_settings *odt);
 
-_Bool train_channel(u32 ch, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy);
+_Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy);

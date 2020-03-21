@@ -69,8 +69,7 @@ void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base,
 	}
 }
 
-static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct channel_config *ch_cfg, enum dramtype type) {
-	u32 csmask = ch_cfg->csmask;
+static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, u32 csmask, const struct channel_config *ch_cfg, enum dramtype type) {
 	static const u8 row_bits_table[] = {16, 16, 15, 14, 16, 14};
 	u32 row_diff = 16 - bounds_checked(row_bits_table, ch_cfg->ddrconfig);
 	_Bool reduc = ch_cfg->bw != 2;
@@ -184,6 +183,18 @@ void dump_mrs() {
 #endif
 }
 
+u32 detect_csmask() {
+	u32 mask = 0;
+	for_channel(ch) {
+		for_range(cs, 0, 2) {
+			u32 mr_value;
+			if (read_mr(pctl_base_for(ch), 5, cs, &mr_value) != MRR_OK) {continue;}
+			if (mr_value) {mask |= 1 << (ch*2) << cs;}
+		}
+	}
+	return mask;
+}
+
 void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd, u32 speed) {
 	phy->PHY_GLOBAL(896) = (u32)upd->grp_shift01 << 16 | bank << 8;
 	phy->PHY_GLOBAL(911) = upd->pll_ctrl;
@@ -239,7 +250,7 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
 }
 
-void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
+void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, u32 csmask, const struct odt_preset *preset, const struct phy_update *phy_upd) {
 	log("switching to %u MHz … ", mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
@@ -267,7 +278,7 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
-		training_fail |= !train_channel(ch, pctl, pi, phy);
+		training_fail |= !train_channel(ch, (csmask >> (ch*2)) & 3, pctl, pi, phy);
 	}
 	if (!training_fail) {puts("trained.\n");}
 }
@@ -315,7 +326,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		}
 
 		copy_reg_range(&cfg->regs.pi[0], pi, NUM_PI_REGS);
-		set_memory_map(pctl, pi, &cfg->channels[ch], cfg->type);
+		set_memory_map(pctl, pi, 3, &cfg->channels[ch], cfg->type);
 		
 		const struct phy_cfg *phy_cfg = &cfg->regs.phy;
 		for_range(i, 0, 3) {phy->PHY_GLOBAL(910 + i) = phy_cfg->PHY_GLOBAL(910 + i);}
@@ -423,12 +434,14 @@ void ddrinit() {
 	if (!try_init(3, &init_cfg, &odt)) {halt_and_catch_fire();}
 
 	dump_mrs();
+	u32 csmask = detect_csmask();
+	printf("csmask: %x\n", csmask);
 	for_channel(ch) {
 		const struct channel_config *ch_cfg = &init_cfg.channels[ch];
 		u32 ddrconfig = ch_cfg->ddrconfig, ddrsize = 0;
 		u8 address_bits_both = ch_cfg->bw + ch_cfg->col + ch_cfg->bk;
 		for_range(cs, 0, 2) {
-			if (!(ch_cfg->csmask & (1 << cs))) {continue;}
+			if (!(csmask & (1 << (ch*2) << cs))) {continue;}
 			u8 address_bits = address_bits_both + ch_cfg->row[cs];
 			ddrsize |= 1 << (address_bits - 25) << (8 * cs);
 		}
@@ -445,8 +458,8 @@ void ddrinit() {
 	}
 	u32 val = *(volatile u32 *)0x100;
 	*(volatile u32 *)0x100 = val + 1;
-	freq_step(400, 0, 1, &odt_600mhz, &phy_400mhz);
-	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
+	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
+	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
 	log("finished.%s\n", "");
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities */
 	*(volatile u32*)0xff33e010 = SET_BITS16(5, 0xd) << 10;
