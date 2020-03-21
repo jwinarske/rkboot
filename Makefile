@@ -1,13 +1,14 @@
-EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib
-CFLAGS ?= -Os -march=armv8-a+nosimd -Wall -Wextra -DENV_STAGE -isystem include -Werror=all -Wno-error=unused-parameter -Wno-error=comment -fstack-protector-all -Werror=discarded-qualifiers -Werror=incompatible-pointer-types -fsanitize=undefined
-# -mcmodel=tiny -fstack-usage -fsanitize=kernel-address -DDEBUG_MSG
+ERRFLAGS ?= -Wall -Wextra -Werror=all -Wno-error=unused-parameter -Wno-error=comment -Werror=discarded-qualifiers -Werror=incompatible-pointer-types
+EXTRAFLAGS = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -DENV_STAGE -isystem include $(ERRFLAGS) -DDEBUG_MSG
+CFLAGS ?= -Og -march=armv8-a+nosimd -fstack-protector-all
+# -mcmodel=tiny -fstack-usage -fsanitize=kernel-address -DDEBUG_MSG -fsanitize=undefined
 BUILD_CFLAGS ?= -Os 
 LDFLAGS ?= 
 O ?= .
 OBJECTS = $(O)/main.o $(O)/timer.o $(O)/uart.o $(O)/pll.o $(O)/ddrinit.o $(O)/odt.o $(O)/lpddr4.o $(O)/moderegs.o $(O)/training.o
 
 default: $(O)/levinboot.img
-all: $(O)/levinboot.img $(O)/levinboot.bin $(O)/usbtool
+all: $(O)/levinboot.img $(O)/levinboot.bin
 
 $(O)/%.o: %.c
 	$(CC) $(EXTRAFLAGS) $(CFLAGS) -c -o $@ $^
@@ -24,19 +25,13 @@ $(O)/levinboot.elf: $(OBJECTS) linkerscript.ld
 $(O)/levinboot.bin: $(O)/levinboot.elf
 	$(OBJCOPY) -O binary $< $@
 
-$(O)/idbtool: idbtool.c
+$(O)/idbtool: tools/idbtool.c
 	$(BUILD_CC) $(BUILD_CFLAGS) -o $@ $^
 
-$(O)/usbtool: usbtool.c
-	$(CC) $(CFLAGS) $(shell pkg-config --libs --cflags libusb-1.0) -o $@ $^ -fno-sanitize=kernel-address
-
-boot: $(O)/usbtool $(O)/levinboot.bin
-	$< <"$(O)/levinboot.bin"
-
-install: $(O)/levinboot.img $(O)/levinboot.elf $(O)/levinboot.bin $(O)/usbtool
+install: $(O)/levinboot.img $(O)/levinboot.elf $(O)/levinboot.bin
 	cp $^ $(out)
 
 clean:
-	rm -f $(O)/*.o $(O)/{levinboot.img,levinboot.elf,levinboot.bin,idbtool,usbtool}
+	rm -f $(O)/*.o $(O)/{levinboot.img,levinboot.elf,levinboot.bin,idbtool}
 
 .PHONY: install all default boot clean
