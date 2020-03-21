@@ -119,20 +119,13 @@ enum dramtype {
 	DDR3 = 3,
 	LPDDR4 = 7,
 };
-struct channel_config {
-	_Bool pwrup_sref_exit;
-	u8 ddrconfig;
-	u8 bw, col, bk;
-	u8 row[2];
+struct msch_config {
 	u32 timing1, timing2, timing3;
 	u32 dev2dev;
 	u32 ddrmode;
-	u32 aging;
 };
 struct dram_cfg {
-	u32 mhz;
-	enum dramtype type;
-	struct channel_config channels[2];
+	struct msch_config msch;
 	struct dram_regs_cfg regs;
 };
 

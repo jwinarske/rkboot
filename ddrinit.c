@@ -14,15 +14,15 @@ const struct phy_layout cfg_layout = {
 	.ca_offs = 512
 };
 
-struct dram_cfg init_cfg = {
+static struct dram_cfg init_cfg = {
 #include "initcfg.inc.c"
 };
 
-const struct phy_update phy_400mhz = {
+static const struct phy_update phy_400mhz = {
 #include "phy_cfg2.inc.c"
 };
 
-const struct phy_update phy_800mhz = {
+static const struct phy_update phy_800mhz = {
 #include "phy_cfg3.inc.c"
 };
 
@@ -90,46 +90,6 @@ static void set_memory_map_direct(volatile u32 *pctl, volatile u32 *pi, u32 csma
 
 	csmask |= csmask << 2;
 	apply32v(pi + 41, SET_BITS32(4, csmask) << 24);
-}
-
-void dump_cfg(u32 *pctl, u32 *pi, struct phy_cfg *phy) {
-	printf(".regs = {\n  .pctl = {\n");
-	for_range(i, 0, NUM_PCTL_REGS) {printf("    0x%08x, // PCTL%03u\n", pctl[i], i);}
-	printf("  },\n  .pi = {\n");
-	for_range(i, 0, NUM_PI_REGS) {printf("    0x%08x, // PI%03u\n", pi[i], i);}
-	printf("  },\n  .phy = {\n    .dslice = {\n");
-	for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("        0x%08x, // DSLC0_%u\n", phy->dslice[j], j);}
-	printf("    },\n    .aslice = {\n");
-	for_aslice(i) {
-		printf("      {\n");
-		for_range(j, 0, NUM_PHY_ASLICE_REGS) {printf("        0x%08x, // ASLC%u_%u\n", phy->aslice[i][j], i, j);}
-		printf("      },\n");
-	}
-	printf("    },\n    .global = {\n");
-	for_range(i, 0, NUM_PHY_GLOBAL_REGS) {printf("      0x%08x, // PHY%u\n", phy->global[i], i + 896);}
-	printf("    }\n  }\n}\n");
-}
-
-void dump_regs(volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy) {
-	printf(".regs = {\n  .pctl = {\n");
-	for_range(i, 0, NUM_PCTL_REGS) {printf("    0x%08x, // PCTL%03u\n", pctl[i], i);}
-	printf("  },\n  .pi = {\n");
-	for_range(i, 0, NUM_PI_REGS) {printf("    0x%08x, // PI%03u\n", pi[i], i);}
-	printf("  },\n  .phy = {\n    .dslice = {\n");
-	for_dslice(i) {
-		printf("      {\n");
-		for_range(j, 0, NUM_PHY_DSLICE_REGS) {printf("        0x%08x, // DSLC%u_%u\n", phy->dslice[i][j], i, j);}
-		printf("      },\n");
-	}
-	printf("    },\n    .aslice = {\n");
-	for_aslice(i) {
-		printf("      {\n");
-		for_range(j, 0, NUM_PHY_ASLICE_REGS) {printf("        0x%08x, // ASLC%u_%u\n", phy->aslice[i][j], i, j);}
-		printf("      },\n");
-	}
-	printf("    },\n    .global = {\n");
-	for_range(i, 0, NUM_PHY_GLOBAL_REGS) {printf("      0x%08x, // PHY%u\n", phy->global[i], i + 896);}
-	printf("    }\n  }\n}\n");
 }
 
 enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
@@ -293,7 +253,7 @@ void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
-_Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt) {
+static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 	u32 sref_save[MC_NUM_CHANNELS];
 	softreset_memory_controller();
 	for_channel(ch) {
@@ -301,8 +261,6 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		volatile u32 *pctl = pctl_base_for(ch);
 		volatile u32 *pi = pi_base_for(ch);
 		volatile struct phy_regs *phy = phy_for(ch);
-
-		assert(cfg->type == LPDDR4); /* set DLL bypass and phy IO */
 
 		copy_reg_range(
 			&cfg->regs.pctl[PCTL_DRAM_CLASS + 1],
@@ -312,9 +270,9 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		/* must happen after setting NO_PHY_IND_TRAIN_INT in the transfer above */
 		pctl[PCTL_DRAM_CLASS] = cfg->regs.pctl[PCTL_DRAM_CLASS];
 
-		if (cfg->type == LPDDR4 && chmask == 3 && ch == 1) {
+		if (chmask == 3 && ch == 1) {
 			/* delay ZQ calibration */
-			pctl[14] += cfg->mhz * 1000;
+			pctl[14] += mhz * 1000;
 		}
 
 		copy_reg_range(&cfg->regs.pi[0], pi, NUM_PI_REGS);
@@ -322,26 +280,20 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		const struct phy_cfg *phy_cfg = &cfg->regs.phy;
 		for_range(i, 0, 3) {phy->PHY_GLOBAL(910 + i) = phy_cfg->PHY_GLOBAL(910 + i);}
 
-		if (cfg->type == LPDDR4) {
-			phy->PHY_GLOBAL(898) = phy_cfg->PHY_GLOBAL(898);
-			phy->PHY_GLOBAL(919) = phy_cfg->PHY_GLOBAL(919);
-		}
+		phy->PHY_GLOBAL(898) = phy_cfg->PHY_GLOBAL(898);
+		phy->PHY_GLOBAL(919) = phy_cfg->PHY_GLOBAL(919);
 
 		sref_save[ch] = pctl[68];
 		pctl[68] = sref_save[ch] & ~PWRUP_SREF_EXIT;
-		
+
 		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 1) << 24);
 
 		pi[0] |= START;
 		pctl[0] |= START;
 
-		assert(cfg->type == LPDDR4); /* wait for DLL lock */
-
 		configure_phy(phy, phy_cfg);
-		if (cfg->type == LPDDR4) {
-			/* improve dqs and dq phase */
-			for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
-		}
+		/* improve dqs and dq phase */
+		for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
 		if (ch == 1) {
 			/* workaround 366 ball reset */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
@@ -353,7 +305,7 @@ _Bool try_init(u32 chmask, struct dram_cfg *cfg, const struct odt_settings *odt)
 		volatile struct phy_regs *phy = phy_for(ch);
 		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
 		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
-		
+
 		_Bool locked = 0;
 		for (u32 i = 0; i < 1000; i += 1) {
 			locked = (pctl[PCTL_INT_STATUS] >> 3) & 1;
@@ -400,23 +352,91 @@ static void set_channel_stride(u32 val) {
 
 #define MIRROR_TEST_ADDR 0x100
 
+static void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch, const struct msch_config *msch_cfg, u32 width_bits, u32 ch_csmask) {
+	if (!ch_csmask) {return;}
+	assert(ch_csmask < 4);
+	assert(ch_csmask & 1);
+	/* set bus width and CS mask */
+	assert(width_bits >= 1 && width_bits <= 2);
+	printf("bw=%u ", width_bits);
+	set_memory_map_direct(pctl, pi, ch_csmask, width_bits, 12, 3, 12);
+	msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
+	msch[MSCH_DDRCONF] = width_bits == 2 ? 0x0303 : 0x0202; /* map for max row size (16K for 32-bit width, 8K for 16-bit width) */
+	u32 col_bits = 12; /* max col bits */
+	while (test_mirror(MIRROR_TEST_ADDR, col_bits + width_bits - 1)) {
+		if (col_bits == 9) {die("rows too small (<9 bits column address)!\n");}
+		col_bits -= 1;
+	}
+	printf("col=%u ", col_bits);
+
+	u32 bank_shift = width_bits + col_bits;
+	assert(bank_shift >= 11 && bank_shift <= 14);
+	u32 ddrconf = bank_shift - 11;
+	printf("ddrconf=%u ", ddrconf);
+
+	u32 bank_bits = 3;
+	if (test_mirror(MIRROR_TEST_ADDR, width_bits + 14)) {
+		bank_bits = 2;
+	}
+	printf("bank=%u ", bank_bits);
+
+	u32 row_shift = width_bits + col_bits + bank_bits;
+	u32 max_row_bits = 16;
+	if (row_shift + 16 > 32) {max_row_bits = 32 - row_shift;}
+	set_memory_map_direct(pctl, pi, ch_csmask, width_bits, col_bits, bank_bits, max_row_bits);
+	msch[MSCH_DDRCONF] = ddrconf | ddrconf << 8;
+	msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
+
+	u32 cs0_size;
+	u32 cs0_row_bits = max_row_bits;
+	udelay(1);
+	while (test_mirror(MIRROR_TEST_ADDR, row_shift - 1 + cs0_row_bits)) {
+		if (cs0_row_bits == 12) {die("too few CS0 rows (<12 bits row address)!\n");}
+		printf(" row mirror");
+		cs0_row_bits -= 1;
+	}
+	printf("cs0row=%u ", cs0_row_bits);
+	cs0_row_bits=16;
+	/* FIXME: assumes power-of-two row number */
+	cs0_size = 1 << (cs0_row_bits + row_shift - 25);
+
+	u32 cs1_size = 0;
+	if (ch_csmask & 2) {
+		msch[MSCH_DDRSIZE] = cs0_size | (4096/32 - cs0_size) << 8;
+		u32 cs1_row_bits = cs0_row_bits;
+		u32 test_addr = MIRROR_TEST_ADDR + (cs0_size << 25);
+		while (test_mirror(test_addr, row_shift - 1 + cs1_row_bits)) {
+			if (cs1_row_bits == 12) {die("too few CS1 rows (<12 bits row address)!\n");}
+			cs1_row_bits -= 1;
+		}
+		printf("cs1row=%u ", cs1_row_bits);
+		cs1_size = 1 << (cs1_row_bits + row_shift -  25);
+	}
+	u32 ddrsize = cs0_size | cs1_size << 8;
+	printf("ddrsize=0x%04x\n", ddrsize);
+	set_memory_map_direct(pctl, pi, ch_csmask, width_bits, col_bits, bank_bits, cs0_row_bits);
+	msch[MSCH_DDRCONF] = ddrconf;
+	msch[MSCH_DDRSIZE] = ddrsize;
+
+	msch[MSCH_TIMING1] = msch_cfg->timing1;
+	msch[MSCH_TIMING2] = msch_cfg->timing2;
+	msch[MSCH_TIMING3] = msch_cfg->timing3;
+	msch[MSCH_DEV2DEV] = msch_cfg->dev2dev;
+	msch[MSCH_DDRMODE] = msch_cfg->ddrmode;
+}
+
 void ddrinit() {
-	log("initializing DRAM%s\n", "");
-	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
-	/* not doing this will make the CPU hang during the DLL bypass step */
-	*(volatile u32*)0xff330040 = 0xc000c000;
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
 	odt.flags |= ODT_SET_RST_DRIVE;
-	switch (init_cfg.type) {
-	case LPDDR4:
-		lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
-		break;
-	default:
-		die("unsupported DDR type %u\n", (u32)init_cfg.type);
-	}
+	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
-	if (!try_init(3, &init_cfg, &odt)) {halt_and_catch_fire();}
+	log("initializing DRAM%s\n", "");
+
+	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
+	/* not doing this will make the CPU hang during the DLL bypass step */
+	*(volatile u32*)0xff330040 = 0xc000c000;
+	if (!try_init(3, &init_cfg, 50)) {halt_and_catch_fire();}
 
 	dump_mrs();
 	u32 csmask = detect_csmask();
@@ -425,84 +445,10 @@ void ddrinit() {
 		volatile u32 *msch = msch_base_for(ch), *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
 		u32 ch_csmask = (csmask >> (2*ch)) & 3;
 		u32 width_bits = 2;
-		const struct channel_config *ch_cfg = &init_cfg.channels[ch];
 		set_channel_stride(0x17+ch); /* map only this channel */
 		printf("channel %u: ", ch);
-
-		if (!ch_csmask) {continue;}
-		assert(ch_csmask < 4);
-		assert(ch_csmask & 1);
-		/* set bus width and CS mask */
-		assert(width_bits >= 1 && width_bits <= 2);
-		printf("bw=%u ", width_bits);
-		set_memory_map_direct(pctl, pi, ch_csmask, width_bits, 12, 3, 12);
-		msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
-		msch[MSCH_DDRCONF] = width_bits == 2 ? 0x0303 : 0x0202; /* map for max row size (16K for 32-bit width, 8K for 16-bit width) */
-		u32 col_bits = 12; /* max col bits */
-		while (test_mirror(MIRROR_TEST_ADDR, col_bits + width_bits - 1)) {
-			if (col_bits == 9) {die("rows too small (<9 bits column address)!\n");}
-			col_bits -= 1;
-		}
-		printf("col=%u ", col_bits);
-
-		u32 bank_shift = width_bits + col_bits;
-		assert(bank_shift >= 11 && bank_shift <= 14);
-		u32 ddrconf = bank_shift - 11;
-		printf("ddrconf=%u ", ddrconf);
-
-		u32 bank_bits = 3;
-		if (test_mirror(MIRROR_TEST_ADDR, width_bits + 14)) {
-			bank_bits = 2;
-		}
-		printf("bank=%u ", bank_bits);
-
-		u32 row_shift = width_bits + col_bits + bank_bits;
-		u32 max_row_bits = 16;
-		if (row_shift + 16 > 32) {max_row_bits = 32 - row_shift;}
-		set_memory_map_direct(pctl, pi, ch_csmask, width_bits, col_bits, bank_bits, max_row_bits);
-		msch[MSCH_DDRCONF] = ddrconf | ddrconf << 8;
-		msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
-
-		u32 cs0_size;
-		u32 cs0_row_bits = max_row_bits;
-		udelay(1);
-		while (test_mirror(MIRROR_TEST_ADDR, row_shift - 1 + cs0_row_bits)) {
-			if (cs0_row_bits == 12) {die("too few CS0 rows (<12 bits row address)!\n");}
-			printf(" row mirror");
-			cs0_row_bits -= 1;
-		}
-		printf("cs0row=%u ", cs0_row_bits);
-		cs0_row_bits=16;
-		/* FIXME: assumes power-of-two row number */
-		cs0_size = 1 << (cs0_row_bits + row_shift - 25);
-		
-		u32 cs1_size = 0;
-		if (ch_csmask & 2) {
-			msch[MSCH_DDRSIZE] = cs0_size | (4096/32 - cs0_size) << 8;
-			u32 cs1_row_bits = cs0_row_bits;
-			u32 test_addr = MIRROR_TEST_ADDR + (cs0_size << 25);
-			while (test_mirror(test_addr, row_shift - 1 + cs1_row_bits)) {
-				if (cs1_row_bits == 12) {die("too few CS1 rows (<12 bits row address)!\n");}
-				cs1_row_bits -= 1;
-			}
-			printf("cs1row=%u ", cs1_row_bits);
-			cs1_size = 1 << (cs1_row_bits + row_shift -  25);
-		}
-		u32 ddrsize = cs0_size | cs1_size << 8;
-		printf("ddrsize=0x%04x\n", ddrsize);
-		set_memory_map_direct(pctl, pi, ch_csmask, width_bits, col_bits, bank_bits, cs0_row_bits);
-		msch[MSCH_DDRCONF] = ddrconf;
-		msch[MSCH_DDRSIZE] = ddrsize;
-
-		msch[MSCH_TIMING1] = ch_cfg->timing1;
-		msch[MSCH_TIMING2] = ch_cfg->timing2;
-		msch[MSCH_TIMING3] = ch_cfg->timing3;
-		msch[MSCH_DEV2DEV] = ch_cfg->dev2dev;
-		msch[MSCH_DDRMODE] = ch_cfg->ddrmode;
-		assert(init_cfg.type == LPDDR4); /* see dram_all_config */
+		channel_post_init(pctl, pi, msch, &init_cfg.msch, width_bits, ch_csmask);
 	}
-	u32 val = *(volatile u32 *)0x100;
-	*(volatile u32 *)0x100 = val + 1;
 	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
 	log("finished.%s\n", "");
