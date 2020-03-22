@@ -31,7 +31,7 @@ _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, u
 			if (pos >= 4096) {flush = 1;}
 		}
 		if (flush) {
-			printf("4096-byte 0x%x transfer (%zu bytes)\n", (unsigned)opcode, pos);
+			printf("4096-byte 0x0471 transfer (%zu bytes)\n", pos);
 			memset(buf + pos, 0, 4096 - pos);
 			rc4(buf, 4096, rc4state);
 			for (size_t p = 0; p < 4096; ++p) {
@@ -41,7 +41,7 @@ _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, u
 					crc ^= (bit & byte) != 0 ? poly : 0;
 				} while(bit >>= 1);
 			}
-			if (libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, buf, 4096, 100) != 4096) {
+			if (libusb_control_transfer(handle, 0x40, 0xc, 0, 0x0471, buf, 4096, 100) != 4096) {
 				fprintf(stderr, "error while sending data\n");
 				return 2;
 			}
