@@ -4,6 +4,13 @@
   levinboot = pkgs.stdenv.mkDerivation {
     pname = "levinboot";
     version = "0.0.1";
+    nativeBuildInputs = [pkgs.ninja pkgs.python3];
+    configurePhase = ''
+      mkdir build
+      cd build
+      python3 ../configure.py >build.ninja
+    '';
+    installPhase = "mkdir -p $out; cp levinboot.bin levinboot.img $out";
     depsBuildBuild = [pkgs.buildPackages.stdenv.cc];
     src = ./.;
   };
