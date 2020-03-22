@@ -106,6 +106,12 @@ static u32 fmt_format(const char *fmt, va_list *va, u32 queue_space) {
 			if (c == 's') {
 				const char *str = va_arg(*va, const char *);
 				queue_space = fmt_str(str, queue_space);
+			} else if (c == 'c') {
+				if (!queue_space) {
+					queue_space = wait_until_fifo_free(1);
+				}
+				queue_space -= 1;
+				uart->tx = va_arg(*va, int);
 			} else {
 				u64 val = flags & FLAG_SIZE_T ? va_arg(*va, u64) : va_arg(*va, u32);
 				if (c == 'u') {

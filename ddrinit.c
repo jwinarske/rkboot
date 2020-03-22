@@ -298,27 +298,28 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 	}
 	for_channel(ch) {
 		if (!(chmask & (1 << ch))) {continue;}
-		volatile u32 *pctl = pctl_base_for(ch);
-		volatile struct phy_regs *phy = phy_for(ch);
 		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
-		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
-
-		_Bool locked = 0;
-		for (u32 i = 0; i < 1000; i += 1) {
-			locked = (pctl[PCTL_INT_STATUS] >> 3) & 1;
-			if (locked) {break;}
-			udelay(1);
-		}
-		if (!locked) {
-			printf("channel %u init fail\n", ch);
+		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
+	}
+	u64 start_ts = get_timestamp();
+	while (1) {
+		u32 ch0_status = pctl_base_for(0)[PCTL_INT_STATUS];
+		u32 ch1_status = pctl_base_for(1)[PCTL_INT_STATUS];
+		if (ch0_status & ch1_status & 8) {break;}
+		if (get_timestamp() - start_ts > CYCLES_PER_MICROSECOND * 5000) {
+			log("init fail for channel(s): %c%c, start %zu\n", ch0_status & 8 ? ' ' : '0', ch1_status & 8 ? ' ' : '1', start_ts);
 			return 0;
 		}
+		udelay(1);
+	}
+	for_channel(ch) {
+		volatile struct phy_regs *phy = phy_for(ch);
 		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 1) << 8;
 		for_dslice(i) {
 			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
 			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
 		}
-		clrset32(pctl + 68, PWRUP_SREF_EXIT, sref_save[ch] & PWRUP_SREF_EXIT);
+		clrset32(pctl_base_for(ch) + 68, PWRUP_SREF_EXIT, sref_save[ch] & PWRUP_SREF_EXIT);
 		log("channel %u initialized\n", ch);
 	}
 	return 1;
