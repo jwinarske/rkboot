@@ -177,6 +177,7 @@ void __asan_handle_no_return() {
 }
 #endif /* CONFIG_ASAN */
 
+#ifdef UBSAN
 enum {
 	type_kind_int = 0,
 	type_kind_float = 1,
@@ -287,3 +288,4 @@ _Noreturn void __ubsan_handle_load_invalid_value(struct invalid_value_data UNUSE
 	puts("UBSAN: shift out of bounds\n");
 	halt_and_catch_fire();
 }
+#endif
