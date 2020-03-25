@@ -31,6 +31,7 @@ build idbtool: buildcc {src}/tools/idbtool.c
 build levinboot.bin: bin levinboot.elf
 build levinboot.img: run levinboot.bin | idbtool
     bin = ./idbtool
+build memtest.bin: bin memtest.elf
 
 default levinboot.img
 '''.format(
@@ -44,14 +45,22 @@ default levinboot.img
     objcopy=os.getenv('OBJCOPY', 'objcopy'),
 ))
 
-lib = ('timer', 'uart')
+lib = ('timer', 'uart', 'error')
 levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training')
-modules = levinboot + lib
+modules = levinboot + lib + ('memtest',)
 
 for f in modules:
     print('build {}.o: cc {}'.format(f, esc(path.join(srcdir, f + '.c'))))
-print('''build levinboot.elf: ld {} | {script}
-    flags = -T {script}'''.format(
-    ' '.join(esc(x + '.o') for x in levinboot + lib),
-    script=esc(path.join(srcdir, "linkerscript.ld"))
-))
+
+def binary(name, modules):
+	print(
+'''build {}: ld {} | {script}
+    flags = -T {script}'''
+    .format(
+        esc(name),
+        ' '.join(esc(x + '.o') for x in modules),
+        script=esc(path.join(srcdir, "linkerscript.ld"))
+    ))
+
+binary('levinboot.elf', levinboot + lib)
+binary('memtest.elf', ('memtest',) + lib)

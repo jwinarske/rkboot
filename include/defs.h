@@ -12,6 +12,7 @@ typedef uint64_t u64;
 #define NO_ASAN __attribute__((no_sanitize_address))
 #define UNUSED __attribute__((unused))
 #define PRINTF(str_idx, start) __attribute__((format(printf, str_idx, start)))
+#define ENTRY __attribute__((section(".entry")))
 
 #define CHECK_OFFSET(strct, member, offs) _Static_assert(offsetof(struct strct, member) == offs, "wrong offset for " #member)
 

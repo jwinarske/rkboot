@@ -7,7 +7,7 @@ static u32 NO_ASAN wait_until_fifo_free(u32 space_needed) {
 	while (1) {
 		queue_space = UART_FIFO_DEPTH - uart->tx_level;
 		if (queue_space >= space_needed) {return queue_space;}
-		yield();
+		__asm__ volatile("yield");
 	}
 }
 

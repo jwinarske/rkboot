@@ -1,4 +1,4 @@
-#include <defs.h>
+#include <main.h>
 
 static uint64_t splittable64(uint64_t x)
 {
@@ -31,7 +31,7 @@ static _Bool memtest(u64 salt) {
 	return res;
 }
 
-_Noreturn void memtest_main() {
+_Noreturn void ENTRY main() {
 	u64 round = 0;
 	while (1) {
 		memtest(round++ << 29);
