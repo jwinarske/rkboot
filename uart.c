@@ -40,12 +40,13 @@ static u32 fmt_hex(u64 val, char pad, u8 width, u32 queue_space) {
 	if (digits < width) {
 		u8 padlength = width - digits;
 		if (queue_space < width) {
-			queue_space = wait_until_fifo_free(width) - width;
+			queue_space = wait_until_fifo_free(width);
 		}
+		queue_space -= width;
 		while (padlength--) {uart->tx = pad;}
 	} else if (queue_space < digits) {
 		queue_space = wait_until_fifo_free(digits) - digits;
-	}
+	} else {queue_space -= digits;}
 	while (1) {
 		u8 d = (val >> shift) & 0xf;
 		u8 c = d >= 10 ? 'a' - 10 + d : '0' + d;
@@ -67,8 +68,9 @@ u32 fmt_dec(u64 val, char pad, u8 width, u32 queue_space) {
 	if (digits < width) {
 		u8 padlength = width - digits;
 		if (queue_space < width) {
-			queue_space = wait_until_fifo_free(width) - width;
+			queue_space = wait_until_fifo_free(width);
 		}
+		queue_space -= width;
 		while (padlength--) {uart->tx = pad;}
 	}
 	return fmt_str(ptr, queue_space);
