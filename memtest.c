@@ -32,6 +32,11 @@ static _Bool memtest(u64 salt) {
 }
 
 _Noreturn void ENTRY main() {
+	u64 sctlr;
+	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
+	debug("SCTLR_EL3: %016zx\n", sctlr);
+	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
+	setup_mmu();
 	u64 round = 0;
 	while (1) {
 		memtest(round++ << 29);

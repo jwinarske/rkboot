@@ -13,16 +13,17 @@ static void NO_ASAN setup_uart() {
 	for (char c; (c = *text) ; ++text) {uart->tx = *text;}
 }
 
-enum {SCTLR_I = 0x1000};
-
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
 	u64 sctlr;
-	__asm__ volatile("mrs %0, sctlr_el3" : "=r"(sctlr));
+	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
+	setup_mmu();
 	ddrinit();
+	set_sctlr_flush_dcache(sctlr);
+	__asm__ volatile("ic iallu;tlbi alle3");
 	puts("end\n");
 	return 0;
 }

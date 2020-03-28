@@ -35,7 +35,7 @@ build memtest.bin: bin memtest.elf
 
 default levinboot.img
 '''.format(
-    cflags=os.getenv('CFLAGS', '-Og -Wall -Wextra -Werror=all -Wno-error=unused-parameter -Wno-error=comment -Werror=discarded-qualifiers -Werror=incompatible-pointer-types'),
+    cflags=os.getenv('CFLAGS', '-O3 -Wall -Wextra -Werror=all -Wno-error=unused-parameter -Wno-error=comment -Werror=discarded-qualifiers -Werror=incompatible-pointer-types'),
     ldflags=os.getenv('LDFLAGS', ''),
     src=esc(srcdir),
     cc=os.getenv('CC', 'cc'),
@@ -45,12 +45,15 @@ default levinboot.img
     objcopy=os.getenv('OBJCOPY', 'objcopy'),
 ))
 
-lib = ('timer', 'uart', 'error')
+lib = ('timer', 'uart', 'error', 'mmu')
 levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training')
 modules = levinboot + lib + ('memtest',)
 
 for f in modules:
     print('build {}.o: cc {}'.format(f, esc(path.join(srcdir, f + '.c'))))
+
+print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
+lib += ('dcache',)
 
 def binary(name, modules):
 	print(
