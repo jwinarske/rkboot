@@ -10,8 +10,14 @@ def esc(s):
 
 srcdir = path.dirname(sys.argv[0])
 
+cc = os.getenv('CC', 'cc')
+cflags = os.getenv('CFLAGS', '-O3')
+cflags += " -Wall -Wextra -Werror=all -Wno-error=unused-parameter  -Wno-error=comment -Werror=incompatible-pointer-types"
+if cc.endswith('gcc'):
+	cflags += '  -Werror=discarded-qualifiers'
+
 print('''
-cflags = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -DENV_STAGE -isystem {src}/include {cflags}
+cflags = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include {cflags}
 ldflags = {ldflags}
 
 rule buildcc
@@ -35,12 +41,12 @@ build memtest.bin: bin memtest.elf
 
 default levinboot.img
 '''.format(
-    cflags=os.getenv('CFLAGS', '-O3 -Wall -Wextra -Werror=all -Wno-error=unused-parameter -Wno-error=comment -Werror=discarded-qualifiers -Werror=incompatible-pointer-types'),
+    cflags=cflags,
     ldflags=os.getenv('LDFLAGS', ''),
     src=esc(srcdir),
-    cc=os.getenv('CC', 'cc'),
+    cc=cc,
     ld=os.getenv('LD', 'ld'),
-    buildcc=os.getenv('CC_BUILD', 'gcc'),
+    buildcc=os.getenv('CC_BUILD', 'cc'),
     buildcflags=os.getenv('CFLAGS_BUILD', ''),
     objcopy=os.getenv('OBJCOPY', 'objcopy'),
 ))
