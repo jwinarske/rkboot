@@ -48,9 +48,12 @@ default levinboot.img
 lib = ('timer', 'uart', 'error', 'mmu')
 levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training')
 modules = levinboot + lib + ('memtest',)
+flags = {}
 
 for f in modules:
     print('build {}.o: cc {}'.format(f, esc(path.join(srcdir, f + '.c'))))
+    if f in flags:
+	    print(' flags =', flags[f])
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
 lib += ('dcache',)
