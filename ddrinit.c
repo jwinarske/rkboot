@@ -69,38 +69,6 @@ void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base,
 	}
 }
 
-struct sdram_geometry {
-	u8 csmask;
-	u8 width;
-	u8 col;
-	u8 bank;
-	u8 cs0_row, cs1_row;
-};
-
-static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct sdram_geometry *geo) {
-	u32 bk_diff = 3 - geo->bank, col_diff = 12 - geo->col;
-	u32 row_diff = 16 - geo->cs0_row;
-	_Bool reduc = geo->width != 2;
-	u32 csmask = geo->csmask;
-	debug("\nset_memory_map: pctl@%zx pi@%zx reduc%u col%u row%u bk%u cs%u\n", (u64)pctl, (u64)pi, (u32)reduc, col_diff, row_diff, bk_diff, csmask);
-	u64 col_op = SET_BITS32(4, col_diff);
-	u64 bk_row_op = SET_BITS32(2, bk_diff) << 16
-		| SET_BITS32(3, row_diff) << 24;
-
-	apply32v(pctl + 191, col_op);
-	apply32v(pctl + 190, bk_row_op);
-	apply32v(pctl + 196,
-		SET_BITS32(2, csmask)
-		| SET_BITS32(1, reduc) << 16
-	);
-
-	apply32v(pi + 199, col_op);
-	apply32v(pi + 155, bk_row_op);
-
-	csmask |= csmask << 2;
-	apply32v(pi + 41, SET_BITS32(4, csmask) << 24);
-}
-
 enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
 
 enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
@@ -214,7 +182,7 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, u32 csmask, const struct 
 			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
 		}
 		if (phy_upd->dslice_update[84 - 59] & (1 << 16)) {
-			u32 val = pctl[217];
+			u32 val = pctl[217]; /* FIXME: should depend on freq set */
 			if (((val >> 16) & 0x1f) < 8) {
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
 			}
@@ -306,7 +274,7 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 		u32 ch0_status = pctl_base_for(0)[PCTL_INT_STATUS];
 		u32 ch1_status = pctl_base_for(1)[PCTL_INT_STATUS];
 		if (ch0_status & ch1_status & 8) {break;}
-		if (get_timestamp() - start_ts > CYCLES_PER_MICROSECOND * 5000) {
+		if (get_timestamp() - start_ts > CYCLES_PER_MICROSECOND * 100000) {
 			log("init fail for channel(s): %c%c, start %zu\n", ch0_status & 8 ? ' ' : '0', ch1_status & 8 ? ' ' : '1', start_ts);
 			return 0;
 		}
@@ -325,117 +293,12 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 	return 1;
 }
 
-static _Bool test_mirror(u32 addr, u32 bit) {
-	volatile u32 *base = (volatile u32*)(uintptr_t)addr, *mirror = (volatile u32*)(uintptr_t)(addr ^ (1 << bit));
-	static const u32 pattern0 = 0, pattern1 = 0xf00f55aa;
-	debug("test_mirror(0x%08x,%u)", addr, bit);
-	*base = pattern0;
-	*mirror = pattern1;
-	u32 a = *base;
-	u32 b = *mirror;
-	if (b != pattern1) {die("mirror test (0x%08x,%u) corrupted\n", addr, bit);}
-	if (a == pattern0) {
-		return 0;
-	} else if (a == pattern1) {
-		return 1;
-	} else {
-		die("mirror test (0x%08x,%u) corrupted\n", addr, bit);
-	}
-}
-
 static void set_channel_stride(u32 val) {
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities) */
 	*(volatile u32*)0xff33e010 = SET_BITS16(5, val) << 10;
 }
 
-#define MIRROR_TEST_ADDR 0x100
-
-static void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch, const struct msch_config *msch_cfg, struct sdram_geometry *geo) {
-	u32 csmask = geo->csmask;
-	if (!csmask) {return;}
-	assert(csmask < 4);
-	assert(csmask & 1);
-	geo->col = 12;
-	geo->bank = 3;
-	geo->cs0_row = geo->cs1_row = 12;
-
-	u32 width_bits = geo->width;
-	/* set bus width and CS mask */
-	assert(width_bits >= 1 && width_bits <= 2);
-	printf("bw=%u ", width_bits);
-
-	set_memory_map(pctl, pi, geo);
-	msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
-	msch[MSCH_DDRCONF] = width_bits == 2 ? 0x0303 : 0x0202; /* map for max row size (16K for 32-bit width, 8K for 16-bit width) */
-
-	u32 col_bits = 12; /* max col bits */
-	while (test_mirror(MIRROR_TEST_ADDR, col_bits + width_bits - 1)) {
-		if (col_bits == 9) {die("rows too small (<9 bits column address)!\n");}
-		col_bits -= 1;
-	}
-	printf("col=%u ", col_bits);
-	geo->col = col_bits;
-
-	u32 bank_shift = width_bits + col_bits;
-	assert(bank_shift >= 11 && bank_shift <= 14);
-	u32 ddrconf = bank_shift - 11;
-	printf("ddrconf=%u ", ddrconf);
-
-	u32 bank_bits = 3;
-	if (test_mirror(MIRROR_TEST_ADDR, width_bits + 14)) {
-		bank_bits = 2;
-	}
-	printf("bank=%u ", bank_bits);
-	geo->bank = bank_bits;
-
-	u32 row_shift = width_bits + col_bits + bank_bits;
-	u32 max_row_bits = 16;
-	if (row_shift + 16 > 32) {max_row_bits = 32 - row_shift;}
-	geo->cs0_row = max_row_bits;
-
-	set_memory_map(pctl, pi, geo);
-	msch[MSCH_DDRCONF] = ddrconf | ddrconf << 8;
-	msch[MSCH_DDRSIZE] = 4096/32; /* map full range to CS0 */
-
-	u32 cs0_size;
-	u32 cs0_row_bits = max_row_bits;
-	udelay(1);
-	while (test_mirror(MIRROR_TEST_ADDR, row_shift - 1 + cs0_row_bits)) {
-		if (cs0_row_bits == 12) {die("too few CS0 rows (<12 bits row address)!\n");}
-		printf(" row mirror");
-		cs0_row_bits -= 1;
-	}
-	printf("cs0row=%u ", cs0_row_bits);
-	geo->cs0_row = cs0_row_bits;
-	/* FIXME: assumes power-of-two row number */
-	cs0_size = 1 << (cs0_row_bits + row_shift - 25);
-
-	u32 cs1_size = 0;
-	if (csmask & 2) {
-		msch[MSCH_DDRSIZE] = cs0_size | (4096/32 - cs0_size) << 8;
-		u32 cs1_row_bits = cs0_row_bits;
-		u32 test_addr = MIRROR_TEST_ADDR + (cs0_size << 25);
-		while (test_mirror(test_addr, row_shift - 1 + cs1_row_bits)) {
-			if (cs1_row_bits == 12) {die("too few CS1 rows (<12 bits row address)!\n");}
-			cs1_row_bits -= 1;
-		}
-		printf("cs1row=%u ", cs1_row_bits);
-		geo->cs1_row = cs1_row_bits;
-		cs1_size = 1 << (cs1_row_bits + row_shift -  25);
-	}
-	u32 ddrsize = cs0_size | cs1_size << 8;
-	printf("ddrsize=0x%04x\n", ddrsize);
-
-	set_memory_map(pctl, pi, geo);
-	msch[MSCH_DDRCONF] = ddrconf;
-	msch[MSCH_DDRSIZE] = ddrsize;
-
-	msch[MSCH_TIMING1] = msch_cfg->timing1;
-	msch[MSCH_TIMING2] = msch_cfg->timing2;
-	msch[MSCH_TIMING3] = msch_cfg->timing3;
-	msch[MSCH_DEV2DEV] = msch_cfg->dev2dev;
-	msch[MSCH_DDRMODE] = msch_cfg->ddrmode;
-}
+void memtest(u64);
 
 void ddrinit() {
 	struct odt_settings odt;
@@ -444,6 +307,7 @@ void ddrinit() {
 	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
 	log("initializing DRAM%s\n", "");
+	puts("test\n");
 
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
 	/* not doing this will make the CPU hang during the DLL bypass step */
@@ -455,6 +319,7 @@ void ddrinit() {
 	for_channel(ch) {
 		geo[ch].csmask = 0;
 		geo[ch].width = 1;
+		geo[ch].col = geo[ch].bank = geo[ch].cs0_row = geo[ch].cs1_row = 0;
 		for_range(cs, 0, 2) {
 			u32 mr_value;
 			if (read_mr(pctl_base_for(ch), 5, cs, &mr_value) != MRR_OK) {continue;}
@@ -474,6 +339,7 @@ void ddrinit() {
 	log("finished.%s\n", "");
 	/* 256B interleaving */
 	set_channel_stride(0xd);
+	__asm__ volatile("dsb ish");
 	for_range(bit, 10, 32) {
 		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
 	}

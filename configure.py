@@ -46,7 +46,7 @@ default levinboot.img
 ))
 
 lib = ('timer', 'uart', 'error', 'mmu')
-levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training')
+levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror')
 modules = levinboot + lib + ('memtest',)
 flags = {}
 

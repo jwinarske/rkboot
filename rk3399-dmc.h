@@ -129,6 +129,14 @@ struct dram_cfg {
 	struct dram_regs_cfg regs;
 };
 
+struct sdram_geometry {
+	u8 csmask;
+	u8 width;
+	u8 col;
+	u8 bank;
+	u8 cs0_row, cs1_row;
+};
+
 enum {
 	PCTL_DRAM_CLASS = 0,
 	PCTL_MRR_ERROR_STATUS = 17,
@@ -207,3 +215,8 @@ void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_
 void set_phy_io(volatile u32 *phy, u32 delta, const struct odt_settings *odt);
 
 _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy);
+
+#define MIRROR_TEST_ADDR 0x100
+
+_Bool test_mirror(u32 addr, u32 bit);
+void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch, const struct msch_config *msch_cfg, struct sdram_geometry *geo);
