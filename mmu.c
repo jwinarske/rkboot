@@ -2,7 +2,7 @@
 #include <uart.h>
 
 static u64 __attribute__((aligned(4096))) pagetables[4][512];
-static u32 current_pagetable = 4;
+static u32 next_pagetable = 1;
 
 enum {
 	TCR_NONSHARED = 0,
@@ -26,12 +26,12 @@ enum {
 #define PGTAB_NS (1 << 5)
 
 static u64 UNUSED *get_page_table() {
-	assert(current_pagetable < 4);
-	return &pagetables[current_pagetable++][0];
+	assert(next_pagetable < 4);
+	return &pagetables[next_pagetable++][0];
 }
 
 static void UNUSED dump_page_tables() {
-	for_range(table, 0, current_pagetable) {
+	for_range(table, 0, next_pagetable) {
 		for (u32 i = 0; i < ARRAY_SIZE(pagetables[table]); i += 4) {
 			printf("%3u: %016zx %016zx %016zx %016zx\n", i, pagetables[table][i], pagetables[table][i + 1], pagetables[table][i + 2], pagetables[table][i + 3]);
 		}
@@ -64,25 +64,78 @@ static u64 UNUSED map_address(u64 addr) {
 	return (pte_l3 & MASK64(36) << 12) | (addr & MASK64(12));
 }
 
-void setup_mmu() {
-	for_range(i, 0, 512) {pagetables[0][i] = (u64)&pagetables[1] | PGTAB_SUBTABLE;}
-	for_range(i, 0, 512) {
-		if (i % 4 != 3) {
-			pagetables[1][i] = (i % 4) << 30 | PGTAB_BLOCK(0) | PGTAB_OUTER_SHAREABLE;
-		} else {
-			pagetables[1][i] = (u64)&pagetables[2] | PGTAB_SUBTABLE;
+void split_table(u64 *entry, u32 shift) {
+	assert(shift > 12);
+	u64 val = *entry;
+	assert_msg((val & 3) != 3, "split_table: entry is subtable: %016zx\n", val);
+	u64 *table = get_page_table();
+	*entry = (u64)table | PGTAB_SUBTABLE;
+	if (shift == 21) {val |= 2;} /* L2 block descriptors break up into page descriptors */
+	if (val & 1) {
+		for_range(i, 0, 512) {table[i] = val | i << (shift - 9);}
+	} else {
+		for_range(i, 0, 512) {table[i] = 0;}
+	}
+}
+
+void map_range(u64 *pt, u64 first, const u64 last, u32 shift, u8 attridx) {
+	debug("map_range @%08zx, %08zx, %08zx, %u, %u\n", (u64)pt, first, last, shift, (unsigned)attridx);
+	u64 mask = MASK64(shift);
+	assert(first < last);
+	const u64 last_entry = last >> shift & 0x1ff;
+	if (shift > 12) {
+		while (first <= last) {
+			const u64 first_entry = first >> shift & 0x1ff;
+			assert(first_entry <= last_entry);
+			if (first & mask) {
+				if ((pt[first_entry] & 3) != 3) {
+					split_table(pt + first_entry, shift);
+				}
+				u64 val = pt[first_entry];
+				assert((val & 3) == 3);
+				_Bool also_last = last_entry == first_entry;
+				map_range(
+					(u64*)(val & MASK64(36) << 12),
+					first,
+					also_last ? last : first | mask,
+					shift - 9,
+					attridx
+				);
+				if (also_last) {return;}
+				first = (first & ~mask) + (1 << shift);
+			} else if (first_entry < last_entry || (first_entry == last_entry && (last & mask) == mask)) {
+				assert(shift <= 30);
+				pt[first_entry] = first | PGTAB_BLOCK(attridx);
+				first += 1 << shift;
+			} else {
+				assert(first_entry == last_entry);
+				if ((pt[first_entry] & 3) != 3) {
+					split_table(pt + first_entry, shift);
+				}
+				u64 val = pt[first_entry];
+				assert_msg((val & 3) == 3, "%016zx is not a subtable entry\n", val);
+				assert(!(first & mask));
+				assert((first >> shift) == (last >> shift));
+				map_range(
+					(u64*)(val & MASK64(36) << 12),
+					first, last, shift - 9, attridx
+				);
+				return;
+			}
+		}
+	} else {
+		assert(!(first & mask) && (last & mask) == mask);
+		assert((first >> (shift + 9)) == (last >> (shift + 9)));
+		for_range(i, first >> shift & 0x1ff, last_entry + 1) {
+			pt[i] = (first & ~MASK64(shift + 9)) | i << shift | PGTAB_PAGE(attridx);
 		}
 	}
-	for (u64 i = 0xc0000000; i < 0xff800000; i += 1 << 21) {
-		pagetables[2][i >> 21 & 0x1ff] = i | PGTAB_BLOCK(0);
-	}
-	pagetables[2][0xff800000 >> 21 & 0x1ff] = (u64)&pagetables[3] | PGTAB_SUBTABLE;
-	for (u64 i = 0xffa00000; i < ((u64)1 << 32); i += 1 << 21) {
-		pagetables[2][i >> 21 & 0x1ff] = i | PGTAB_BLOCK(0);
-	}
-	for (u64 i = 0xff800000; i < 0xffa00000; i += 1 << 12) {
-		pagetables[3][i >> 12 & 0x1ff] = i | (i < 0xff8c0000 || i >= 0xff8f0000 ?
-			PGTAB_PAGE(0) : PGTAB_PAGE(4));
+}
+
+void setup_mmu() {
+	for_range(i, 0, 512) {pagetables[0][i] = 0;}
+	for (const struct mapping *map = initial_mappings; map->last; ++map) {
+		map_range(pagetables[0], map->first, map->last, 39, map->type);
 	}
 #ifdef DEBUG_MSG
 	dump_page_tables();
@@ -101,7 +154,7 @@ void setup_mmu() {
 #endif
 	u64 tcr = TCR_RES1 | TCR_REGION0(TCR_FULLY_INNER_CACHEABLE | TCR_FULLY_OUTER_CACHEABLE | TCR_INNER_SHAREABLE | TCR_4K_GRANULE | TCR_TxSZ(16)) | TCR_PS(5) | TCR_TBI;
 	u64 ttbr0 = (u64)&pagetables[0];
-	printf("writing 0x%016zx to TCR_EL3, 0x%016zx to TTBR0_EL3\n", tcr, ttbr0);
+	debug("writing 0x%016zx to TCR_EL3, 0x%016zx to TTBR0_EL3\n", tcr, ttbr0);
 	__asm__ volatile("msr tcr_el3, %0" : : "r"(tcr));
 	__asm__ volatile("dsb ish;isb;msr ttbr0_el3, %0" : : "r"(ttbr0) : "memory", "cc");
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"((u64)SCTLR_EL3_RES1 | SCTLR_I | SCTLR_SA));

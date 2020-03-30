@@ -34,6 +34,14 @@ void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
 void flush_dcache();
 void setup_mmu();
+enum {
+	MEM_TYPE_DEV_nGnRnE = 0,
+	MEM_TYPE_DEV_nGnRE = 1,
+	MEM_TYPE_DEV_nGRE = 2,
+	MEM_TYPE_DEV_GRE = 3,
+	MEM_TYPE_NORMAL = 4
+};
+extern const struct mapping {u64 first, last; u8 type;} initial_mappings[];
 
 void ddrinit();
 
@@ -51,9 +59,9 @@ static inline void apply32m(u32 *addr, u64 op) {
 }
 
 #define STRINGIFY(x) #x
-#define assert_msg(expr, msg) do {if (unlikely(!(expr))) {die(msg);}}while(0)
-#define assert(expr) assert_msg(expr,  __FILE__":"STRINGIFY(__LINE__)": ASSERTION FAILED: "#expr)
-#define assert_unimpl(expr, feature) assert_msg(expr, __FILE_":"STRINGIFY(__LINE__)": UNIMPLEMENTED: "feature)
+#define assert_msg(expr, ...) do {if (unlikely(!(expr))) {die(__VA_ARGS__);}}while(0)
+#define assert(expr) assert_msg(expr,  "%s:%s:%u: ASSERTION FAILED: %s\n", __FILE__, __FUNCTION__, __LINE__, #expr)
+#define assert_unimpl(expr, feature) assert_msg(expr, __FILE__":"STRINGIFY(__LINE__)": UNIMPLEMENTED: "feature)
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 #define bounds_checked(arr, i) ((unlikely ((i) >= ARRAY_SIZE(arr)) ? die(__FILE__":"STRINGIFY(__LINE__)": ERROR: "#arr "[" #i "] out of bounds") : 0), arr[i])

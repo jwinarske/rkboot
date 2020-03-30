@@ -2,6 +2,12 @@
 #include <uart.h>
 #include <rk3399.h>
 
+const struct mapping initial_mappings[] = {
+	{.first = 0, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
+	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
+	{.first = 0, .last = 0, .type = 0}
+};
+
 static void NO_ASAN setup_uart() {
 	uart->line_control = UART_LCR_8_DATA_BITS | UART_LCR_DIVISOR_ACCESS;
 	uart->divisor_low = CONFIG_UART_CLOCK_DIV;

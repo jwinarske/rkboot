@@ -130,6 +130,13 @@ _Bool memtest(u64 salt) {
 	return res;
 }
 
+const struct mapping initial_mappings[] = {
+	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_DEV_GRE},
+	{.first = 0xf8000000, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
+	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
+	{.first = 0, .last = 0, .type = 0}
+};
+
 _Noreturn void ENTRY main() {
 	u64 sctlr;
 	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
