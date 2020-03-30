@@ -1,7 +1,7 @@
 {pkgs ? import <nixos> {
   #crossSystem={config="aarch64-unknown-linux-musl";};
 }}: {
-  levinboot = pkgs.stdenv.mkDerivation {
+  levinboot = pkgs.clangStdenv.mkDerivation {
     pname = "levinboot";
     version = "0.0.1";
     nativeBuildInputs = [pkgs.ninja pkgs.python3];
@@ -18,7 +18,8 @@
     pname = "levinboot-tools";
     version = "0.0.1";
     buildInputs = [pkgs.libusb1];
-    nativeBuildInputs = [pkgs.pkg-config];
+    nativeBuildInputs = [pkgs.pkg-config pkgs.ninja];
+    installPhase = "mkdir -p $out/bin; cp usbtool idbtool $out/bin";
     src = ./tools;
   };
 }

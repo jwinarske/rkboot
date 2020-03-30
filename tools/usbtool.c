@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 #include "tools.h"
 
 _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, uint16_t opcode) {

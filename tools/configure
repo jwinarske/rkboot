@@ -1,0 +1,22 @@
+#!/bin/sh
+
+if [ "$CC" = "" ]; then CC=gcc; fi
+if [ "$CFLAGS" = "" ]; then CFLAGS=-O3; fi
+src=`realpath $0`
+src=`dirname $src`
+src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
+
+cat >build.ninja <<END
+ninja_required_version = 1.3
+cflags = -Wall $CFLAGS
+rule cc
+    depfile = \$out.d
+    deps = gcc
+    command = $CC -MD -MF \$out.d \$cflags \$flags \$in -o \$out
+
+build usbtool: cc $src/usbtool.c
+    flags =  `pkg-config --libs --cflags libusb-1.0`
+build idbtool: cc $src/idbtool.c
+
+default usbtool idbtool
+END
