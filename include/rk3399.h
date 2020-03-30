@@ -15,6 +15,8 @@ enum {
 	PMUGRF_OS_REG2 = 0x308 >> 2
 };
 
+enum {PMUSGRF_SOC_CON4 = 0xe010 >> 2};
+
 enum {
 	CRU_DPLL_CON = 0x040 >> 2,
 	CRU_SOFTRST_CON = 0x400 >> 2
@@ -36,6 +38,7 @@ enum {CYCLES_PER_MICROSECOND = 24};
 
 static volatile u32 *const pmu = (volatile u32 *)0xff310000;
 static volatile u32 *const pmugrf = (volatile u32 *)0xff320000;
+static volatile u32 *const pmusgrf = (volatile u32 *)0xff330000;
 static volatile u32 *const cic = (volatile u32 *)0xff620000;
 static volatile u32 *const cru = (volatile u32 *)0xff760000;
 static volatile u32 *const grf = (volatile u32 *)0xff770000;

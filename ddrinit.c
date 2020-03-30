@@ -295,7 +295,7 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 
 static void set_channel_stride(u32 val) {
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities) */
-	*(volatile u32*)0xff33e010 = SET_BITS16(5, val) << 10;
+	pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
 }
 
 void memtest(u64);
