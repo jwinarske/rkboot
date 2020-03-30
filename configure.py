@@ -38,6 +38,7 @@ build levinboot.bin: bin levinboot.elf
 build levinboot.img: run levinboot.bin | idbtool
     bin = ./idbtool
 build memtest.bin: bin memtest.elf
+build elfloader.bin: bin elfloader.elf
 
 default levinboot.img
 '''.format(
@@ -53,7 +54,7 @@ default levinboot.img
 
 lib = ('timer', 'uart', 'error', 'mmu')
 levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror')
-modules = levinboot + lib + ('memtest',)
+modules = levinboot + lib + ('memtest', 'elfloader')
 flags = {}
 
 for f in modules:
@@ -76,3 +77,4 @@ def binary(name, modules):
 
 binary('levinboot.elf', levinboot + lib)
 binary('memtest.elf', ('memtest',) + lib)
+binary('elfloader.elf', ('elfloader',) + lib)
