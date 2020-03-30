@@ -306,7 +306,7 @@ void ddrinit() {
 	odt.flags |= ODT_SET_RST_DRIVE;
 	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
-	log("initializing DRAM%s\n", "");
+	logs("initializing DRAM\n");
 	puts("test\n");
 
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
@@ -336,7 +336,7 @@ void ddrinit() {
 	u32 csmask = geo[0].csmask | geo[1].csmask << 2;
 	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
-	log("finished.%s\n", "");
+	logs("finished.\n");
 	encode_dram_size(&geo[0]);
 	/* 256B interleaving */
 	set_channel_stride(0xd);

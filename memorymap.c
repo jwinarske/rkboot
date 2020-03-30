@@ -3,7 +3,7 @@
 #include "rk3399-dmc.h"
 
 void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct sdram_geometry *geo) {
-	printf("bk%u col%u\n", geo->bank, geo->col);
+	debug("bk%u col%u\n", geo->bank, geo->col);
 	u32 bk_diff = 3 - geo->bank, col_diff = 12 - geo->col;
 	u32 row_diff = 16 - geo->cs0_row;
 	_Bool reduc = geo->width != 2;
