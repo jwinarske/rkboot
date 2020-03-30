@@ -12,7 +12,8 @@ enum {
 enum {
 	PMUGRF_GPIO0B_IOMUX = 0x004 >> 2,
 	PMUGRF_GPIO0B_P = 0x044 >> 2,
-	PMUGRF_OS_REG2 = 0x308 >> 2
+	PMUGRF_OS_REG2 = 0x308 >> 2,
+	PMUGRF_OS_REG3 = 0x30c >> 2,
 };
 
 enum {PMUSGRF_SOC_CON4 = 0xe010 >> 2};

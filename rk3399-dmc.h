@@ -220,3 +220,4 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 
 _Bool test_mirror(u32 addr, u32 bit);
 void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch, const struct msch_config *msch_cfg, struct sdram_geometry *geo);
+void encode_dram_size(const struct sdram_geometry *geo);

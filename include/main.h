@@ -68,3 +68,8 @@ static inline void apply32m(u32 *addr, u64 op) {
 
 #define for_range(i, a, b) for (u32 i = a; i < b; ++i)
 #define for_array(i, arr) for (u32 i = 0; i < ARRAY_SIZE(arr); ++i)
+
+enum {
+	ASSUMPTION_16BIT_CHANNEL = 1,
+	ASSUMPTION_Po2_ROWS = 1,
+};

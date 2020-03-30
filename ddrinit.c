@@ -337,6 +337,7 @@ void ddrinit() {
 	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
 	log("finished.%s\n", "");
+	encode_dram_size(&geo[0]);
 	/* 256B interleaving */
 	set_channel_stride(0xd);
 	__asm__ volatile("dsb ish");

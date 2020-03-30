@@ -36,7 +36,7 @@ void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch,
 	assert(csmask & 1);
 	geo->col = 12;
 	geo->bank = 3;
-	geo->cs0_row = geo->cs1_row = 12;
+	geo->cs0_row = geo->cs1_row = 13;
 
 	u32 width_bits = geo->width;
 	/* set bus width and CS mask */
@@ -86,7 +86,7 @@ void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch,
 	}
 	printf("cs0row=%u ", cs0_row_bits);
 	geo->cs0_row = cs0_row_bits;
-	/* FIXME: assumes power-of-two row number */
+	assert(ASSUMPTION_Po2_ROWS);
 	cs0_size = 1 << (cs0_row_bits + row_shift - 25);
 
 	u32 cs1_size = 0;
@@ -100,6 +100,7 @@ void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch,
 		}
 		printf("cs1row=%u ", cs1_row_bits);
 		geo->cs1_row = cs1_row_bits;
+		assert(ASSUMPTION_Po2_ROWS);
 		cs1_size = 1 << (cs1_row_bits + row_shift -  25);
 	}
 	u32 ddrsize = cs0_size | cs1_size << 8;
@@ -115,4 +116,42 @@ void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch,
 	msch[MSCH_DEV2DEV] = msch_cfg->dev2dev;
 	msch[MSCH_DDRMODE] = msch_cfg->ddrmode;
 	__asm__ volatile("dsb ish");
+}
+
+void encode_dram_size(const struct sdram_geometry *geo) {
+	u32 osreg2 = (!!geo[0].csmask + !!geo[1].csmask - 1) << 12 | LPDDR4 << 13;
+	u32 osreg3 = 0x20000000;
+	for_range(i, 0, 2) {
+		if (!geo[i].csmask) {continue;}
+		assert(ASSUMPTION_16BIT_CHANNEL && ASSUMPTION_Po2_ROWS);
+		u32 bw = 2 >> geo[i].width, dbw = 1;
+		u32 block_infos = (geo[i].csmask == 3) << 11, reg3_infos = 0;
+
+		u32 col_diff = geo[i].col - 9;
+		assert(col_diff <= 3);
+		block_infos |= col_diff << 9;	/* cs0*/
+		reg3_infos |= col_diff;	/* cs1 */
+
+		u32 bank_diff = 3 - geo[i].bank;
+		assert(bank_diff <= 1);
+		block_infos |= bank_diff << 8;
+
+		u32 cs0_row = geo[i].cs0_row, cs1_row = geo[i].cs1_row;
+		u32 cs0_row_diff = cs0_row - 13, cs1_row_diff = cs1_row - 13;
+		assert(cs0_row >= 12 && cs0_row <= 19);
+		block_infos |= cs0_row_diff << 6 & 0xc0;
+		reg3_infos |= cs0_row_diff << 3 & 0x20;
+		assert(cs1_row >= 12 && cs1_row <= 19);
+		block_infos |= cs1_row_diff << 4 & 0x30;
+		reg3_infos |= cs1_row_diff << 2 & 0x10;
+
+		block_infos |= bw << 2 | dbw;
+
+		osreg2 |= block_infos << 16*i | 1 << (28 + i);
+		osreg3 |= reg3_infos << 2*i;
+	}
+	/* 0x32C1F2C1 */
+	printf("osreg2=%08x, osreg3=%08x\n", osreg2, osreg3);
+	pmugrf[PMUGRF_OS_REG2] = osreg2;
+	pmugrf[PMUGRF_OS_REG3] = osreg3;
 }
