@@ -34,12 +34,8 @@ rule run
     command = $bin <$in >$out
 
 build idbtool: buildcc {src}/tools/idbtool.c
-build levinboot-usb.bin: bin levinboot-usb.elf
-build levinboot-sd.bin: bin levinboot-sd.elf
 build levinboot.img: run levinboot-sd.bin | idbtool
     bin = ./idbtool
-build memtest.bin: bin memtest.elf
-build elfloader.bin: bin elfloader.elf
 
 default levinboot.img
 '''.format(
@@ -68,15 +64,17 @@ lib += ('dcache',)
 
 def binary(name, modules, linkerscript):
 	print(
-'''build {}: ld {} | {script}
-    flags = -T {script}'''
+'''build {name}.elf: ld {modules} | {script}
+    flags = -T {script}
+build {name}.bin: bin {name}.elf'''
     .format(
-        esc(name),
-        ' '.join(esc(x + '.o') for x in modules),
+        name=esc(name),
+        modules=' '.join(esc(x + '.o') for x in modules),
         script=esc(path.join(srcdir, 'ld', linkerscript))
     ))
 
-binary('levinboot-usb.elf', levinboot + lib, 'ff8c2000.ld')
-binary('levinboot-sd.elf', levinboot + lib, 'ff8c2004.ld')
-binary('memtest.elf', ('memtest',) + lib, 'ff8c2000.ld')
-binary('elfloader.elf', ('elfloader',) + lib, '00100000.ld')
+binary('levinboot-usb', levinboot + lib, 'ff8c2000.ld')
+binary('levinboot-sd', levinboot + lib, 'ff8c2004.ld')
+binary('memtest', ('memtest',) + lib, 'ff8c2000.ld')
+binary('elfloader', ('elfloader',) + lib, '00100000.ld')
+binary('elfloader-sram', ('elfloader',) + lib, 'ff8c2000.ld')
