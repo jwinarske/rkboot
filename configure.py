@@ -34,8 +34,9 @@ rule run
     command = $bin <$in >$out
 
 build idbtool: buildcc {src}/tools/idbtool.c
-build levinboot.bin: bin levinboot.elf
-build levinboot.img: run levinboot.bin | idbtool
+build levinboot-usb.bin: bin levinboot-usb.elf
+build levinboot-sd.bin: bin levinboot-sd.elf
+build levinboot.img: run levinboot-sd.bin | idbtool
     bin = ./idbtool
 build memtest.bin: bin memtest.elf
 build elfloader.bin: bin elfloader.elf
@@ -65,16 +66,17 @@ for f in modules:
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
 lib += ('dcache',)
 
-def binary(name, modules):
+def binary(name, modules, linkerscript):
 	print(
 '''build {}: ld {} | {script}
     flags = -T {script}'''
     .format(
         esc(name),
         ' '.join(esc(x + '.o') for x in modules),
-        script=esc(path.join(srcdir, "linkerscript.ld"))
+        script=esc(path.join(srcdir, 'ld', linkerscript))
     ))
 
-binary('levinboot.elf', levinboot + lib)
-binary('memtest.elf', ('memtest',) + lib)
-binary('elfloader.elf', ('elfloader',) + lib)
+binary('levinboot-usb.elf', levinboot + lib, 'ff8c2000.ld')
+binary('levinboot-sd.elf', levinboot + lib, 'ff8c2004.ld')
+binary('memtest.elf', ('memtest',) + lib, 'ff8c2000.ld')
+binary('elfloader.elf', ('elfloader',) + lib, '00100000.ld')
