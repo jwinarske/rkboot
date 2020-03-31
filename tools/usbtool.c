@@ -284,6 +284,34 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				if (!transfer(handle, fd, buf, copy_size + 16, size, 0x0471)) {return 1;}
 				pos += size;
 			}
+		} else if ((call = !strcmp("--dramcall", *arg)) || !strcmp("--jump", *arg)) {
+			uint64_t entry_addr, stack_addr;
+			char *command = *arg, *entry_str = *++arg;
+			if (!entry_str || sscanf(entry_str, "%"SCNx64, &entry_addr) != 1) {
+				fprintf(stderr, "%s needs an entry point address\n", command);
+				return 1;
+			}
+			char *stack_str = *++arg;
+			if (!stack_str || sscanf(stack_str, "%"SCNx64, &stack_addr) != 1) {
+				fprintf(stderr, "%s needs a stack address\n", command);
+				return 1;
+			}
+			const size_t jump_size = sizeof(jump_program);
+			for (int i = 0; i < jump_size; i += 4) {
+				write_le32(buf + i, jump_program[i/4]);
+			}
+			write_le32(buf + jump_size, entry_addr);
+			write_le32(buf + jump_size + 4, entry_addr >> 32);
+			write_le32(buf + jump_size + 8, stack_addr);
+			write_le32(buf + jump_size + 12, stack_addr >> 32);
+			memset(buf + jump_size + 16, 0, 4096 - jump_size - 16);
+			uint8_t rc4state[258];
+			rc4_init(rc4state);
+			uint16_t crc = 0xffff;
+			if (!block_transfer(handle, buf, &crc, rc4state) || !final_transfer(handle, buf, 0, crc, rc4state, call ? 0x0471 : 0x0472)) {return 1;}
+		} else {
+			fprintf(stderr, "unknown command line argument %s", *arg);
+			return 1;
 		}
 	}
 	printf("done, closing USB handle\n");
