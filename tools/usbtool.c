@@ -10,11 +10,51 @@
 #include <libusb.h>
 #include "tools.h"
 
+uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
+	const uint16_t poly = 0x1021;
+	for (size_t p = 0; p < len; ++p) {
+		uint8_t bit = 0x80, byte = buf[p];
+		do {
+			crc = (crc << 1) ^ (((crc & 0x8000) != 0) ? poly : 0);
+			crc ^= (bit & byte) != 0 ? poly : 0;
+		} while(bit >>= 1);
+	}
+	return crc;
+}
+
+_Bool final_transfer(libusb_device_handle *handle, uint8_t *buf, size_t pos, uint16_t crc, uint8_t *rc4state, uint16_t opcode) {
+	if (pos >= 4094) {
+		fprintf(stderr, "internal error in %s: wrong block size\n", __FUNCTION__);
+		abort();
+	}
+	rc4(buf, pos, rc4state);
+	crc = crc16(buf, pos, crc);
+	buf[pos] = crc >> 8;
+	buf[pos + 1] = (uint8_t)crc;
+	printf("%zu-byte 0x%x transfer\n", pos + 2, (unsigned)opcode);
+	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, buf, 2, 3000);
+	if (res != 2) {
+		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
+		return 0;
+	}
+	return 1;
+}
+
+_Bool block_transfer(libusb_device_handle *handle, uint8_t *buf, uint16_t *crc, uint8_t *rc4state) {
+	printf("4096-byte 0x0471 transfer\n");
+	rc4(buf, 4096, rc4state);
+	*crc = crc16(buf, 4096, *crc);
+	if (libusb_control_transfer(handle, 0x40, 0xc, 0, 0x0471, buf, 4096, 100) != 4096) {
+		fprintf(stderr, "error while sending data\n");
+		return 0;
+	}
+	return 1;
+}
+
 _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, size_t max, uint16_t opcode) {
 	u8 rc4state[258];
 	rc4_init(rc4state);
 	uint16_t crc = 0xffff;
-	const uint16_t poly = 0x1021;
 	_Bool eof = 0;
 	size_t transferred = 0;
 	while (!eof && transferred < max) {
@@ -33,40 +73,21 @@ _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, s
 			if (pos >= 4096) {flush = 1;}
 		}
 		if (flush) {
-			printf("4096-byte 0x0471 transfer (%zu bytes)\n", pos);
+			printf("flushing %zu bytes", pos);
 			memset(buf + pos, 0, 4096 - pos);
-			rc4(buf, 4096, rc4state);
-			for (size_t p = 0; p < 4096; ++p) {
-				uint8_t bit = 0x80, byte = buf[p];
-				do {
-					crc = (crc << 1) ^ (((crc & 0x8000) != 0) ? poly : 0);
-					crc ^= (bit & byte) != 0 ? poly : 0;
-				} while(bit >>= 1);
-			}
-			if (libusb_control_transfer(handle, 0x40, 0xc, 0, 0x0471, buf, 4096, 100) != 4096) {
-				fprintf(stderr, "error while sending data\n");
-				return 2;
-			}
+			block_transfer(handle, buf, &crc, rc4state);
 			transferred += 4096;
 			pos = 0;
 		}
 	}
-	buf[0] = crc >> 8;
-	buf[1] = (uint8_t)crc;
-	printf("2-byte 0x%x transfer\n", (unsigned)opcode);
-	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, buf, 2, 3000);
-	if (res != 2) {
-		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
-		return 2;
-	}
-	return 1;
+	return final_transfer(handle, buf, 0, crc, rc4state, opcode);
 }
 
 #define Rd(n) ((n) & 31)
 #define Rn(n) (((n) & 31) << 5)
 #define Rt2(n) (((n) & 31) << 10)
 #define Rm(n) (((n) & 31) << 16)
-#define PAIR_POST(disp) (0x28800000 | ((disp) & 0x7f) << 15)
+#define PAIR(disp) (((disp) & 0x7f) << 15)
 #define ADR(imm) (1 <<28 | ((imm) & 3) << 29 | ((imm) & 0x1ffffc) << 3)
 #define B_HS(disp) (0x54000002 | ((disp) & 0x7ffff) << 5)
 #define MOVZ(hw, val) (0x92800000 | ((hw) & 3) << 21 | ((val) & 0xffff) << 5)
@@ -82,6 +103,46 @@ _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, s
 #define SYSREG_SCTLR_EL3 0xe1000
 #define OR(width, length, rotate) ((width == 64 || width == 32 || width == 16 || width == 8) && (length) < (width) && (length) < (width) ? (0x32000000 | (width == 64) << 31 | (width == 64) << 22 | (rotate) << 16 | ((length - 1) | (~((width) - 1) & 0x3f)) << 10) : die(": wrong logic encoding"))
 
+enum {
+	ADD64IMM = 0x91000000,
+};
+
+#define ADD_IMM(n) ((n) << 12 & 0x003ff000)
+#define ADD_IMM_SHIFTED(n) ((n) & 0x003ff000)
+
+enum pair_const {
+	PAIR_BASE = 5 << 27,
+	PAIR_POSTIDX = 1 << 23,
+	PAIR_PREIDX = 3 << 23,
+	PAIR_OFFSET = 2 << 23,
+};
+
+enum pair_inst {
+	STP32_POST = PAIR_BASE | PAIR_POSTIDX,
+	STP64_POST = PAIR_BASE | PAIR_POSTIDX | SIXTYFOUR,
+	LDP32_POST = PAIR_BASE | PAIR_POSTIDX | LOAD,
+	LDP64_POST = PAIR_BASE | PAIR_POSTIDX | LOAD | SIXTYFOUR,
+	STP32_PRE = PAIR_BASE | PAIR_PREIDX,
+	STP64_PRE = PAIR_BASE | PAIR_PREIDX | SIXTYFOUR,
+	LDP32_PRE = PAIR_BASE | PAIR_PREIDX | LOAD,
+	LDP64_PRE = PAIR_BASE | PAIR_PREIDX | LOAD | SIXTYFOUR,
+	STP32_OFF = PAIR_BASE | PAIR_OFFSET,
+	STP64_OFF = PAIR_BASE | PAIR_OFFSET | SIXTYFOUR,
+	LDP32_OFF = PAIR_BASE | PAIR_OFFSET | LOAD,
+	LDP64_OFF = PAIR_BASE | PAIR_OFFSET | LOAD | SIXTYFOUR,
+};
+
+enum binop {
+	ADD32 = 0x0b000000,
+	ADD64 = 0x8b000000,
+};
+
+enum branch_reg {
+	BR = 0xd61f0000,
+	BLR = 0xd63f0000,
+	RET = 0xd65f0000,
+};
+
 int _Noreturn die(const char *msg) {
 	fprintf(stderr, "%s\n", msg);
 	abort();
@@ -94,19 +155,33 @@ const uint32_t copy_program[14] = {
 	MSR | SYSREG_SCTLR_EL3 | Rd(6),
 
 	ADR(40) | Rd(0),
-	PAIR_POST(2) | SIXTYFOUR | LOAD | Rn(0) | Rd(1) | Rt2(2),
+	LDP64_POST | PAIR(2) | Rn(0) | Rd(1) | Rt2(2),
 
-	PAIR_POST(2) | SIXTYFOUR | LOAD  | Rn(0) | Rd(3) | Rt2(4),
-	PAIR_POST(2) | SIXTYFOUR | Rn(1) | Rd(3) | Rt2(4),
+	LDP64_POST | PAIR(2) | Rn(0) | Rd(3) | Rt2(4),
+	STP64_POST | PAIR(2) | Rn(1) | Rd(3) | Rt2(4),
 	SUB | SETFLAGS | SIXTYFOUR | Rd(31) | Rn(2) | Rm(1),
 	B_HS(-3),
 	MOVZ(0, 0) | Rd(0),
 	MSR | SYSREG_SCTLR_EL3 | Rd(5),
 	IC_IALLU,
+	RET | Rn(30),
+};
+
+const uint32_t jump_program[10] = {
+	ADR(40) | Rd(0),
+	LDP64_OFF | PAIR(0) | Rn(0) | Rd(0) | Rt2(1),
+	ADD64IMM | Rd(2) | Rn(31) | ADD_IMM(0),
+	ADD64IMM | Rd(31) | Rn(1) | ADD_IMM(0),
+	STP64_PRE | PAIR(-2) | Rn(31) | Rd(30) | Rt2(2),
+	BLR | Rn(0),
+	LDP64_OFF | PAIR(0) | Rn(31) | Rd(30) | Rt2(2),
+	ADD64IMM | Rd(31) | Rn(2) | ADD_IMM(0),
 	RET(30),
 };
 
-void write_le32(uint8_t *buf, uint32_t val) {
+#define LDR64(imm) (0x58000000 | ((imm) << 3 & 0x00ffffe0))
+
+static void write_le32(uint8_t *buf, uint32_t val) {
 	buf[0] = val & 0xff;
 	buf[1] = val >> 8 & 0xff;
 	buf[2] = val >> 16 & 0xff;
@@ -163,15 +238,10 @@ int main(int UNUSED argc, char UNUSED **argv) {
 					return 1;
 				}
 			}
-			transfer(handle, fd, buf, 0, 184 * 1024, call ? 0x0471 : 0x0472);
+			if (!transfer(handle, fd, buf, 0, 184 * 1024, call ? 0x0471 : 0x0472)) {return 1;}
 			if (fd) {close(fd);}
 		} else if (!strcmp("--load", *arg)) {
 			char *command = *arg;
-			char *filename = *++arg;
-			if (!filename) {
-				fprintf(stderr, "%s needs a parameter\n", command);
-				return 1;
-			}
 			char *addr_string = *++arg;
 			uint64_t addr_;
 			if (!addr_string || sscanf(addr_string, "%"PRIx64, &addr_) != 1) {
@@ -179,6 +249,11 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				return 1;
 			}
 			uint64_t load_addr = addr_;
+			char *filename = *++arg;
+			if (!filename) {
+				fprintf(stderr, "%s needs a file name\n", command);
+				return 1;
+			}
 			int fd = 0;
 			if (strcmp("-", filename)) {
 				fd = open(filename, O_RDONLY, 0);
@@ -206,7 +281,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				write_le32(buf + copy_size + 4, start_addr >> 32);
 				write_le32(buf + copy_size + 8, end_addr);
 				write_le32(buf + copy_size + 12, end_addr >> 32);
-				transfer(handle, fd, buf, copy_size + 16, size, 0x0471);
+				if (!transfer(handle, fd, buf, copy_size + 16, size, 0x0471)) {return 1;}
 				pos += size;
 			}
 		}
