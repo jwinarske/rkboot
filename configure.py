@@ -51,7 +51,7 @@ default levinboot.img
 
 lib = ('timer', 'uart', 'error', 'mmu')
 levinboot = ('main', 'pll', 'ddrinit', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror')
-modules = levinboot + lib + ('memtest', 'elfloader')
+modules = levinboot + lib + ('memtest', 'elfloader', 'teststage')
 flags = {}
 
 for f in modules:
@@ -78,3 +78,4 @@ binary('levinboot-sd', levinboot + lib, 'ff8c2004.ld')
 binary('memtest', ('memtest',) + lib, 'ff8c2000.ld')
 binary('elfloader', ('elfloader',) + lib, '00100000.ld')
 binary('elfloader-sram', ('elfloader',) + lib, 'ff8c2000.ld')
+binary('teststage', ('teststage', 'uart', 'error'), '00600000.ld')

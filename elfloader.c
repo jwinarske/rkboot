@@ -1,4 +1,38 @@
 #include <main.h>
+#include <uart.h>
+#include "../arm-trusted-firmware/include/export/common/bl_common_exp.h"
+
+static image_info_t bl33_image = {
+	.image_base = 0x00600000,
+	.image_size = 0x00100000,
+	.image_max_size = 0x00100000,
+};
+
+static entry_point_info_t bl33_ep = {
+	.h = {
+		.type = PARAM_EP,
+		.version = PARAM_VERSION_1,
+		.size = sizeof(bl33_ep),
+		.attr = EP_NON_SECURE,
+	},
+	.pc = 0x00600000,
+};
+
+static bl_params_node_t bl33_node = {
+	.image_id = BL33_IMAGE_ID,
+	.image_info = &bl33_image,
+	.ep_info = &bl33_ep,
+};
+
+static bl_params_t bl_params = {
+	.h = {
+		.type = PARAM_BL_PARAMS,
+		.version = PARAM_VERSION_2,
+		.size = sizeof(bl_params),
+		.attr = 0
+	},
+	.head = &bl33_node,
+};
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xffffffff, .type = MEM_TYPE_NORMAL},
@@ -38,13 +72,16 @@ struct program_header {
 	u64 alignment;
 };
 
-_Noreturn void ENTRY main() {
+typedef void (*bl31_entry)(bl_params_t *, u64, u64, u64);
+
+_Noreturn u32 ENTRY main() {
+	puts("elfloader\n");
 	u64 sctlr;
 	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
 	setup_mmu();
-	u64 base_addr = 0x00100000;
+	u64 base_addr = 0x00200000;
 	const struct elf_header *header = (const struct elf_header*)base_addr;
 	for_range(i, 0, 16) {
 		const u32 *x = (u32*)(base_addr + 16*i);
@@ -63,6 +100,18 @@ _Noreturn void ENTRY main() {
 		printf("LOAD %08zx…%08zx → %08zx\n", ph->offset, ph->offset + ph->file_size, ph->vaddr);
 		assert(ph->vaddr == ph->paddr);
 		assert(ph->flags == 7);
+		assert(ph->offset % ph->alignment == 0);
+		assert(ph->vaddr % ph->alignment == 0);
+		u64 alignment = ph->alignment;
+		assert(alignment % 16 == 0);
+		const u64 *src = (const u64 *)(base_addr + ph->offset), *end = src + ((ph->file_size + alignment - 1) / alignment * (alignment / 8));
+		u64 *dest = (u64*)ph->vaddr;
+		while (src < end) {*dest++ = *src++;}
 	}
+	while (uart->tx_level) {__asm__ volatile("yield");}
+	uart->shadow_fifo_enable = 0;
+	set_sctlr_flush_dcache(sctlr | SCTLR_I);
+	((bl31_entry)header->entry)(&bl_params, 0, 0, 0);
+	puts("return\n");
 	halt_and_catch_fire();
 }
