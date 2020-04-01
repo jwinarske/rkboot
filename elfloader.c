@@ -15,7 +15,6 @@ static entry_point_info_t bl33_ep = {
 		.size = sizeof(bl33_ep),
 		.attr = EP_NON_SECURE,
 	},
-	.pc = 0x00600000,
 };
 
 static bl_params_node_t bl33_node = {
@@ -81,10 +80,10 @@ _Noreturn u32 ENTRY main() {
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
 	setup_mmu();
-	u64 base_addr = 0x00200000;
-	const struct elf_header *header = (const struct elf_header*)base_addr;
+	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, payload_addr = 0x00600000;
+	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	for_range(i, 0, 16) {
-		const u32 *x = (u32*)(base_addr + 16*i);
+		const u32 *x = (u32*)(elf_addr + 16*i);
 		printf("%2x0: %08x %08x %08x %08x\n", i, x[0], x[1], x[2], x[3]);
 	}
 	for_array(i, elf_magic) {
@@ -94,7 +93,7 @@ _Noreturn u32 ENTRY main() {
 	assert(header->prog_h_entry_size == 0x38);
 	assert((header->prog_h_off & 7) == 0);
 	for_range(i, 0, header->num_prog_h) {
-		const struct program_header *ph = (const struct program_header*)(base_addr + header->prog_h_off + header->prog_h_entry_size * i);
+		const struct program_header *ph = (const struct program_header*)(elf_addr + header->prog_h_off + header->prog_h_entry_size * i);
 		if (ph->type == 0x6474e551) {puts("ignoring GNU_STACK segment\n"); continue;}
 		assert_msg(ph->type == 1, "found unexpected segment type %08x\n", ph->type);
 		printf("LOAD %08zx…%08zx → %08zx\n", ph->offset, ph->offset + ph->file_size, ph->vaddr);
@@ -104,12 +103,18 @@ _Noreturn u32 ENTRY main() {
 		assert(ph->vaddr % ph->alignment == 0);
 		u64 alignment = ph->alignment;
 		assert(alignment % 16 == 0);
-		const u64 *src = (const u64 *)(base_addr + ph->offset), *end = src + ((ph->file_size + alignment - 1) / alignment * (alignment / 8));
+		const u64 *src = (const u64 *)(elf_addr + ph->offset), *end = src + ((ph->file_size + alignment - 1) / alignment * (alignment / 8));
 		u64 *dest = (u64*)ph->vaddr;
 		while (src < end) {*dest++ = *src++;}
 	}
 	while (uart->tx_level) {__asm__ volatile("yield");}
 	uart->shadow_fifo_enable = 0;
+	bl33_ep.pc = payload_addr;
+	bl33_ep.spsr = 9; /* jump into EL2 with SPSel = 1 */
+	bl33_ep.args.arg0 = fdt_addr;
+	bl33_ep.args.arg1 = 0;
+	bl33_ep.args.arg2 = 0;
+	bl33_ep.args.arg3 = 0;
 	set_sctlr_flush_dcache(sctlr | SCTLR_I);
 	((bl31_entry)header->entry)(&bl_params, 0, 0, 0);
 	puts("return\n");
