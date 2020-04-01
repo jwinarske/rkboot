@@ -32,7 +32,7 @@ _Bool final_transfer(libusb_device_handle *handle, uint8_t *buf, size_t pos, uin
 	buf[pos] = crc >> 8;
 	buf[pos + 1] = (uint8_t)crc;
 	printf("%zu-byte 0x%x transfer\n", pos + 2, (unsigned)opcode);
-	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, buf, 2, 3000);
+	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, buf, 2, 20000);
 	if (res != 2) {
 		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
 		return 0;
@@ -73,7 +73,7 @@ _Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, s
 			if (pos >= 4096) {flush = 1;}
 		}
 		if (flush) {
-			printf("flushing %zu bytes", pos);
+			printf("flushing %zu bytes\n", pos);
 			memset(buf + pos, 0, 4096 - pos);
 			block_transfer(handle, buf, &crc, rc4state);
 			transferred += 4096;
@@ -143,43 +143,46 @@ enum branch_reg {
 	RET = 0xd65f0000,
 };
 
+enum barriers {ISB = 0xd5033fdf};
+
 int _Noreturn die(const char *msg) {
 	fprintf(stderr, "%s\n", msg);
 	abort();
 }
 
-const uint32_t copy_program[14] = {
+#define LDR64(imm) (0x58000000 | ((imm) << 3 & 0x00ffffe0))
+
+const uint32_t copy_program[24] = {
+	ADR(sizeof(copy_program)) | Rd(0),
+
 	MRS | SYSREG_SCTLR_EL3 | Rd(5),
-	IC_IALLU,
 	OR(64, 1, 52) | Rn(5) | Rd(6),
 	MSR | SYSREG_SCTLR_EL3 | Rd(6),
 
-	ADR(40) | Rd(0),
 	LDP64_POST | PAIR(2) | Rn(0) | Rd(1) | Rt2(2),
+	SUB | SETFLAGS | SIXTYFOUR | Rd(31) | Rn(1) | Rm(2),
+	B_HS(7),
 
 	LDP64_POST | PAIR(2) | Rn(0) | Rd(3) | Rt2(4),
 	STP64_POST | PAIR(2) | Rn(1) | Rd(3) | Rt2(4),
 	SUB | SETFLAGS | SIXTYFOUR | Rd(31) | Rn(2) | Rm(1),
 	B_HS(-3),
-	MOVZ(0, 0) | Rd(0),
-	MSR | SYSREG_SCTLR_EL3 | Rd(5),
-	IC_IALLU,
-	RET | Rn(30),
-};
 
-const uint32_t jump_program[10] = {
-	ADR(40) | Rd(0),
-	LDP64_OFF | PAIR(0) | Rn(0) | Rd(0) | Rt2(1),
-	ADD64IMM | Rd(2) | Rn(31) | ADD_IMM(0),
+	MOVZ(0, 0) | Rd(0),
+	RET | Rn(30),
+
+	LDR64(56) | Rd(0),
+	ADD64IMM | Rd(0) | Rn(31) | ADD_IMM(0),
 	ADD64IMM | Rd(31) | Rn(1) | ADD_IMM(0),
 	STP64_PRE | PAIR(-2) | Rn(31) | Rd(30) | Rt2(2),
+	IC_IALLU,
+	ISB,
 	BLR | Rn(0),
 	LDP64_OFF | PAIR(0) | Rn(31) | Rd(30) | Rt2(2),
 	ADD64IMM | Rd(31) | Rn(2) | ADD_IMM(0),
 	RET(30),
+	0,
 };
-
-#define LDR64(imm) (0x58000000 | ((imm) << 3 & 0x00ffffe0))
 
 static void write_le32(uint8_t *buf, uint32_t val) {
 	buf[0] = val & 0xff;
@@ -296,15 +299,17 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				fprintf(stderr, "%s needs a stack address\n", command);
 				return 1;
 			}
-			const size_t jump_size = sizeof(jump_program);
+			const size_t jump_size = sizeof(copy_program);
 			for (int i = 0; i < jump_size; i += 4) {
-				write_le32(buf + i, jump_program[i/4]);
+				write_le32(buf + i, copy_program[i/4]);
 			}
 			write_le32(buf + jump_size, entry_addr);
 			write_le32(buf + jump_size + 4, entry_addr >> 32);
-			write_le32(buf + jump_size + 8, stack_addr);
-			write_le32(buf + jump_size + 12, stack_addr >> 32);
-			memset(buf + jump_size + 16, 0, 4096 - jump_size - 16);
+			write_le32(buf + jump_size + 8, entry_addr);
+			write_le32(buf + jump_size + 12, entry_addr >> 32);
+			write_le32(buf + jump_size + 16, stack_addr);
+			write_le32(buf + jump_size + 20, stack_addr >> 32);
+			memset(buf + jump_size + 24, 0, 4096 - jump_size - 24);
 			uint8_t rc4state[258];
 			rc4_init(rc4state);
 			uint16_t crc = 0xffff;
