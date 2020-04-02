@@ -1,11 +1,12 @@
 #include <main.h>
 #include <uart.h>
+#include "fdt.h"
 #include "../arm-trusted-firmware/include/export/common/bl_common_exp.h"
 
 static image_info_t bl33_image = {
 	.image_base = 0x00600000,
-	.image_size = 0x00100000,
-	.image_max_size = 0x00100000,
+	.image_size = 0x01000000,
+	.image_max_size = 0x01000000,
 };
 
 static entry_point_info_t bl33_ep = {
@@ -73,7 +74,15 @@ struct program_header {
 
 typedef void (*bl31_entry)(bl_params_t *, u64, u64, u64);
 
-void load_elf(const struct elf_header *header) {
+static void write_be64(be64 *x, u64 val) {
+	x->v = __builtin_bswap64(val);
+}
+
+static void write_be32(be32 *x, u32 val) {
+	x->v = __builtin_bswap32(val);
+}
+
+static void load_elf(const struct elf_header *header) {
 	for_range(i, 0, 16) {
 		const u32 *x = (u32*)((u64)header + 16*i);
 		printf("%2x0: %08x %08x %08x %08x\n", i, x[0], x[1], x[2], x[3]);
@@ -101,6 +110,152 @@ void load_elf(const struct elf_header *header) {
 	}
 }
 
+static void copy_subtree(const be32 **const src, be32 **const dest, const be32 *src_end) {
+	u32 depth = 0;
+	u32 cmd;
+	assert(*src + 1 <= src_end);
+	do {
+		cmd = read_be32((*src)++);
+		assert(*src <= src_end);
+		write_be32((*dest)++, cmd);
+		printf("cmd %x", cmd);
+		if (cmd == 1) {
+			depth += 1;
+			u32 v; do {
+				assert(*src + 2 <= src_end);
+				v = (*src)++->v;
+				(*dest)++->v = v;
+			} while(!has_zero_byte(v));
+		} else if (cmd == 3) {
+			assert(*src + 3 <= src_end);
+			u32 size = read_be32((*src));
+			size = (size+3)/4 + 2; /* include size and property name offset */
+			assert(*src + size + 1 < src_end);
+			while(size--) {
+				(*dest)++->v = (*src)++->v;
+			}
+		} else {
+			assert(cmd == 2);
+			assert(depth > 0);
+			depth -= 1;
+		}
+	} while (depth > 0);
+}
+
+static char *memcpy(char *dest, const char *src, size_t len) {
+	char *ret = dest;
+	while (len--) {
+		*dest++ = *src++;
+	}
+	return ret;
+}
+
+#define DRAM_START 0
+#define TZRAM_SIZE 0x00200000
+
+static u32 dram_size() {return 0xf8000000;}
+
+static void transform_fdt(const struct fdt_header *header, void *dest) {
+	const u32 src_size = read_be32(&header->totalsize);
+	const u64 src_end = (u64)header + src_size;
+	const u32 version = read_be32(&header->version);
+	const u32 compatible = read_be32(&header->last_compatible_version);
+	assert(version >= compatible);
+	assert(compatible <= 17 && compatible >= 16);
+	be64 *dest_rsvmap = (be64 *)((u64)dest + (sizeof(struct fdt_header) + 7) & ~(u64)7);
+	const be64 *src_rsvmap = (const be64 *)((u64)header + read_be32(&header->reserved_offset));
+	while (1) {
+		assert((u64)(src_rsvmap + 2) <= src_end);
+		u64 start = src_rsvmap++->v;
+		u64 length = src_rsvmap++->v;
+		if (!length) {	/* insert fdt address entry at the end */
+			write_be64(dest_rsvmap++, (u64)dest);
+			dest_rsvmap++->v = 0;
+			dest_rsvmap++->v = 0;
+			dest_rsvmap++->v = 0;
+			break;
+		}
+		dest_rsvmap++->v = start;
+		dest_rsvmap++->v = length;
+	}
+	be32 *dest_struct = (be32 *)dest_rsvmap, *dest_struct_start = dest_struct;
+	const be32 *src_struct = (const be32*)((u64)header + read_be32(&header->struct_offset));
+	u32 addr_cells = 0, size_cells = 0;
+	const be32 *src_struct_end = version >= 17 ? src_struct + read_be32(&header->struct_size)/4 : (const be32*)header + src_size/4;
+	assert(read_be32(src_struct++) == 1 && src_struct++->v == 0);
+	write_be32(dest_struct++, 1);
+	dest_struct++->v = 0;
+	const char *src_string = (const char*)((u64)header + read_be32(&header->string_offset));
+	u32 cmd;
+	while ((cmd = read_be32(src_struct)) == 3) {
+		assert((u64)(src_struct + 3) < src_end);
+		u32 size = read_be32(src_struct + 1);
+		const char *name = src_string + read_be32(src_struct + 2);
+		printf("prop %s\n", name);
+		if (!strcmp("#address-cells", name)) {
+			puts("addr\n");
+			assert(addr_cells == 0 && size == 4);
+			addr_cells = read_be32(src_struct + 3);
+		} else if (!strcmp("#size-cells", name)) {
+			puts("size\n");
+			assert(size_cells == 0 && size == 4);
+			size_cells = read_be32(src_struct + 3);
+		}
+		assert((u64)(src_struct + (size+3)/4 + 3) < src_end); /* plus the next command */
+		for_range(i, 0, (size+3)/4 + 3) {
+			dest_struct++->v = src_struct++->v;
+		}
+	}
+	assert(addr_cells >= 1 && size_cells >= 1);
+
+	while ((cmd = read_be32(src_struct)) == 1) {
+		if (read_be32(src_struct + 1) == 0x63686f73 && read_be32(src_struct + 2) == 0x656e0000) { /* "chosen" */
+			break;
+		}
+		copy_subtree(&src_struct, &dest_struct, src_struct_end);
+	}
+
+	static const char device_type[] = {'d', 'e', 'v', 'i', 'c', 'e', '_', 't', 'y', 'p', 'e', 0};
+	static const u32 memory_node1[] = {
+		1, 0x6d656d6f, 0x72790000, 3, 7, 0 /*overwritten later*/, 0x6d656d6f, 0x72790000, 3
+	};
+	for_array(i, memory_node1) {write_be32(dest_struct+i, memory_node1[i]);}
+	u32 string_size = read_be32(&header->string_size);
+	write_be32(dest_struct+5, string_size);
+	dest_struct += ARRAY_SIZE(memory_node1);
+	write_be32(dest_struct++, (addr_cells + size_cells) * 4);
+	write_be32(dest_struct++, string_size + sizeof(device_type));
+	while (--addr_cells) {dest_struct++->v = 0;}
+	write_be32(dest_struct++, DRAM_START + TZRAM_SIZE);
+	while (--size_cells) {dest_struct++->v = 0;}
+	write_be32(dest_struct++, dram_size() - TZRAM_SIZE);
+	write_be32(dest_struct++, 2);
+	while (read_be32(src_struct) == 1) {copy_subtree(&src_struct, &dest_struct, src_struct_end);}
+	assert(read_be32(src_struct) == 2);
+	write_be32(dest_struct++, 2);
+
+	char *dest_string = (char *)dest_struct, *dest_string_start = dest_string;
+	memcpy(dest_string, src_string, string_size);
+	dest_string += string_size;
+	memcpy(dest_string, device_type, sizeof(device_type));
+	dest_string += sizeof(device_type);
+	memcpy(dest_string, "reg", 4);
+	dest_string += 5;
+	struct fdt_header *dest_header = dest;
+	write_be32(&dest_header->magic, 0xd00dfeed);
+	u32 totalsize = (u32)(dest_string - (char *)dest);
+	write_be32(&dest_header->totalsize, totalsize);
+	write_be64(dest_rsvmap - 3, totalsize);
+	write_be32(&dest_header->string_offset, (u32)((char*)dest_string_start - (char *)dest));
+	write_be32(&dest_header->struct_offset, (u32)((char*)dest_struct_start - (char *)dest));
+	write_be32(&dest_header->reserved_offset, (u32)((sizeof(struct fdt_header) + 7) & ~(u64)7));
+	write_be32(&dest_header->version, 17);
+	write_be32(&dest_header->last_compatible_version, 16);
+	dest_header->boot_cpu.v = header->boot_cpu.v;
+	write_be32(&dest_header->string_size, (u32)(dest_string - dest_string_start));
+	write_be32(&dest_header->struct_size, (u32)(dest_struct - dest_struct_start)*4);
+}
+
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
 	u64 sctlr;
@@ -108,9 +263,11 @@ _Noreturn u32 ENTRY main() {
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
 	setup_mmu();
-	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00500000, payload_addr = 0x00600000;
+	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000;
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);
+
+	transform_fdt((const struct fdt_header *)fdt_addr, (void *)fdt_out_addr);
 
 	while (uart->tx_level) {__asm__ volatile("yield");}
 	uart->shadow_fifo_enable = 0;

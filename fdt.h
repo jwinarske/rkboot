@@ -16,16 +16,12 @@ struct fdt_header {
 	be32 struct_size; /* since v17 */
 };
 
-u32 read_be32(const be32 *x) {
-	u64 val = x->v;
-	__asm__("rev32 %0, %0" : "+r"(val));
-	return val;
+static inline u32 read_be32(const be32 *x) {
+	return __builtin_bswap32(x->v);
 }
 
-u32 read_be64(const be64 *x) {
-	u64 val = x->v;
-	__asm__("rev %0, %0" : "+r"(val));
-	return val;
+static inline u64 read_be64(const be64 *x) {
+	return __builtin_bswap64(x->v);
 }
 
 static inline _Bool has_zero_byte(u32 v) {
@@ -34,4 +30,19 @@ static inline _Bool has_zero_byte(u32 v) {
 	v &= v >> 2;
 	v &= v >> 1;
 	return v != 0;
+}
+
+static inline char strncmp(const char *a, const char *b, size_t len) {
+	while (len--) {
+		char x = *a++, y = *b++;
+		if (x != y || !x || !y) {return x - y;}
+	}
+	return 0;
+}
+
+static inline char strcmp(const char *a, const char *b) {
+	while (1) {
+		char x = *a++, y = *b++;
+		if (x != y || !x || !y) {return x - y;}
+	}
 }

@@ -3,21 +3,6 @@
 
 __asm__(".section .entry, \"ax\", %progbits;adr x5, #0x10000;add sp, x5, #0;b main");
 
-static char UNUSED strncmp(const char *a, const char *b, size_t len) {
-	while (len--) {
-		char x = *a++, y = *b++;
-		if (x != y || !x || !y) {return x - y;}
-	}
-	return 0;
-}
-
-static char UNUSED strcmp(const char *a, const char *b) {
-	while (1) {
-		char x = *a++, y = *b++;
-		if (x != y || !x || !y) {return x - y;}
-	}
-}
-
 _Noreturn void main(u64 x0) {
 	puts("test stage\n");
 	u64 sctlr;
@@ -48,8 +33,12 @@ _Noreturn void main(u64 x0) {
 		printf("\tstring offset: %u (0x%x), size: %u (0x%x)\n\tboot cpu: %u\n", string_offset, string_offset, string_size, string_size, boot_cpu);
 		assert_msg(reserved_offset % 8 == 0, "offset for reserved memory map (0x%x) is not 64-bit aligned\n", reserved_offset);
 		assert_msg(reserved_offset < totalsize - 16, "reserved memory map does not fit into totalsize\n");
-		if (read_be64((be64*)(x0 + reserved_offset + 8))) {
-			puts("TODO: print reservations\n");
+		const be64 *rsvmap = (be64*)(x0 + reserved_offset);
+		if (rsvmap[1].v) {
+			for (u32 i = 0; rsvmap[i + 1].v; i += 2) {
+				printf("reserve %08zx size %08zx\n", read_be64(rsvmap + i), read_be64(rsvmap + i + 1));
+				assert_msg(reserved_offset + i*16 < totalsize - 16, "reserved memory map does not fit into totalsize\n");
+			}
 		} else {
 			puts("no reserved memory regions.\n");
 		}
@@ -123,6 +112,8 @@ _Noreturn void main(u64 x0) {
 							}
 						}
 					}
+					buf[pos] = 0;
+					puts(buf);
 					puts("\";\n");
 				} else if (size % 4 == 0) {
 					puts(" = < ");
