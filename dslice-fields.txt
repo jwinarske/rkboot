@@ -1,0 +1,245 @@
+w32	DQ swizzle: packed
+databit 0+0 0+32
+	p4	DQn swizzle = databit(0, 1, 2, 3, 4, 5, 6, 7)
+b4	DM swizzle = 8
+b11	clk wr bypass slave delay = 0x4f0
+b10	RdDQS gate bypass slave delay = 0x159
+b2	bypass two cyc preamble = 2
+b1	clk bypass override = 0
+databit 2+25 4+29
+	# see aslice shifts
+	b5	SW WrDQn shift: packed
+	p1	enable half-cycle shift override = 0
+	p1	half-cycle shift = 0
+	p1	enable cycle shift override = 0
+	p2	cycle shift = 0
+b5	SW WrDM shift: packed
+p1	enable half-cycle shift override = 0
+p1	half-cycle shift = 0
+p1	enable cycle shift override = 0
+p2	cycle shift = 0
+b4	SW WrDQS shift: packed
+p1	enable half-cycle shift override = 0
+p1	half-cycle shift = 0
+p1	enable cycle shift override = 0
+p1	cycle shift = 0
+
+sync 5+12 5+12
+b3	DQ TSel enable: packed
+p1	during read cycles = 1
+p1	during write cycles = 0
+p1	during idle cycles = 0
+b24	DQ TSel select: packed
+p8	during read cycles = 0x55
+p8	during write cycles = 0x55
+p8	during idle cycles = 0x66
+b3	DQS TSel enable: packed
+p1	during read cycles = 1
+p1	during write cycles = 0
+p1	during idle cycles = 0
+b24	DQS TSel select: packed
+p8	during read cycles = 0x55
+p8	during write cycles = 0x55
+p8	during idle cycles = 0x66
+b2	two cyc preamble: packed
+!p1	for reads = 1
+!p1	for writes = 1
+b2	DBI mode: packed
+p1	DBI read data = 0
+p1	train only DBI = 0
+# documented as 2 bits, but extended to 4 bits for LPDDR4
+b4	per rank CS map = 0xf
+b1	per CS training multicast en = 1
+b1	per CS training index = 0
+b2	LP4 boot RdData en IE dly = 0
+b4	LP4 boot RdData en dly = 1
+b4	LP4 boot RdData en TSel dly = 0
+b4	LP4 boot RPtr update = 4
+b4	LP4 boot RdDQS latency adjust = 0
+b7	lpbk control = 0
+b1	slice pwr rdc disable = 0
+b10	RdDQS DQ bypass slave delay = 384
+b5	gate error delay select = 23
+*b1	snap obs regs = 0
+
+sync 11+25 11+25
+b1	LPDDR = 1
+b2	LPDDR type = 2
+b9	gate smpl1 slave delay = 204
+b9	gate smpl2 slave delay = 102
+b2	on fly gate adjust en = 3
+w32	gate tracking obs: ro
+b1	DFI4.0 polarity = 0
+b2	LP4 pst amble = 0
+w32	RdLvl patt8 = 0
+w32	RdLvl patt9 = 0
+w32	RdLvl patt10 = 0
+w32	RdLvl patt11 = 0
+
+sync 19+32 19+32
+b3	slave loop cnt update = 0
+b1	SW FIFO ptr rst disable = 0
+b3	master dly lock obs select = 0
+b3	RdDQ enc obs select = 0
+b4	RdDQS DQ enc obs select = 0
+b4	wr enc obs select = 0
+b4	wr shift obs select = 0
+b4	FIFO ptr obs select = 0
+b1	lvl debug mode = 0
+*b1	lvl debug cont = 0
+
+sync 22+9 22+9
+# capture cnt is number of samples taken, updt wait cnt is cycles after changing settings
+b6	WrLvl capture cnt = 8
+b4	WrLvl updt wait cnt = 4
+b6	GtLvl capture cnt = 0
+b4	GtLvl updt wait cnt = 4
+b6	RdLvl capture cnt = 8
+b4	RdLvl updt wait cnt = 4
+# 0: scan linear from left to right, 1: start "inside the window", scan to the left then to the right
+b2	RdLvl op mode = 0
+b5	RdLvl RdDQS DQ obs select = 0
+b8	RdLvl data mask = 0
+# burst size in bytes, according to docs
+b6	WDQLvl burst cnt = 48
+b3	WDQLvl patt: packed
+p1	LFSR pattern = 1
+p1	CLK pattern = 1
+p1	user-defined pattern = 1
+# also a burst size in bytes, according to docs?
+b11	WDQLvl DQ/DM slv dly jump offset = 192
+b4	WDQLvl updt wait cnt = 12
+b4	WDQLvl DQ/DM obs select = 0
+b4	WDQLvl qtr dly step = 1
+*b1	WDQLvl clr prev results = 0
+b9	WDQLvl DataDM mask = 0
+# byte sequence for the DQ pins in WDQLvl
+w32	user patt0 = 0xfd02fe01
+w32	user patt1 = 0xf708fb04
+w32	user patt2 = 0xdf20ef10
+w32	user patt3 = 0x7f80bf40
+# DM values for the user-defined WDQLvl sequence
+b16	user patt4 = 0xaaaa
+# low byte of each channel drives VRef
+b1	CALvl VRef driving slice = dslice(1, 0, 1, 0)
+b6	manual clear: packed
+*p1	initiate manual setup of DQS gate = 0
+*p1	reset read entry FIFO pointers = 0
+*p1	reset master delay min/max values = 0
+*p1	reset master delay unlock counter = 0
+*p1	reset leveling error bit in the leveling status registers = 0
+*p1	clear gate tracking observation register = 0
+
+b8	FIFO ptr obs: ro
+w32	lpbk result obs: ro
+b16	lpbk error count obs: ro
+b10	master dly lock obs: ro
+b6	RdDQ slv dly enc obs: ro
+b7	RdDQS base slv dly enc obs: ro
+b8	RdDQS DQ rise adder slv dly enc obs: ro
+b8	RdDQS DQ fall adder slv dly enc obs: ro
+b10	RdDQS gate slv dly enc obs: ro
+b7	WrDQS base slv dly enc obs: ro
+b8	WrDQ base slv dly enc obs: ro
+b8	wr adder slv dly enc obs: ro
+b3	wr shift obs: ro
+b10	WrLvl hard0 delay obs: ro
+b10	WrLvl hard1 delay obs: ro
+b17	WrLvl status obs: ro
+b9	gate smpl1 slv dly enc obs: ro
+b9	gate smpl2 slv dly enc obs: ro
+b16	WrLvl error obs: ro
+b14	GtLvl hard0 delay obs: ro
+b14	GtLvl hard1 delay obs: ro
+b12	GtLvl status obs: ro
+b10	RdLvl RdDQS DQ LE dly obs: ro
+b10	RdLvl RdDQS DQ TE dly obs: ro
+b2	RdLvl RdDQS DQ num windows obs: ro
+w32	RdLvl status obs: ro
+b11	WDQLvl DQ/DM LE dly obs: ro
+b11	WDQLvl DQ/DM TE dly obs: ro
+w32	WDQLvl status obs: ro
+
+b18	DDL mode = 0
+w32	DDL test obs: ro
+w32	DDL test mstr dly obs: ro
+
+*b1	RX cal start = 0
+b1	RX cal override = 0
+b8	RX cal sample wait = 32
+databit 52+24 56+28
+	b12	RX cal DQn: packed
+	!p6	cal_code_down = 0
+	!p6	cal_code_up = 0
+b12	RX cal DM: packed
+!p6	cal_code_down = 0
+!p6	cal_code_up = 0
+b12	RX cal DQS: packed
+!p6	cal_code_down = 0
+!p6	cal_code_up = 0
+b12	RX cal fdbk: packed
+!p6	cal_code_down = 0
+!p6	cal_code_up = 0
+b11	RX cal obs: ro
+databit 58+27 62+27
+	!b11	clk WrDQn slave delay = 640
+!b11	clk WrDM slave delay = 640
+!b10	clk WrDQS slave delay = 0
+databit 63+26 67+26
+	!b10	RdDQ0 slave delay = 0
+!b10	RdDM slave delay = 0
+databit 68+10 76+10
+	!b10	RdDQS DQn rise slave delay = 0x080
+	!b10	RdDQS DQn fall slave delay = 0x080
+!b10	RdDQS DM rise slave delay = 0x080
+!b10	RdDQS DM fall slave delay = 0x080
+!b10	RdDQS gate slave delay = 345
+!b4	RdDQS latency adjust = 0
+!b3	write path lat add = 0
+!b10	WrLvl delay early threshold = 0
+!b10	WrLvl delay period threshold = 0
+!b1	WrLvl early force zero = 0
+!b10	GtLvl RdDQS slv dly start = 0
+!b4	GtLvl lat adj start = 0
+!b11	WDQLvl DQDM slv dly start = 0x200
+!b10	RdLvl RdDQS DQ slv dly start = 0
+b2	reserved = 0
+b24	obsolete: ro
+
+# presumably the upper nibble is the end timing, lower nibble is start timing
+sync 82+32 82+32
+!b8	DQ OE timing = 0x52
+!b8	DQ TSel rd timing = 0x51
+!b8	DQ TSel wr timing = 0x31
+!b8	DQS OE timing = 0x51
+!b8	DQS TSel rd timing = 0x50
+!b8	DQS TSel wr timing = 0x31
+!b1	per CS training en = 0
+!b8	DQ IE timing = 0xc0
+!b8	DQS IE timing = 0xc0
+!b2	RdData en IE dly = 0
+!b2	IE mode: packed
+!p1	always on = 0
+!p1	disable IE on DM = 0
+!b4	RdData en dly = 1
+!b4	RdData en TSel dly = 0
+b4	SW master mode: packed
+!p1	enable half-cycle shift override = 0
+!p1	half-cycle shift = 0
+!p1	enable cycle shift override = 1
+!p1	cycle shift = 1
+!b10	master delay start = 16
+!b6	master delay step = 4
+b8	master delay wait: packed
+!p4	cycle wait count after calibration clock change = 2
+!p4	cycle wait count after master delay setting change = 4
+!b4	rptr update = 4
+!b4	WrLvl dly step = 7
+!b5	WrLvl resp wait cnt = 24
+!b4	GtLvl dly step = 12
+# num of wait cycles + 4 according to docs, with valid range 0–11 (I assume they mean before adding?)
+!b5	GtLvl resp wait cnt = 15
+!b10	GtLvl back step = 320
+!b10	GtLvl final step = 256
+!b8	WDQLvl dly step = 16
+!b4	RdLvl dly step = 12

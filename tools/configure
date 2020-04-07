@@ -17,6 +17,7 @@ rule cc
 build usbtool: cc $src/usbtool.c
     flags =  `pkg-config --libs --cflags libusb-1.0`
 build idbtool: cc $src/idbtool.c
+build regtool: cc $src/regtool.c
 
-default usbtool idbtool
+default usbtool idbtool regtool
 END

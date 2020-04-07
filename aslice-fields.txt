@@ -1,0 +1,83 @@
+addrbit 0+0 1+13
+	b5	SW WrAddr shift: packed
+	!p1	enable half-cycle override = 0
+	!p1	half-cycle value = 0
+	!p1	enable cycle override = 0
+	# 0: no shift, 1: -1 cycle, 2: +1 cycle, 3: -2 cycles
+	!p2	cycle value = 0
+b11	clk wr bypass slave delay = 0
+b1	clk bypass override = 0
+b3	manual clear: packed
+*p1	reset master delay min/max lock = 0
+*p1	reset master delay unlock counter = 0
+*p1	clear loopback error/result = 0
+w32	lpbk result obs: ro
+b16	lpbk error count obs: ro
+b3	master dly lock obs select = 0
+b10	master dly lock obs: ro
+b3	slave loop cnt update = 0
+b3	slv dly enc obs select = 0
+*b1	snap obs regs = 0
+b1	TSel enable = 0
+b6	lpbk control = 0
+b1	pwr rdc disable = 0
+# 0: DDR3?, 1: LPDDR2/3?, 2: LPDDR4
+b2	type = 2
+b3	WrAddr shift obs: ro
+# input enable
+b1	IE mode = 0
+b15	DDL mode = 0
+w32	DDL test obs: ro
+w32	DDL test mstr dly obs: ro
+b11	CALvl start = 800
+b11	CALvl coarse dly = 64
+# quarter cycle delay
+b11	CALvl qtr = 64
+device 12+11 16+24
+	b24	CALvl swizzle0 = aslice(0xdcba98, 0, 0)
+	b24	CALvl swizzle1 = 0
+b4	CALvl device map = 1
+b2	CALvl rank ctrl = 3
+b2	CALvl num patterns = 0
+b4	CALvl capture cnt = 2
+b4	CALvl resp wait cnt = 0
+b1	CALvl debug mode = 0
+*b1	CALvl debug cont = 0
+*b1	CALvl error clr = 0
+# selects which bit to show obs0 and obs1 for
+b3	CALvl obs select = 0
+w32	CALvl obs0: ro
+w32	CALvl obs1: ro
+# alternating bits
+b20	CALvl FG 0 = 0x2a
+b20	CALvl BG 0 = 0x15
+b20	CALvl FG 1 = 0x15
+b20	CALvl BG 1 = 0x2a
+# alternating pairs of bits
+b20	CALvl FG 2 = 0x33
+b20	CALvl BG 2 = 0x0c
+b20	CALvl FG 3 = 0x0c
+b20	CALvl BG 3 = 0x33
+b30	addr sel: packed
+addrbit 29+0 29+30
+	p5	mux value = aslice(addrbit(0, 1, 2, 3, 4, 5), 0, addrbit(10, 11, 12, 13, 14, 15))
+b10	LP4 boot slv delay = 0
+b6	bit mask = aslice(0x3f, 0, 0)
+b6	seg mask = aslice(0, 0, 0x10)
+b6	CALvl train mask = aslice(0x3f, 0, 0)
+b6	reserved = 0
+b16	obsolete = 0
+!b8	TSel select = 0x55
+addrbit 32+8 35+11
+	!b11	clk wr slave delay = 0x300
+b4	SW master mode: packed
+!p1	half-clock mode = 0
+!p1	half-clock value = 0
+!p1	delay bypass mode = 1
+!p1	delay bypass value = 1
+!b10	master delay start = 16
+!b6	master delay step = 8
+b8	master delay wait: packed
+!p4	cycle wait count after calibration clock setting change = 2
+!p4	cycle wait count after master delay setting change = 4
+!b4	CALvl dly step = 3

@@ -1,0 +1,261 @@
+b1	freq sel multicast en = 0
+b2	freq sel index = 0
+acslice 0+10 1+13
+	b5	grp shift = 0
+b11	grp bypass slave delay = 0
+b5	SW grp bypass shift = 5
+b1	grp bypass override = 0
+*b1	manual update = 0
+# TODO: check whether setting this affects training on ctl freq 2
+b1	LP4 boot disable = 0
+b1	CSLvl enable = 1
+b4	CSLvl CS map = 0xf
+b11	CSLvl start = 0x400
+b11	CSLvl qtr = 64
+b4	CSLvl capture cnt = 2
+b11	CSLvl coarse dly = 85
+b4	CSLvl coarse capture cnt = 2
+b1	CSLvl debug mode = 0
+*b1	CSLvl debug cont = 0
+*b1	CSLvl error clr = 0
+w32	CSLvl obs0: ro
+w32	CSLvl obs1: ro
+b8	CALvl CS map = 0x50
+b12	grp slv dly enc obs select = 0
+b5	grp shift obs select = 0
+b10	grp slv dly enc obs: ro
+b3	grp shift obs: ro
+b3	AdrCtl slave loop cnt update = 0
+*b1	AdrCtl snap obs regs = 0
+b2	DFI PhyUpd type = 1
+b1	AdrCtl LPDDR = 1
+b1	LP4 active = 1
+b1	LPDDR3 CS = 0
+b3	CALvl result mask: packed
+aslice 12+8 12+11
+	p1	ignore slice = aslice(0, 1, 1)
+
+# concerns PVTP, PVTN and PVTR updates
+*b1	update clk cal values = 0
+b1	continuous clk cal update = 0
+b4	reserved = 0
+b4	reserved = 0
+b4	reserved = 0
+b4	reserved = 0
+b1	reserved = 0
+b8	PLL wait = 100
+b1	obsolete = 0
+b13	PLL ctrl = 0x1902
+b13	PLL ctrl CA = 0x0922
+b4	PLL bypass = 0
+b24	obsolete = 0
+# allow PLL domain entry on negedge
+b1	low freq sel = 1
+
+dslice 17+1 19+12
+	b12	pad VRef ctrl DQ: packed
+	p8	value = 31
+	p1	enable, maybe? = 1
+	# selects a range for the value
+	p3	mode = 6
+b12	pad VRef ctrl AC: packed
+p8	value = 31
+p1	enable, maybe? = 1
+# selects a range for the value
+p3	mode = 6
+b4	CSLvl dly step = 3
+acslice 20+4 22+11
+	b11	grp slave delay = 0x300
+b1	obsolete = 0
+b13	LP4 boot PLL ctrl = 0x1902
+b13	LP4 boot PLL ctrl CA = 0x0922
+b16	PLL ctrl override = 0
+# not sure these are actually related to Address/Control group slices, but there's four of them so hey … not that it matters since they are undocumented
+acslice 24+16 26+16
+	b16	PLL obs: ro
+b2	PLL testout sel = 2
+b4	tCKSRE wait = 1
+
+sync 26+28 26+28
+# see low freq sel above
+b1	LP4 boot low freq sel = 1
+b8	LP wakeup = 0
+# reduced idle power state in low power mode
+b1	LS idle en = 0
+b1	tDFI phy WrDelay = 0
+
+# I theorize that the 2-bit unknown subfields are the same (but they're never used apparently) and that the boost and slew subfields can be separated into two 3/4-bit parts for positive and negative, but I don't know if that knowledge could be useful (or even tested)
+sync 27+25 27+25
+b23	pad fdbk drive: packed	# 924
+# uses CA settings
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p6	slew = 4
+!p1	RX CM input = 0
+!p3	drive mode = 0
+!p3	unknown = 0
+!p2	speed = 0
+
+b16	pad fdbk drive2: packed	# 925
+# uses DQ settings
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p8	boost = 4
+
+b21	pad data drive: packed	# 926
+!p6	slew = 0
+!p3	drive mode = 1
+!p2	speed = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+
+b23	pad DQS drive: packed	# 927
+!p6	slew = 0
+!p3	drive mode = 1
+!p2	speed = 0
+!p2	unknown = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+# set for training and nothing else apparently
+!p1	RPull = 0
+
+b29	pad clk drive: packed	# 928
+# uses CA settings
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p6	slew = 4
+!p3	drive mode = 0
+!p2	speed = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+!p1	unknown = 0
+
+b31	pad clk drive: packed	# 929
+# uses CKCS settings
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p6	slew = 4
+!p3	drive mode = 0
+!p2	speed = 0
+!p2	unknown = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+!p1	unknown = 0
+
+# the termination registers are undocumented and not used beyond initial setup (to their documented default value 0x4410), except for the 17th bit in some registers when enabling write ODT, as shown
+sync 33+31 33+31
+b18	pad fdbk term: packed	# 930
+!p17	unknown = 0x4410
+!p1	write ODT enable = 0
+
+!b17	pad data term = 0x4410	# 931
+
+!b17	pad DQS term = 0x4410	# 932
+
+b18	pad addr term: packed	# 933
+!p17	unknown = 0x4410
+!p1	write ODT enable = 0
+
+b18	pad clk term: packed	# 934
+!p17	unknown = 0x4410
+!p1	write ODT enable = 0
+
+b29	pad CKE drive: packed	# 935
+# uses CA settings
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p6	slew = 4
+!p3	drive mode = 0
+!p2	speed = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+!p1	unknown = 0
+
+b18	pad CKE term: packed	# 936
+!p17	unknown = 0x4410
+!p1	write ODT enable = 0
+
+b29	pad RST drive: packed	# 937
+# uses CA settings, set to high impedance for channel 1 during init (366-ball package workaround)
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p6	slew = 4
+!p3	drive mode = 0
+!p2	speed = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+!p1	unknown = 0
+
+b18	pad RST term: packed	# 938
+!p17	unknown = 0x4410
+!p1	write ODT enable = 0
+
+b29	pad CS drive: packed	# 939
+# uses CKCS settings
+!p4	drive strength negative = 1
+!p4	drive strength positive = 1
+!p6	slew = 4
+!p3	drive mode = 0
+!p2	speed = 0
+!p1	RX CM input = 0
+!p8	boost = 0
+!p1	unknown = 0
+
+b18	pad CS term: packed	# 940
+!p17	unknown = 0x4410
+!p1	write ODT enable = 0
+
+sync 44+18 44+18
+b13	AdrCtl RX cal = 0
+b13	AdrCtl LP3 RX cal = 0
+w32	tst clk pad ctrl = 0
+w23	tst clk pad ctrl2 = 0
+w21	tst clk pad ctrl3 = 0
+
+b8	cal mode 0: packed
+p1	disable pad calibration on init = 0
+p1	interval-based auto-calibration = 0
+p2	interval = 1
+p4	pad control signals = 6
+
+*b1	cal clear 0 = 0
+*b1	cal start 0 = 0
+w32	cal interval count = 0
+b8	cal sample wait 0 = 8
+b3	cal clk select 0 = 1
+b24	cal result obs 0: ro
+b24	cal result2 obs 0: ro
+
+b16	pad ATB ctrl: packed
+p1	enable = 0
+p5	ATB data = 0
+p2	unused? = 0
+p8	pad select (one-hot encoding) = 0
+
+sync 54+16 54+16
+*b1	AdrCtl manual update = 0
+*b1	AC lpbk err clear = 0
+b2	AC lpbk obs select = 0
+b4	AC lpbk enable = 0
+b8	AC lpbk control = 0
+w32	AC lpbk result obs: ro
+b1	AC clk lpbk obs select = 0
+b2	AC clk lpbk enable = 0
+b6	AC clk lpbk control = 0
+b16	AC clk lpbk result obs: ro
+
+b1	AC pwr rdc disable = 0
+b8	data byte order sel: packed
+dslice 58+24 58+32
+	p2	swizzle = dslice(0, 1, 2, 3)
+b3	adr disable: packed
+freq 59+0 59+3
+	p1	disable = 0
+b2	AdrCtl mstr dly enc sel = 0
+b1	CS dly upt per AC slice = 0
+w32	DDL AC enable = 0
+b11	DDL AC mode = 0
+b1	pad background cal = 1
+!b2	DLL rst en = 1
+b12	AC init complete obs: ro
+b4	DS init complete obs: ro

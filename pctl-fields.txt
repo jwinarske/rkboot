@@ -1,0 +1,644 @@
+*b1	start = 0
+b4	dram class = 0xb
+b16	version: static
+b5	max row reg: static
+b4	max col reg: static
+b2	max CS reg: static
+b8	read data FIFO depth: static
+b8	read data FIFO ptr width: static
+b8	write data FIFO depth: static
+b8	write data FIFO ptr width: static
+b8	MemCD RModW FIFO depth: static
+b8	MemCD RModW FIFO ptr width: static
+b8	Denali0 CmdFIFO log2 depth: static
+b8	Denali0 RModWFIFO log2 depth: static
+b8	Denali0 WrFIFO log2 depth: static
+b8	Denali0 WrCmd side FIFO log2 depth: static
+b1	DFS close banks = 0
+freq 4+9 16+24
+# per LPDDR4 spec
+	<w24	tInit = 200us
+	<w24	tInit3 = 2000us
+	<w24	tInit4 = 5tCK
+	<w24	tInit5 = 2us
+b1	no auto MRR init = 1
+b2	MRR error status: ro
+b1	DFI inv data CS = 0
+b1	no MRW BT init = 0
+b1	no MRW init = 0
+b1	no phy ind train init = 1
+b1	phy indep train mode = 1
+b2	DFIBus freq init = 2
+b2	DFIBus boot freq = 2
+freq 18+26 19+21
+	b5	DFIBus freq = freq(2, 1, 0)
+w32	tRst PwrOn = 80
+w32	CKE inactive = 200
+freq 21+32 23+16
+	h16	TDLL = 0
+freq 23+16 25+22
+	b7	CASLat lin = 2RL_nDBI
+	b5	WrLat = 1WL_A
+	b6	additive lat = 0
+b3	tBST int interval = 4
+b5	tCCD = 8
+b6	tCCDMW = 32
+freq 26+14 31+17
+	<b8	rRRD = 10ns 4tCK max
+	# should be tRASmin + tRPab → 42ns 3tCK max 21ns 4tCK max +
+	b8	tRC = freq(25, 49, 7)
+	<b8	tRAS min = 42ns 3tCK max
+	# should be max(10ns, 8tCK)
+	b8	tWTR = 10
+	# tRPpb, should be max(18ns, 3tCK)
+	<b8	tRP = 18ns 4tCK max
+	<b8	tFAW = 40ns
+	b1	CA default val = 0
+freq 31+17 38+8
+	b8	tRTP = 1nRTP
+	# this is actually tMRW, tMRD would be max(14ns, 10tCK)
+	<b8	tMRD = 10ns 10tCK max
+	<b8	tMOD = 10tCK
+	<w17	tRAS max = 70200ns
+	<b8	tCKE = 7.5ns 4tCK max
+	<b8	tCKESR = 7.5ns 4tCK max
+b3	tPPD = 4
+b3	reserved = 3
+b3	reserved = 2
+b1	WriteInterp = 0
+freq 39+1 40+22
+	<b8	tRCD = 18ns 4tCK max
+	# should be nWR
+	b6	tWR = freq(10, 17, 4)
+b4	tMRR = 8
+b5	tCACKEL = 10
+b10	tCAENT = 100
+b6	tCAMRD = 20
+b5	tCAEXT = 10
+b5	tCACKEH = 10
+freq 42+13 43+5
+	<b5	tMRZ = 1.5ns
+b1	AP = 0
+b1	ConcurrentAP = 1
+b1	tRAS lockout = 0
+freq 43+25 44+24
+	# should be tWR + tRPab, i. e.  1nWR tCK 21ns 4tCK max +
+	b8	tDAL = freq(18, 32, 8)
+b5	BstLen = 4
+freq 44+29 45+24
+	# tRPab, should be max(21ns, 3tCK)
+	<b8	tRP AB = 21ns 4tCK max
+b1	reg DIMM enable = 0
+b2	address mirroring = 0
+b1	reserved = 0
+b1	reserved = 0
+b1	no memory DM = 0
+b1	ARefresh = 0
+b1	reserved = 0
+b1	tREF enable = 1
+b3	reserved = 3
+freq 47+27 50+32
+	# tRFCab: depends on per-die capacity: 130ns for <3Gb, 280ns for >=6Gb, 180ns inbetween
+	<h10	tRFC = 1tRFC
+	# tREFI, should probably be 3904ns (is 3900ns - 8tCK)
+	h16	tREF = freq(0x610, 0xc28, 0xbb)
+h16	tREF interval = 0
+b1	obsolete = 0
+freq 51+17 53+16
+	# tXP
+	<h16	tPDEX = 7.5ns 5tCK max
+freq 53+16 54+32
+	<h16	tXPDLL = 24ns 10tCK max
+freq 54+32 55+24
+	# should be tRCD + 3
+	b8	tMRRI = 0
+freq 55+24 59+12
+	<b4	tCSCKE = 1.75ns
+	# should be max(5ns, 5tCK)
+	b4	tCKELCS = 0
+	# should be max(7.5ns, 5tCK)
+	b4	tCKEHCS = 0
+	<b5	tMRWCKEL = 14ns 10tCK max
+	<b4	tZQCKE = 1.75ns 3tCK max
+freq 59+12 62+16
+	# should be max(tRFCab + 7.5ns, 2tCK)
+	h16	tXSR = freq(5, 6, 5)
+	# should be the same as tXSR above, but this one was calculated with a different tRFCab
+	<h16	tXSNR = 137.5ns 2tCK max
+freq 62+16 68+12
+	# should be max(7.5ns, 3tCK)
+	b4	tCKELCMD = 5
+	# should be same as tCKELCMD above
+	b4	tCKEHCMD = freq(5, 6, 5)
+	# should be same as the two above
+	b4	tCKCKEL = 5
+	<b8	tSR = 15ns 3tCK max
+	<b3	tESCKE = 1.75ns 3tCK max
+	<b4	tCKELPD = 7.5ns 3tCK max
+	<b4	tCSCKEH = 1.75ns
+	<b4	tCMDCKE = 1.75ns 3tCK max
+b1	PwrUp SRefresh exit = 0
+b1	SRefresh exit no refresh = 0
+b1	enable quick SRefresh = 1
+b3	CKE delay = 3
+b8	reserved = 0
+b2	DFS status: ro
+b1	DFS ZQ en = 1
+b1	DFS CALvl en = 0
+b1	DFS WrLvl en = 0
+b1	DFS RdLvl en = 0
+b1	DFS RdLvl gate en = 0
+freq 71+1 72+32
+	b16	DFS promote threshold = 0
+b2	ZQ CalStart status: ro
+b2	ZQ CalLatch status: ro
+b2	ZQ CalInit CS CL status: ro
+b3	reserved = 1
+b3	reserved = 2
+b8	reserved = 64
+b8	reserved = 16
+b8	reserved = 128
+freq 74+32 82+16
+	h16	upd CtrlUpd high threshold = 3
+	h16	upd CtrlUpd norm threshold = 4
+	h16	upd CtrlUpd timeout = 5
+	h16	upd CtrlUpd SW promote threshold = 4
+	h16	upd PhyUpd DFI promote threshold = 0
+freq 82+16 86+32
+	# should be 4*tREFI
+	h16	tDFI PhyMstr max = freq(0x1840, 0x30a0, 0x02ec)
+	# should be 2*tREFI
+	h16	tDFI PhyMstr resp = freq(0x0c20, 0x1850, 0x0176)
+	h16	PhyMstr DFI promote threshold = 0
+b1	PhyMstr no ARef = 0
+b2	PhyMstr error status: ro
+freq  87+10 91+32
+	h16	MRR TempChk norm threshold = 0
+	h16	MRR TempChk high threshold = 0
+	h16	MRR TempChk timeout = 0
+b2	LowPower refresh enable = 0
+freq 92+2 93+24
+	# TF-A doesn't set this … irrelevant for LPDDR4?
+	<b8	CkSRE = 7.5ns 3tCK max
+	b8	CkSRX = 3
+b8	LP cmd = 0
+freq 93+32 99+4
+	b4	LPI PD wakeup = 0
+	b4	LPI SR wakeup = 2
+	b4	LPI SR MCClk gate wakeup = 3
+	b4	LPI SRPD lite wakeup = 2
+	b4	LPI SRPD deep wakeup = 3
+	b4	LPI SRPD deep MCClk gate wakeup = 7
+	b4	LPI timer wakeup = 4
+b5	LPI wakeup en	= 15
+h12	LPI timer count = 3
+h12	LPI wakeup timeout = 4
+b3	tDFI LP resp = 7
+b7	LP state: ro
+b4	LP auto entry en = 0
+b4	LP auto exit en = 0
+b3	LP auto mem gate en = 0
+b1	obsolete = 0
+h12	LP auto PD idle = 0
+h12	LP auto SRPD lite idle = 0
+b8	LP auto SR idle = 0
+b8	LP auto SR MC gate idle = 0
+freq 103+16 104+32
+	h16	HW promote threshold = 0
+freq 104+32 106+16
+	h16	LPC promote threshold = 0
+b1	LPC SR CtrlUpd en = 0
+b1	LPC SR PhyUpd en = 0
+b1	LPC SR PhyMstr en = 0
+b1	reserved = 0
+b1	LPC SR ZQ en = 0
+h9	reserved = 0
+b1	DFS enable = 1
+b3	DFS DLL off: packed
+freq 108+24 108+27
+	p1	DFS DLL off = 0
+freq 108+27 111+16
+	b8	tDFI init start = 32
+	b16	tDFI init complete = 1024
+b2	current reg copy: ro
+b1	DFS phy reg write en = 1
+w32	DFS phy reg write addr = 0xb80
+freq 112+32 115+32
+	w32	DFS phy reg write data = freq(0, 1, 2)
+b4	DFS phy reg write mask = 0xe
+# bit 25: enable command (self-clearing?), everything else is a mystery
+w27	write modereg = 0
+# bit 0: command encoding error
+# bit 1: PASR error
+# bit 2: reserved
+# bit 3: deep PD or SR error
+# bit 4: MR3 or MR11 write attempted
+b8	MRW status: ro
+# lower byte: MR address
+# second byte: chip select
+# bit 16: enable command
+b17	read modereg = 0
+# according to docs, this should have:
+# lower byte: value
+# second byte: chip indication
+# but in practice (at least for LPDDR4) this seems to rather be
+# a sample of the data bus at MRR time, i. e. values on even bytes
+# (only on low byte for 16-bit busses) and otherwise 0
+w32	peripheral MRR data: ro
+b8	peripheral MRR data: ro
+# MR4 temperature bits (bits 7, 2, 1, 0), one nibble for each bus byte
+# the two registers correspond to the two chip selects
+b16	auto TempChk val 0: ro
+sync 120+24 120+24
+b16	auto TempChk val 1: ro
+b1	disable update tVRCG = 0
+b8	obsolete = 0
+b2	DFS update FRC = 0
+freq 122+2 129+32
+	<h10	tVRCG_enable = 200ns
+	<h10	tVRCG_disable = 100ns
+	<h10	tFC = 250ns
+	<b5	tCKFSPE = 7.5ns 4tCK max
+	<b5	tCKFSPX = 7.5ns 4tCK max
+	<h16	tVREF long = 250ns
+freq 129+32 131+16
+	h16	MRR promote threshold = 0
+freq 131+16 132+32
+	h16	MRW promote threshold = 0
+cs 132+32 160+32
+	freq 132+32 137+16
+		h16	MR0 data = freq(0xa3, 0xe3, 0x63)
+		# 0x14 0x24 0x04
+		h16	MR1 data: packed
+		p2	burst length = 0
+		p1	write preamble length = 1
+		p1	read preamble type = 0
+		p3	nWR = 1MRVal
+		p1	read postamble length  = 0
+		p8	unknown = 0
+		# 9 18 0
+		h16	MR2 data: packed
+		p3	read latency = 1MRVal
+		p3	write latency = 1MRVal
+		p1	write latency set = 0
+		p1	write leveling = 0
+		p8	unknown = 0
+	h16	MRSingle data = 0
+	freq 137+32 139+16
+		# 0x31
+		h16	MR3 data: packed
+		p1	pull-up calibration = 1
+		p1	write postamble length = 0
+		p1	post-package repair protection = 0
+		p3	pull-down drive strength = 6
+		p1	DBI read = 0
+		p1	DBI write = 0
+		p8	unknown = 0
+	b8	MR8 data = 0
+	freq 139+24 140+16
+		b8	MR11 data = 0
+	freq 140+16 141+32
+		# 0x4d
+		h16	MR12 data: packed
+		p6	VRef CA = 13
+		p1	VRef CA range = 1
+		p1	reserved = 0
+		p8	unknown = 0
+	b16	MR13 data = 0
+	freq 142+16 143+32
+		# 0x4d
+		h16	MR14 data: packed
+		p6	VRef DQ = 13
+		p1	VRef DQ range = 1
+		p1	reserved = 0
+		p8	unknown = 0
+	freq 143+32 144+24
+		b8	MR FSP data valid = 1
+	b8	MR16 data = 0
+	b8	MR17 data = 0
+	b8	MR20 data: ro
+	freq 145+16 146+32
+		h16	MR22 data = 0
+b2	RL3 support en: ro
+b1	reserved = 0
+b1	reserved = 0
+b1	FSP phy update MRW = 0
+b1	DFS always write FSP = 1
+b1	FSP status = 0
+b1	FSP op current = 0
+b1	FSP wr current = 0
+b1	FSP0 FRC valid = 0
+b1	FSP1 FRC valid = 0
+b2	FSP0 FRC = 0
+b2	FSP1 FRC = 0
+# 0 = 1024 cycles, 0x10 = 512 cycles, 0x18 = 256 cycles, …
+b5	long count mask = 0
+b5	ARef norm threshold = 17
+b5	ARef high threshold = 21
+b5	ARef max deficit = 24
+b5	ARef max credit = 12
+freq 165+5 178+32
+	b16	ZQ CalStart norm threshold = 0
+	h16	ZQ CalStart high threshold = 0
+	h16	ZQ CalLatch high threshold = 0
+	h16	ZQ CS norm threshold = 0
+	h16	ZQ CS high threshold = 0
+	h16	ZQ CalStart timeout = 0
+	h16	ZQ CalLatch timeout = 0
+	h16	ZQ CS timeout = 0
+	h16	ZQ promote threshold = 0
+b3	reserved = 3
+freq 179+3 186+22
+	# not set for LPDDR4, probably irrelevant (value is min cycle value for DDR3)
+	b12	tZQInit = 0x200
+	# half tZQInit above
+	b12	ZQCL = 0x100
+	# not set for LPDDR4, probably irrelevant (value is min cycle value for DDR3)
+	b12	ZQCS = 0x40
+	<b12	tZQCal = 1000ns
+	<b6	tZQLat = 30ns 8tCK max
+# CS mask for ZQ req
+b2	ZQ SW req start latch map = 0
+# 0: nothing 1: ZQCS (short), 2: ZQCL (long), 3: start, 4: init, 5: latch, 8: reset
+b4	ZQ req = 0
+# status flag for ZQ req, write command only when clear
+b1	ZQ req pending: ro
+freq 187+9 188+28
+	<h12	ZQReset = 50ns 3tCK max
+b1	no ZQ init = 0
+b1	ZQCS rotate = 1
+# these four are CS masks for each of the two phases of ZQ cal
+b2	ZQ cal start map 0 = 1
+b2	ZQ cal latch map 0 = 1
+b2	ZQ cal start map 1 = 2
+b2	ZQ cal latch map 1 = 2
+
+sync 190+10 190+10
+# the following define the memory map
+b2	bank diff = 0
+b3	row diff = 2
+b4	col diff = 2
+b5	bank start bit = 0
+b1	bank addr intlv en = 0
+# column-address commands have the auto-precharge bit on the bit 5 of the second cycle (=bit 11 of the full command)
+b4	APreBit = 11
+
+sync 191+28 191+28
+b4	age count = 15
+b4	command age count = 15
+# the following concern command queue placement
+b1	addr cmp en = 0
+b1	reserved = 1
+b1	bank split en = 0
+# master enable for command queue placement
+b1	placement en = 0
+b1	priority en = 0
+b1	RW same en = 0
+b1	RW same page = 0
+b1	CS same en = 0
+b1	W2R split en = 0
+# bit 0: direct conflicts, bit 1: conflicts with one command inbetween
+b2	disable RW group w bnk conflict: packed
+p1	for direct conflicts = 0
+p1	with one command inbetween = 0
+b3	num Q entries ACT disable = 3
+b1	swap en = 0
+b1	disable rd interleave = 1
+# 0: normal, 1: no read/write or bank commands, 2: no interleaving of MRR and peripheral MRR, 3: no MRRID
+b2	inhibit DRAM cmd = 0
+
+sync 195+26 195+26
+# bitmask of enabled chip selects. influences the memory map.
+b2	CS map = 3
+b4	burst on fly bit = 12
+# half-width datapath. influences the memory map
+b1	reduc = 0
+b1	big endian en = 0
+cs 196+25 199+12
+	b3	memdata ratio = 1
+	b4	reserved = 1
+	b4	reserved = 4
+	b4	reserved = 0
+	b4	reserved = 0
+b3	Q fullness = 0
+b1	in order accept = 1
+b1	controller busy: ro
+b1	CtrlUpd req = 0
+b1	CtrlUpd req per ARef en = 1
+b2	preamble support = 2
+b1	rd preamble training en = 1
+b1	wr DBI en = 0
+b1	rd DBI en = 0
+b1	DFI error: ro
+w20	DFI error info: ro
+sync 202+20 202+20
+w32	int status = 0
+w1	int status = 0
+w32	int ack = 0
+w1	int ack = 0
+w32	int mask = 0
+w2	int mask = 0
+w32	out of range addr: ro
+w2	out of range addr: ro
+b10	out of range length: ro
+b7	out of range type: ro
+b4	out of range source ID: ro
+b2	ODT rd map CS0 = 0
+b2	ODT wr map CS0 = 1
+b2	ODT rd map CS1 = 0
+# different from the same value in PI
+b2	ODT wr map CS1 = 1
+freq 212+2 212+32
+	# should be 3.5ns (tODTon)
+	b8	tODTL 2CMD = 0
+b4	tODTH wr = 1
+b4	tODTH rd = 0
+freq 213+12 214+1
+	b1	ODT en = 1
+b1	en ODT assert except rd = 0
+freq 214+9 215+6
+	# complicated function
+	b6	wr to ODTH = freq(4, 5, 3)
+freq 215+6 215+30
+	# complicated function
+	b6	rd to ODTH = freq(7, 10, 4)
+freq 215+30 216+20
+	b4	rw2mrw dly = 8
+freq 216+20 219+21
+	b5	r2r DiffCS dly = 2
+	b5	r2w DiffCS dly = freq(10, 11, 8)
+	b5	w2r DiffCS dly = freq(0, 1, 0)
+	b5	w2w DiffCS dly = freq(14, 15, 13)
+b5	r2r SameCS dly = 0
+freq 219+29 220+21
+	b5	r2w SameCS dly = freq(10, 11, 8)
+b5	w2r SameCS dly = 0
+b5	w2w SameCS dly = 0
+freq 221+5 222+20
+	<b4	tDQSCK max = 3.5ns
+	# should be 1.5ns, rounded down
+	b4	tDQSCK min = 0
+# 0: normal operation, 1: write leveling, 2: data eye training/read leveling, 3: gate training
+b3	SW leveling mode = 0
+b1	SWLvl load = 0
+b1	SWLvl start = 0
+b1	SWLvl exit = 0
+b1	SWLvl op done: ro
+b1	SWLvl resp 0: ro
+b1	SWLvl resp 1: ro
+b1	SWLvl resp 2: ro
+b1	SWLvl resp 3: ro
+b1	PhyUpd append en = 1
+b1	WrLvl req = 0
+b1	WrLvl CS = 0
+b6	WLDQSEn = 13
+b6	WLMRD = 40
+b1	WrLvl en = 0
+b1	DFI phy WrLvl mode = 0
+b1	WrLvl periodic = 0
+b1	WrLvl on SRef exit = 0
+b4	WrLvl resp mask = 0
+b1	WrLvl ARef en = 1
+b1	WrLvl rotate = 0
+b2	WrLvl CS map = 3
+b2	WrLvl error status: ro
+freq 228+10 235+32
+	h16	WrLvl norm threshold = 0
+	h16	WrLvl high threshold = 0
+	h16	WrLvl timeout = 0
+	h16	WrLvl SW promote threshold = 0
+	h16	WrLvl DFI promote threshold = 0
+b1	RdLvl req = 0
+b1	RdLvl gate req = 0
+b1	RdLvl CS = 0
+b4	RdLvl seq en = 0
+b4	RdLvl gate seq en = 0
+b1	DFI phy RdLvl mode = 1
+b1	DFI phy RdLvl gate mode = 1
+b1	RdLvl periodic = 0
+b1	RdLvl on SRef exit = 0
+b1	RdLvl gate periodic = 0
+b1	RdLvl gate on SRef exit = 0
+b1	RdLvl ARef en = 1
+b1	RdLvl gate ARef en = 1
+b1	reserved  = 0
+b1	RdLvl rotate = 0
+b1	RdLvl gate rotate = 0
+b2	RdLvl CS map = 3
+b2	RdLvl gate CS map = 3
+freq 240+10 255+16
+	h16	RdLvl norm threshold = 0
+	h16	RdLvl high threshold = 0
+	h16	RdLvl timeout = 0
+	h16	RdLvl SW promote threshold = 0
+	h16	RdLvl DFI promote threshold = 0
+	h16	RdLvl gate norm threshold = 0
+	h16	RdLvl gate high threshold = 0
+	h16	RdLvl gate timeout = 0
+	h16	RdLvl gate SW promote threshold = 0
+	h16	RdLvl gate DFI promote threshold = 0
+b1	CALvl req = 0
+b1	CALvl CS = 0
+w20	CALvl pat 0 = 0x556aa
+w20	CALvl BG pat 0 = 0xaaaaa
+w20	CALvl pat 1 = 0xaa955
+w20	CALvl BG pat 1 = 0x55555
+w20	CALvl pat 2 = 0xb3133
+w20	CALvl BG pat 2 = 0x4cd33
+w20	CALvl pat 3 = 0x4cecc
+w20	CALvl BG pat 3 = 0xb32cc
+b1	reserved = 0
+b1	reserved = 0
+b2	CALvl seq en = 3
+b1	DFI phy CALvl mode = 1
+b1	CALvl periodic = 0
+b1	CALvl on SRef exit = 0
+b1	CALvl ARef en = 1
+b1	CALvl rotate = 0
+b2	CALvl CS map = 3
+freq 265+26 273+16
+	h16	CALvl norm threshold = 0
+	h16	CALvl high threshold = 0
+	h16	CALvl timeout = 0
+	h16	CALvl SW promote threshold = 0
+	h16	CALvl DFI promote threshold = 0
+b1	AllDataUsed enable = 0
+b2	CKE status: ro
+b1	mem RST valid: ro
+b16	DLL RST delay = 0xffff
+b8	DLL RST adj dly = 0
+b8	tDFI phy WrLat: ro
+b7	update error status: ro
+freq 275+15 276+8
+	# complicated function
+	b8	tDFI phy RdLat = freq(22, 26, 18)
+b8	tDFI RdData en: ro
+# one bit per CS
+b2	DRAM clk disable = 0
+b4	tDFI CtrlUpd min = 8
+freq 276+28 298+16
+	# should be 2*tREFI
+	h16	tDFI CtrlUpd max = freq(3104, 6224, 374)
+	w32	tDFI PhyUpd type0 = 512
+	w32	tDFI PhyUpd type1 = 512
+	w32	tDFI PhyUpd type2 = 512
+	w32	tDFI PhyUpd type3 = 512
+	# same as CtrlUpd max above
+	h16	tDFI PhyUpd resp = freq(3104, 6224, 374)
+	# should be 20*tREFI
+	w32	tDFI CtrlUpd interval = freq(31040, 62240, 3740)
+	# complicated function
+	b8	RdLat adj = freq(9, 12, 5)
+	# complicated function
+	b8	WrLat adj = freq(4, 6, 2)
+freq 298+16 299+8
+	b8	tDFI ctrl delay = 2
+b4	tDFI DRAM clk disable = 2
+b4	tDFI DRAM clk enable = 3
+b8	tDFI WrLvl en = 3
+h10	tDFI WrLvl WW = 24
+w32	tDFI WrLvl resp = 0
+w32	tDFI WrLvl max = 0
+b8	tDFI RdLvl en = 3
+b10	tDFI RdLvl RR = 20
+w32	tDFI RdLvl resp = 0
+b8	RdLvl resp mask = 0
+b1	RdLvl en = 0
+b1	RdLvl gate en = 0
+w32	tDFI RdLvl max = 0
+b2	RdLvl error status: ro
+b2	RdLvl gate error status: ro
+b8	tDFI CALvl en = 3
+freq 307+24 310+26
+	<h10	tDFI CALvl CC = 10ns 23.5tCK +
+	# rather complicated computation in TF-A
+	<h10	tDFI CALvl capture = 10ns 5.5tCK +
+w32	tDFI CALvl resp = 0
+w32	tDFI CALvl max = 0
+b1	CALvl resp mask = 0
+b1	CALvl en = 0
+b4	CALvl error status: ro
+b3	tDFI phy WrData = 2
+freq 313+27 315+16
+	# complicated function
+	b8	tDFI RdCSLat = freq(5, 9, 1)
+	# complicated function
+	b8	tDFI WrCSLat = freq(3, 0, 1)
+b8	tDFI WrData delay = 5
+w32	user def reg 0 = 0
+w32	user def reg ro 0: ro
+freq 317+32 323+32
+	w32	user def reg copied 0 = 0
+	w32	user def reg copied 1 = 0
+b1	en 1T timing = 1
+b1	disable memory masked write = 0
+b1	BL on fly enable = 0
+b1	multi channel ZQ cal master = 1
+# these are undocumented, but should be set to this value regardless of speed or DRAM standard
+w32	undoc0 = 0x01010101
+w32	undoc1 = 0x01000101
+w32	undoc2 = 0x01000100
+w32	undoc3 = 0x00010001
+w32	undoc4 = 0x00010002
+w32	undoc5 = 0x00020100
+w32	undoc6 = 2

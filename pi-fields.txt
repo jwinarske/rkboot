@@ -1,0 +1,391 @@
+b1	start = 0
+b4	DRAM class = 0xb
+b16	version: static
+b1	normal lvl seq = 0
+b1	init lvl en = 0
+b16	tCMP gap = 0
+freq 1+32 7+16
+	# should be 4*tREFI
+	w32	tDFI PhyMstr max = freq(0x2ec, 0x30a0, 0x1840)
+	# should be 2*tREFI
+	b16	tDFI PhyMstr resp = freq(0x176,  0x1850, 0xc20)
+freq 7+16 21+32
+	# should be 2*tREFI
+	b16	tDFI PhyUpd resp = freq(0x176, 0x1850, 0xc20)
+	w32	tDFI PhyUpd type0 = 512
+	w32	tDFI PhyUpd type1 = 512
+	w32	tDFI PhyUpd type2 = 512
+	w32	tDFI PhyUpd type3 = 512
+b9	control error status: packed
+p1	PhyMstr max error = 0
+p1	PhyMstr resp error = 0
+p1	PhyLvl max error = 0
+p1	PhyLvl resp error = 0
+p1	PhyUpd type0 error = 0
+p1	PhyUpd type1 error = 0
+p1	PhyUpd type2 error = 0
+p1	PhyUpd type3 error = 0
+p1	PhyUpd resp error = 0
+b1	exit after init CALvl = 1
+w32	freq map = 7
+b5	init work freq = 1
+b1	init DFS CALvl only = 0
+b8	power on seq bypass array = 0
+b8	power on seq end array = 1
+w30	seq1 pat = 0
+w30	seq1 pat mask = 0x3fffffff
+w30	seq2 pat = 0
+w30	seq2 pat mask = 0
+w30	seq3 pat = 0
+w30	seq3 pat mask = 0
+w30	seq4 pat = 0
+w30	seq4 pat mask = 0
+w30	seq5 pat = 0
+w30	seq5 pat mask = 0
+w30	seq6 pat = 0
+w30	seq6 pat mask = 0
+w30	seq7 pat = 0
+w30	seq7 pat mask = 0
+w30	seq8 pat = 0
+w30	seq8 pat mask = 0
+sync 40+30 40+30
+b1	wdt disable = 1
+b1	SW rst n = 1
+b8	reserved = 0
+# documented as 2 bits, but duplicated for LPDDR4
+b4	CS map = 0xf
+freq 41+28 42+24
+	# complicated function
+	b8	tDelay Rd/Wr 2 bus idle = freq(35, 50, 43)
+b4	tMRR = 8
+freq 42+28 45+7
+	# only set for LPDDR3
+	b5	WrLat = freq(4, 8, 6)
+	b6	additive lat = 0
+	# in half-cycles
+	b7	CASLat lin = 2RL_nDBI
+b2	preamble support = 2
+*b1	ARefresh = 0
+b1	MCARef forward only = 0
+freq 45+25 48+32
+	# as for PCTL
+	<b10	tRFC = 1tRFC
+	# should be 3904ns as usual
+	b16	tREF = freq(0xbb, 0xc28, 0x610)
+b8	reserved = 0
+b16	tREF interval = 5
+
+sync 49+24 49+24
+*b1	SWLvl load = 0
+b1	SWLvl op done: ro
+dslice 50+1 51+1
+	b1	SW WrLvl resp: ro
+dslice 51+1 52+2
+	b2	SW RdLvl resp: ro
+b2	SW CALvl resp 0: ro
+# 1: WrLvl, 2: RdLvl, 3: read gate training, 4: CALvl
+b3	SW leveling mode = 0
+*b1	SWLvl start = 0
+*b1	SWLvl exit = 0
+dslice 53+1 56+2
+	*b1	SWLvl wr slice = 0
+	*b1	SWLvl rd slice = 0
+	b2	SW WDQLvl resp: ro
+b7	SW WDQLvl VRef = 0
+*b1	SWLvl SM2 start = 0
+*b1	SWLvl SM2 wr = 0
+*b1	SWLvl SM2 rd = 0
+*b1	sequential lvl req = 0
+b1	DFS period en = 0
+b1	SRE period en = 0
+# counter to the recommendation for LPDDR4 in the docs
+b1	DFI4.0 polarity = 0
+# 0: 32bit bus, 1: 16bit bus
+b1	16bit DRAM connect = 1
+freq 58+9 59+4
+	b4	tDFI ctrl delay = 4
+
+sync 59+4 59+4
+*b1	WrLvl req = 0
+b2	WrLvl CS = 0
+b6	WLDQSEn = 10
+b6	WLMRD = 40
+b2	WrLvl en: packed
+p1	WrLvl en init = 1
+p1	WrLvl en normal = 0
+b16	WrLvl interval = 0
+b1	WrLvl periodic = 0
+b1	WrLvl on SRef exit = 0
+b4	WrLvl resp mask = 0
+b1	WrLvl rotate = 0
+# documented as 2 bits, but duplicated for LPDDR4
+b4	WrLvl CS map = 0xf
+b2	WrLvl error status: packed
+p1	WrLvl max error: ro
+p1	WrLvl resp error: ro
+b8	tDFI WrLvl en = 3
+b10	tDFI WrLvl WW = 24
+w32	tDFI WrLvl resp = 0
+w32	tDFI WrLvl max = 0
+b5	WrLvl strobe num = 2
+b16	reserved = 0x0600
+freq 66+24 68+1
+	b8	tODTL 2CMD = 0
+	b1	ODT en = 1
+b4	tODTH wr = 1
+b4	tODTH rd = 0
+# read: disable ODT on read, enable on write, but only for active CS
+b2	ODT rd map CS0 = 0
+b2	ODT wr map CS0 = 1
+b2	ODT rd map CS1 = 0
+b2	ODT wr map CS1 = 2
+b8	reserved  = 0
+b24	reserved = 0x080004
+b1	en ODT assert except rd = 0
+freq 70+25 72+12
+	b4	ODTLon = 0
+	b4	tODTOn min = 0
+freq 72+12 73+6
+	b6	wr to ODTH = freq(3, 5, 4)
+freq 73+6 73+30
+	b6	rd to ODTH = freq(4, 10, 7)
+b2	address mirroring = 0
+
+sync 74+2 74+2
+*b1	RdLvl req = 0
+*b1	RdLvl gate req = 0
+b2	RdLvl CS = 0
+b4	RdLvl seq en = 0
+b4	RdLvl gate seq en = 0
+b1	RdLvl periodic = 0
+b1	RdLvl on SRef exit = 0
+b1	RdLvl gate periodic = 0
+b1	RdLvl gate on SRef exit = 0
+b8	reserved = 0
+b1	RdLvl rotate = 0
+b1	RdLvl gate rotate = 0
+# documented as 2 bits, but duplicated for LPDDR4
+b4	RdLvl CS map = 0xf
+# documented as 2 bits, but duplicated for LPDDR4
+b4	RdLvl gate CS map = 0xf
+b10	tDFI RdLvl RR = 30
+w32	tDFI RdLvl resp = 0
+b4	RdLvl resp mask = 0
+b8	tDFI RdLvl en = 3
+b2	RdLvl en: packed
+p1	RdLvl en init = 1
+p1	RdLvl en normal = 0
+b8	reserved = 1
+w32	tDFI RdLvl max = 0
+b2	RdLvl error status: packed
+p1	RdLvl max error: ro
+p1	RdLvl resp error: ro
+b16	RdLvl interval = 0
+b16	RdLvl gate interval = 0
+b4	RdLvl pattern start = 0
+b4	RdLvl pattern num = 1
+b5	RdLvl strobe num = 1
+b5	RdLvl gate strobe num = 1
+w32	LPDDR4 RdLvl pattern 8 = 0x55555a5a
+w32	LPDDR4 RdLvl pattern 9 = 0x55555a5a
+w32	LPDDR4 RdLvl pattern 10 = 0x55555a5a
+w32	LPDDR4 RdLvl pattern 11 = 0x55555a5a
+b1	rd preamble training en = 1
+b1	reg DIMM enable = 0
+freq 89+9 90+8
+	b8	RdLvl adj = freq(5, 12, 9)
+b8	tDFI RdData en: ro
+freq 90+16 91+8
+	b8	WrLat adj = freq(2, 6, 4)
+b8	tDFI phy WrLat: ro
+freq 91+16 92+8
+	b8	tDFI WrCSLat = freq(1, 0, 3)
+b3	tDFI phy WrData = 2
+
+sync 92+11 92+11
+*b1	CALvl req = 0
+b2	CALvl CS = 0
+b16	reserved = 0
+# value n: patterns 0 thru n are used
+b2	CALvl seq en = 3
+b1	CALvl periodic = 0
+b1	CALvl on SRef exit = 0
+b1	CALvl rotate = 0
+# documented as 2 bits, but duplicated for LPDDR4
+b4	CALvl CS map = 0xf
+b8	tDFI CALvl en = 23
+freq 94+32 97+26
+	b10	tDFI CALvl CC = freq(24, 32, 28)
+	b10	tDFI CALvl capture = freq(6, 14, 10)
+w32	tDFI CALvl resp = 0
+w32	tDFI CALvl max = 0
+b1	CALvl resp mask = 0
+b2	CALvl en: packed
+p1	CALvl en init = 1
+p1	CALvl en normal = 0
+b2	CALvl error status: packed
+p1	CALvl resp error: ro
+p1	CALvl max error: ro
+b16	CALvl interval = 0
+
+sync 101+16 101+16
+b5	tCACKEL = 10
+b5	tCAMRD = 20
+b5	tCACKEH = 10
+freq 102+5 104+14
+	<b5	tMRZ = 1.5ns
+	# TF-A never sets this, but this is the LPDDR4 spec value, and it fits
+	<b14	tCAEnt = 250ns
+b5	tCAExt = 10
+b1	CA train VRef en = 1
+freq 104+25 109+10
+	b5	tDFI CACSCA = 0
+	b5	tDFI CASel = 1
+	# the +1 shouldn't be there
+	<b10	tVRef short = 250ns 1tCK +
+	# should probably be 80ns
+	<b10	tVRef long = 250ns 1tCK +
+b7	CALvl VRef initial starting point = 26
+b7	CALvl VRef initial stop point = 30
+b4	CALvl VRef initial stepsize = 4
+b4	CALvl VRef normal stepsize = 2
+b4	CALvl VRef delta = 1
+b8	tDFI init start min = 16
+b8	tDFI init complete min = 5
+freq 111+8 111+28
+	<b4	tDFI CALvl strobe = 2ns 5tCK +
+b4	tCKCKEH = 2
+b5	CALvl strobe num = 2
+b7	SW CA train VRef = 0
+freq 112+23 115+16
+	b8	tDFI init start = 32
+	b16	tDFI init complete = 4096
+b8	ClkDisable 2 init start = 4
+b8	init StartOrComplete 2 ClkDisable = 4
+# 0: deassert following dfi_init_start, 1: following dfi_init_complete
+b1	DRAM clk disable deassert sel = 0
+b1	refresh between segment disable = 1
+
+freq 116+9 117+6
+	# DRAM data sheet lists this as 10ns, so the rest must be from controller delays
+	<b6	tCKEHDQS = (8tCK 1tCK (100 MHz <) sel) 10ns + # 2 16 12
+b1	WDQLvl VRef en = 1
+b3	WDQLvl bst num = 3
+b10	tDFI WDQLvl WR = 74
+b10	tDFI WDQLvl RW = 75
+b4	WDQLvl resp mask = 0
+b1	WDQLvl rotate = 0
+# documented as 2 bits, but duplicated for LPDDR4
+b4	WDQLvl CS map = 0xf
+b7	WDQLvl VRef initial starting point = 26
+b7	WDQLvl VRef initial stop point = 30
+b4	WDQLvl VRef initial stepsize = 4
+b4	WDQLvl VRef normal stepsize = 2
+b4	WDQLvl VRef delta = 1
+b1	WDQLvl periodic = 0
+*b1	WDQLvl req = 0
+b2	WDQLvl CS = 0
+b8	tDFI WDQLvl en = 52
+w32	tDFI WDQLvl resp = 0
+w32	tDFI WDQLvl max = 0
+b16	WDQLvl interval = 0
+b2	WDQLvl en: packed
+p1	WDQLvl en init = 1
+p1	WDQLvl en normal = 0
+b1	WDQLvl on SRef exit = 0
+b2	WDQLvl error status: packed
+p1	WDQLvl max error: ro
+p1	WDQLvl resp error: ro
+cs4 125+2 155+16
+	freq 125+2 132+24
+		b16	MR1 data: packed
+		p2	burst length = 0
+		p1	write preamble length = 1
+		p1	read preamble type = 0
+		p3	nWR = 1MRVal
+		p1	read postamble length  = 0
+		p8	unknown = 0
+		b16	MR2 data: packed
+		p3	read latency = 1MRVal
+		p3	write latency = 1MRVal
+		p1	write latency set = 0
+		p1	write leveling = 0
+		p8	unknown = 0
+		b16	MR3 data: packed
+		p1	pull-up calibration = 1
+		p1	write postamble length = 0
+		p1	post-package repair protection = 0
+		p3	pull-down drive strength = 6
+		p1	DBI read = 0
+		p1	DBI write = 0
+		p8	unknown = 0
+		b8	MR11 data: packed
+		p3	DQ ODT = 0
+		p1	reserved = 0
+		p3	CA ODT = 0
+		p1	reserved = 0
+		b8	MR12 data: packed
+		p6	VRef CA = 13
+		p1	VRef CA range = 1
+		p1	reserved = 0
+		b8	MR14 data: packed
+		p6	VRef DQ = 13
+		p1	VRef DQ range = 1
+		p1	reserved = 0
+	b8	MR13 data = 0
+b2	bank diff = 0
+b3	row diff = 2
+freq 155+27 157+10
+	<b10	tFC = 250ns
+b5	tCCD = 8
+freq 157+21 169+8
+	b8	tRTP = 8
+	# tRPab; modified minimum, see PCTL
+	<b8	tRP = 21ns 4tCK max
+	<b8	tRCD = 18ns 4tCK max
+	b6	tWTR = 10
+	# should be 6, 16, 10 per spec
+	b6	tWR = freq(4, 17, 10)
+	# should be 70200ns, but this is slightly off
+	b17	tRAS max = freq(0xd92, 0xd92e, 0x6c97)
+	<b8	tRAS min = 42ns 3tCK max
+	<b4	tDQSCK max = 3.5ns
+	b6	tCCDMW = 32
+	<b6	tMRD = 14ns 10tCK max
+	# probably should have a lower limit (10tCK)
+	<b8	tMRW = 10ns
+	b8	tMOD = 10
+
+# these are completely undocumented
+mystery10 169+8 174+8
+	b8	reserved = 2
+	b8	reserved = 0
+
+b18	int status: ro
+*b18	int ack = 0
+b18	int mask = 0
+# these are completely undocumented
+sync 176+18 186+8
+# supposedly n for burst length (1 << n)
+b5	BstLen = 4
+# see PCTL
+b5	long count mask = 0
+b1	CtrlUpd req per ARef en = 1
+b4	tDFI CtrlUpd min: ro
+freq 187+4 192+32
+	# should be 2tREFI
+	b16	tDFI CtrlUpd max = freq(0x176, 0x1850, 0xc20)
+	# should be 20tREFI
+	w32	tDFI CtrlUpd interval = freq(0xe9c, 0xf320, 0x7940)
+b7	update error status: packed
+p1	CtrlUpd interval error: ro
+p1	CtrlUpd max error: ro
+# the docs are contradictory about the length and content of this field
+p5	PhyUpd error: ro
+b24	reserved = 0x080000
+w32	reserved = 256
+w32	reserved = 0
+w32	reserved = 0
+w32	reserved = 0
+w32	reserved = 0
+b4	col diff = 2
