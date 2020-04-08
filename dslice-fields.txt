@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CC0-1.0
 w32	DQ swizzle: packed
 databit 0+0 0+32
 	p4	DQn swizzle = databit(0, 1, 2, 3, 4, 5, 6, 7)

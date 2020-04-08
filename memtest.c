@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #include <main.h>
 
 #define MEMTEST_CHACHA4

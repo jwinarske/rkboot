@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CC0-1.0
 *b1	start = 0
 b4	dram class = 0xb
 b16	version: static

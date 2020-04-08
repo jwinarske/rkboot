@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #include "rk3399-dmc.h"
 
 struct dram_cfg init_cfg = {

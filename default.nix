@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CC0-1.0
 {pkgs ? import <nixos> {
   #crossSystem={config="aarch64-unknown-linux-musl";};
 }}: {

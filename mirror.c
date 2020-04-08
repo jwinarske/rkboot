@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #include <main.h>
 
 _Bool test_mirror(u32 addr, u32 bit) {

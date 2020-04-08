@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
 
 if [ "$CC" = "" ]; then CC=gcc; fi
 if [ "$CFLAGS" = "" ]; then CFLAGS=-O3; fi

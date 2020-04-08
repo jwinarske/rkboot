@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: CC0-1.0
 import re, sys, os
 import os.path as path
 from collections import namedtuple

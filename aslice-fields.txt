@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CC0-1.0
 addrbit 0+0 1+13
 	b5	SW WrAddr shift: packed
 	!p1	enable half-cycle override = 0

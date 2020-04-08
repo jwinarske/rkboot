@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CC0-1.0
 b1	freq sel multicast en = 0
 b2	freq sel index = 0
 acslice 0+10 1+13
