@@ -11,7 +11,7 @@
       cd build
       python3 ../configure.py >build.ninja
     '';
-    installPhase = "mkdir -p $out; cp levinboot.bin levinboot.img $out";
+    installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img $out";
     depsBuildBuild = [pkgs.buildPackages.stdenv.cc];
     src = ./.;
   };

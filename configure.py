@@ -54,8 +54,6 @@ build idbtool: buildcc {src}/tools/idbtool.c
 build levinboot.img: run levinboot-sd.bin | idbtool
     bin = ./idbtool
 build regtool: buildcc {src}/tools/regtool.c
-
-default levinboot.img
 '''.format(
     cflags=cflags,
     ldflags=os.getenv('LDFLAGS', ''),
@@ -123,3 +121,4 @@ binary('memtest', ('memtest',) + lib, 'ff8c2000.ld')
 binary('elfloader', ('elfloader',) + lib, '00100000.ld')
 binary('elfloader-sram', ('elfloader',) + lib, 'ff8c2000.ld')
 binary('teststage', ('teststage', 'uart', 'error'), '00600000.ld')
+print("default levinboot.img levinboot-usb.bin")
