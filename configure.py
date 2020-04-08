@@ -40,6 +40,11 @@ parser.add_argument(
     dest='atf_headers',
     help='path to TF-A export headers'
 )
+parser.add_argument(
+    '--full-debug',
+    action='store_true',
+    dest='full_debug'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
@@ -89,6 +94,11 @@ build regtool: buildcc {src}/tools/regtool.c
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 modules = levinboot + lib + ('memtest', 'elfloader', 'teststage')
+
+if args.full_debug:
+    for f in modules:
+        flags[f].append('-DDEBUG_MSG')
+
 for f in modules:
     build_flags = {'flags': " ".join(flags[f])} if f in flags else {}
     src = path.join(srcdir, f+'.c')
