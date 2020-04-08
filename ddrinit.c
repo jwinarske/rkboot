@@ -14,18 +14,6 @@ const struct phy_layout cfg_layout = {
 	.ca_offs = 512
 };
 
-static struct dram_cfg init_cfg = {
-#include "initcfg.inc.c"
-};
-
-static const struct phy_update phy_400mhz = {
-#include "phy_cfg2.inc.c"
-};
-
-static const struct phy_update phy_800mhz = {
-#include "phy_cfg3.inc.c"
-};
-
 enum {MC_NUM_CHANNELS = 2, MC_CHANNEL_STRIDE = 0x8000, MC_NUM_FREQUENCIES = 3};
 static inline volatile struct phy_regs *phy_for(u32 channel) {
 	return (volatile struct phy_regs *)(0xffa82000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
@@ -306,6 +294,7 @@ void ddrinit() {
 	odt.flags |= ODT_SET_RST_DRIVE;
 	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
+	udelay(10);
 	logs("initializing DRAM\n");
 
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}

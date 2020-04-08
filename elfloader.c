@@ -240,7 +240,7 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 	memcpy(dest_string, device_type, sizeof(device_type));
 	dest_string += sizeof(device_type);
 	memcpy(dest_string, "reg", 4);
-	dest_string += 5;
+	dest_string += 4;
 	struct fdt_header *dest_header = dest;
 	write_be32(&dest_header->magic, 0xd00dfeed);
 	u32 totalsize = (u32)(dest_string - (char *)dest);

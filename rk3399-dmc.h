@@ -200,6 +200,10 @@ enum {
 #define FORCE_ORDER(n) ((n) << 8)
 #define FORCE_ORDER_STATE(n) ((n) << 16
 
+extern struct dram_cfg init_cfg;
+extern const struct phy_update phy_400mhz;
+extern const struct phy_update phy_800mhz;
+
 struct mr_adjustments;
 void mr_adjust(volatile u32 *pctl, volatile u32 *pi, const struct mr_adjustments *adj, u32 regset, u32 val);
 extern const struct mr_adjustments dq_odt_adj, ca_odt_adj, mr3_adj, mr12_adj, mr14_adj;
