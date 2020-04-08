@@ -13,7 +13,17 @@
     '';
     installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img $out";
     depsBuildBuild = [pkgs.buildPackages.stdenv.cc];
-    src = ./.;
+    src = builtins.filterSource
+      (path: type:
+        type == "directory"
+        || lib.strings.hasSuffix ".h" path
+        || lib.strings.hasSuffix ".c" path
+        || lib.strings.hasSuffix ".S" path
+        || lib.strings.hasSuffix ".txt" path
+        || lib.strings.hasSuffix ".ld" path
+        || lib.strings.hasSuffix ".py" path
+      )
+      ./.;
   };
   tools = pkgs.stdenv.mkDerivation {
     pname = "levinboot-tools";
