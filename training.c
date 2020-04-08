@@ -5,7 +5,7 @@
 void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
 	if (phy->dslice[0][84] & (1 << 16)) {
 		debugs("set per-cs training\n");
-		for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, rank));}
+		for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, rank) << 24);}
 	}
 }
 
@@ -92,6 +92,7 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 	apply32v(pi + 100, SET_BITS32(2, 0) << 8);*/
 
 	pi[175] = 0x3f7c; /* clear interrupt flags */
+	/* FIXME: range should be rank */
 	for_range(idx, 0, 4) {
 		if (!(mask & 1 << idx)) {continue;}
 		set_per_cs_training_index(phy, idx);

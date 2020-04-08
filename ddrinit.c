@@ -260,7 +260,7 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 		/* improve dqs and dq phase */
 		for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
 		if (ch == 1) {
-			/* workaround 366 ball reset */
+			/* workaround 366 ball reset, FIXME: restore after init */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
 		}
 	}
@@ -307,7 +307,6 @@ void ddrinit() {
 	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
 	logs("initializing DRAM\n");
-	puts("test\n");
 
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
 	/* not doing this will make the CPU hang during the DLL bypass step */
