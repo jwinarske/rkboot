@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <main.h>
 #include <uart.h>
+#include <rk3399.h>
 #include "fdt.h"
 #include ATF_HEADER_PATH
 
@@ -279,6 +280,7 @@ _Noreturn u32 ENTRY main() {
 	bl33_ep.args.arg2 = 0;
 	bl33_ep.args.arg3 = 0;
 	set_sctlr_flush_dcache(sctlr | SCTLR_I);
+	setup_pll(cru + CRU_BPLL_CON, 297);
 	((bl31_entry)header->entry)(&bl_params, 0, 0, 0);
 	puts("return\n");
 	halt_and_catch_fire();

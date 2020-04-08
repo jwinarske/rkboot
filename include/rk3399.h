@@ -20,8 +20,11 @@ enum {
 enum {PMUSGRF_SOC_CON4 = 0xe010 >> 2};
 
 enum {
+	CRU_LPLL_CON = 0,
+	CRU_BPLL_CON = 0x20 >> 2,
 	CRU_DPLL_CON = 0x040 >> 2,
-	CRU_SOFTRST_CON = 0x400 >> 2
+	CRU_CLKSEL_CON = 0x100 >> 2,
+	CRU_SOFTRST_CON = 0x400 >> 2,
 };
 
 enum {
@@ -43,6 +46,7 @@ static volatile u32 *const pmugrf = (volatile u32 *)0xff320000;
 static volatile u32 *const pmusgrf = (volatile u32 *)0xff330000;
 static volatile u32 *const cic = (volatile u32 *)0xff620000;
 static volatile u32 *const cru = (volatile u32 *)0xff760000;
+static volatile u32 *const pmucru = (volatile u32 *)0xff750000;
 static volatile u32 *const grf = (volatile u32 *)0xff770000;
 
 #define SET_BITS16(number, value) (((((u32)1 << number) - 1) << 16) | ((u32)(u16)(value) & (((u32)1 << number) - 1)))

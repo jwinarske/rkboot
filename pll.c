@@ -16,7 +16,9 @@ static const struct postdiv_setting postdivs[] = {
 	{601, 2, 1},
 	{667, 4, 1},
 	{733, 2, 1},
-	{801, 3, 1}
+	{801, 3, 1},
+	{1201, 2, 1},
+	{2401, 1, 1},
 };
 
 enum {PLL_SLOW = 0, PLL_NORMAL = 1, PLL_DEEP_SLOW = 2};
@@ -27,9 +29,11 @@ _Bool setup_pll(volatile u32 *base, u32 mhz) {
 		if (mhz < postdivs[i].mhz) {
 			postdiv1 = postdivs[i].pd1;
 			postdiv2 = postdivs[i].pd2;
-			break;
+			goto found;
 		}
 	}
+	die("no PLL config found for %u MHz", mhz);
+	found:;
 	const u32 vco = (u32)mhz * postdiv1 * postdiv2;
 	const u16 fbdiv = vco / 24;
 	const u8 refdiv = 1;

@@ -43,7 +43,8 @@ parser.add_argument(
 parser.add_argument(
     '--full-debug',
     action='store_true',
-    dest='full_debug'
+    dest='full_debug',
+    help='add full debug message output'
 )
 args = parser.parse_args()
 if args.atf_headers:
@@ -150,5 +151,5 @@ binary('memtest', ('memtest',) + lib, 'ff8c2000.ld')
 binary('teststage', ('teststage', 'uart', 'error'), '00600000.ld')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
 if args.atf_headers:
-    binary('elfloader', ('elfloader',) + lib, '00100000.ld')
+    binary('elfloader', ('elfloader', 'pll') + lib, '00100000.ld')
     print("default elfloader.bin")
