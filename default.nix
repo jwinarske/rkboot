@@ -6,6 +6,12 @@ let
     then pkgs
     else pkgs.pkgsCross.aarch64-multiplatform-musl;
   inherit (host) lib;
+  atf-sources = host.fetchFromGitHub {
+      owner = "ARM-software";
+      repo = "arm-trusted-firmware";
+      rev = "refs/tags/v2.2";
+      sha256 = "03fjl5hy1bqlya6fg553bqz7jrvilzrzpbs87cv6jd04v8qrvry8";
+    };
 in
 {
   levinboot = aarch64.stdenv.mkDerivation {
@@ -15,7 +21,7 @@ in
     configurePhase = ''
       mkdir build
       cd build
-      python3 ../configure.py >build.ninja
+      python3 ../configure.py --with-atf-headers ${atf-sources}/include/export
     '';
     installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img $out";
     depsBuildBuild = [host.buildPackages.stdenv.cc];

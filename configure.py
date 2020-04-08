@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: CC0-1.0
 import re, sys, os
 import os.path as path
-from collections import namedtuple
+from collections import namedtuple, defaultdict
+import argparse
 
-build = open("build.ninja", "w", encoding='utf-8')
+buildfile = open("build.ninja", "w", encoding='utf-8')
 
 escape_re = re.compile('(\\$|:| |\\n)')
 def esc(s):
@@ -23,7 +24,27 @@ def build(out, rule, inp, deps=(), **overrides):
             res += '\n    {var} = {val}'.format(var=esc(var), val=esc(val))
     return res
 
+shescape_re = re.compile('( |\\$|\\?|\\n|>|<|\'|")')
+def shesc(s):
+    return shescape_re.sub('\\\\\\1', s)
+
+def cesc(s): return s.replace('"', '\\"')
+
 srcdir = path.dirname(sys.argv[0])
+flags = defaultdict(list)
+
+parser = argparse.ArgumentParser(description='Configure the levinboot build.')
+parser.add_argument(
+    '--with-atf-headers',
+    type=str,
+    dest='atf_headers',
+    help='path to TF-A export headers'
+)
+args = parser.parse_args()
+if args.atf_headers:
+    flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
+
+sys.stdout = buildfile
 
 cc = os.getenv('CC', 'cc')
 cflags = os.getenv('CFLAGS', '-O3')
@@ -68,12 +89,10 @@ build regtool: buildcc {src}/tools/regtool.c
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 modules = levinboot + lib + ('memtest', 'elfloader', 'teststage')
-flags = {}
-
 for f in modules:
-    print('build {}.o: cc {}'.format(f, esc(path.join(srcdir, f + '.c'))))
-    if f in flags:
-	    print(' flags =', flags[f])
+    build_flags = {'flags': " ".join(flags[f])} if f in flags else {}
+    src = path.join(srcdir, f+'.c')
+    print(build(f+'.o', 'cc', src, **build_flags))
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
 lib += ('dcache',)
@@ -118,7 +137,8 @@ build {name}.bin: bin {name}.elf'''
 binary('levinboot-usb', levinboot + lib, 'ff8c2000.ld')
 binary('levinboot-sd', levinboot + lib, 'ff8c2004.ld')
 binary('memtest', ('memtest',) + lib, 'ff8c2000.ld')
-binary('elfloader', ('elfloader',) + lib, '00100000.ld')
-binary('elfloader-sram', ('elfloader',) + lib, 'ff8c2000.ld')
 binary('teststage', ('teststage', 'uart', 'error'), '00600000.ld')
-print("default levinboot.img levinboot-usb.bin")
+print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
+if args.atf_headers:
+    binary('elfloader', ('elfloader',) + lib, '00100000.ld')
+    print("default elfloader.bin")

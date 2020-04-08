@@ -2,7 +2,7 @@
 #include <main.h>
 #include <uart.h>
 #include "fdt.h"
-#include "../arm-trusted-firmware/include/export/common/bl_common_exp.h"
+#include ATF_HEADER_PATH
 
 static image_info_t bl33_image = {
 	.image_base = 0x00600000,
@@ -163,7 +163,7 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 	const u32 compatible = read_be32(&header->last_compatible_version);
 	assert(version >= compatible);
 	assert(compatible <= 17 && compatible >= 16);
-	be64 *dest_rsvmap = (be64 *)((u64)dest + (sizeof(struct fdt_header) + 7) & ~(u64)7);
+	be64 *dest_rsvmap = (be64 *)((u64)dest + ((sizeof(struct fdt_header) + 7) & ~(u64)7));
 	const be64 *src_rsvmap = (const be64 *)((u64)header + read_be32(&header->reserved_offset));
 	while (1) {
 		assert((u64)(src_rsvmap + 2) <= src_end);
