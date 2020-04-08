@@ -23,7 +23,7 @@ in
       cd build
       python3 ../configure.py --with-atf-headers ${atf-sources}/include/export
     '';
-    installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img $out";
+    installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img memtest.bin elfloader.bin teststage.bin $out";
     depsBuildBuild = [host.buildPackages.stdenv.cc];
     src = builtins.filterSource
       (path: type:
