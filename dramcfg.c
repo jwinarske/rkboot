@@ -36,9 +36,37 @@ struct dram_cfg init_cfg = {
 };
 
 const struct phy_update phy_400mhz = {
-#include "phy_cfg2.inc.c"
+	.two_cycle_preamble = 3,
+	.wraddr_shift0123 = 0,
+	.wraddr_shift45 = 0,
+	.negedge_pll_switch = 1,
+	.grp_shift01 = 0,
+	.pll_ctrl = 0x03221302,
+	.dslice_update = {
+#include <dslice_f2.gen.c>
+	},
+	.slave_master_delays = {
+#include <slave_master_delays_f2.gen.c>
+	},
+	.grp_slave_delay = {
+#include <grp_slave_delay_f2.gen.c>
+	},
 };
 
 const struct phy_update phy_800mhz = {
-#include "phy_cfg3.inc.c"
+	.two_cycle_preamble = 3,
+	.wraddr_shift0123 = 0,
+	.wraddr_shift45 = 0,
+	.negedge_pll_switch = 0,
+	.grp_shift01 = 0,
+	.pll_ctrl = 0x01221102,
+	.dslice_update = {
+#include <dslice_f1.gen.c>
+	},
+	.slave_master_delays = {
+#include <slave_master_delays_f1.gen.c>
+	},
+	.grp_slave_delay = {
+#include <grp_slave_delay_f1.gen.c>
+	},
 };

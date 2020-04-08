@@ -73,8 +73,8 @@ addrbit 32+8 35+11
 b4	SW master mode: packed
 !p1	half-clock mode = 0
 !p1	half-clock value = 0
-!p1	delay bypass mode = 1
-!p1	delay bypass value = 1
+!p1	delay bypass mode = freq(1, 0, 0)
+!p1	delay bypass value = freq(1, 0, 0)
 !b10	master delay start = 16
 !b6	master delay step = 8
 b8	master delay wait: packed

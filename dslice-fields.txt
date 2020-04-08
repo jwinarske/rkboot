@@ -193,8 +193,8 @@ databit 68+10 76+10
 	!b10	RdDQS DQn fall slave delay = 0x080
 !b10	RdDQS DM rise slave delay = 0x080
 !b10	RdDQS DM fall slave delay = 0x080
-!b10	RdDQS gate slave delay = 345
-!b4	RdDQS latency adjust = 0
+!b10	RdDQS gate slave delay = freq(345, 281, 281)
+!b4	RdDQS latency adjust = freq(0, 2, 1)
 !b3	write path lat add = 0
 !b10	WrLvl delay early threshold = 0
 !b10	WrLvl delay period threshold = 0
@@ -214,26 +214,28 @@ sync 82+32 82+32
 !b8	DQS OE timing = 0x51
 !b8	DQS TSel rd timing = 0x50
 !b8	DQS TSel wr timing = 0x31
-!b1	per CS training en = 0
+!b1	per CS training en = 0 1 (MHz 533 <) sel
 !b8	DQ IE timing = 0xc0
 !b8	DQS IE timing = 0xc0
 !b2	RdData en IE dly = 0
 !b2	IE mode: packed
 !p1	always on = 0
 !p1	disable IE on DM = 0
-!b4	RdData en dly = 1
-!b4	RdData en TSel dly = 0
+!b4	RdData en dly = freq(1, 2, 1)
+!b4	RdData en TSel dly = freq(0, 1, 0)
+
+sync 86+4 86+4
 b4	SW master mode: packed
 !p1	enable half-cycle shift override = 0
 !p1	half-cycle shift = 0
-!p1	enable cycle shift override = 1
-!p1	cycle shift = 1
+!p1	enable cycle shift override = freq(1, 0, 0)
+!p1	cycle shift = freq(1, 0, 0)
 !b10	master delay start = 16
 !b6	master delay step = 4
 b8	master delay wait: packed
 !p4	cycle wait count after calibration clock change = 2
 !p4	cycle wait count after master delay setting change = 4
-!b4	rptr update = 4
+!b4	rptr update = freq(4, 5, 4)
 !b4	WrLvl dly step = 7
 !b5	WrLvl resp wait cnt = 24
 !b4	GtLvl dly step = 12

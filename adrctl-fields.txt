@@ -45,8 +45,8 @@ b4	reserved = 0
 b1	reserved = 0
 b8	PLL wait = 100
 b1	obsolete = 0
-b13	PLL ctrl = 0x1902
-b13	PLL ctrl CA = 0x0922
+b13	PLL ctrl = freq(0x1902, 0x1102, 0x1302)
+b13	PLL ctrl CA = freq(0x0922, 0x0122, 0x0322)
 b4	PLL bypass = 0
 b24	obsolete = 0
 # allow PLL domain entry on negedge

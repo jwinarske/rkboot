@@ -120,7 +120,8 @@ struct context {
 
 	u32 global_reps;
 	u8 rep_values[NUM_REP];
-	
+
+	u16 first, last;
 	u32 freq_mhz[3];
 	const struct frequency_step *freq_steps[3];
 	DECL_VEC(struct rpn_op, ops);
@@ -376,7 +377,9 @@ RPN_OP(timeunit) {
 	if (v->type != VAL_NUMBER) {return "value not a raw number";}
 	v->val *= param >> 16;
 	v->val += param & 0xffff;
-	u8 freq = rep_values[REP_FREQ];
+	u8 freq = ctx->global_reps & 1 << REP_FREQ
+		? ctx->rep_values[REP_FREQ]
+		: rep_values[REP_FREQ];
 	assert(freq < 3);
 	v->val *= ctx->freq_mhz[freq];
 	v->type = VAL_QMCYC;
@@ -420,7 +423,10 @@ RPN_OP(less) {
 RPN_OP(tabulated_latency) {
 	struct value *v = stack->values + stack->values_size - 1;
 	if (v->type != VAL_NUMBER) {return "value not a raw number";}
-	v->val *= ctx->freq_steps[rep_values[REP_FREQ]]->values[param];
+	u8 freq = ctx->global_reps & 1 << REP_FREQ
+		? ctx->rep_values[REP_FREQ]
+		: rep_values[REP_FREQ];
+	v->val *= ctx->freq_steps[freq]->values[param];
 	return 0;
 }
 
@@ -445,7 +451,10 @@ RPN_OP(select) {
 RPN_OP(mhz) {
 	struct value *v = BUMP(stack->values);
 	v->type = VAL_NUMBER;
-	v->val = ctx->freq_mhz[rep_values[REP_FREQ]];
+	u8 freq = ctx->global_reps & 1 << REP_FREQ
+		? ctx->rep_values[REP_FREQ]
+		: rep_values[REP_FREQ];
+	v->val = ctx->freq_mhz[freq];
 	return 0;
 }
 
@@ -476,7 +485,9 @@ void hex_blob(struct context *ctx) {
 		const struct line *line = ctx->lines + field->line;
 		if (line->flags & (1 << RO_BIT | 1 << PACKED_BIT)) {continue;}
 		while (field->offset / 32 > reg) {
-			printf("0x%08"PRIx32",\n", reg_val);
+			if (reg >= ctx->first && reg <= ctx->last) {
+				printf("0x%08"PRIx32",\n", reg_val);
+			}
 			reg_val = 0;
 			mask = 0;
 			reg += 1;
@@ -517,11 +528,14 @@ void hex_blob(struct context *ctx) {
 			check(stack.values[0].type == VAL_NUMBER, "line %"PRIu16": value expression '%.*s' did not produce a raw number\n", line->line, (int)(demux_end - demux_stripped), demux_stripped);
 			field_value = stack.values[0].val;
 		}
+		check(line->size == 32 || (field_value & ~((1 << line->size) - 1)) == 0, "line %"PRIu16": value %"PRIu32" (0x%"PRIx32") does not fit into a field of %"PRIu8" bits\n", line->line, field_value, field_value, line->size);
 		reg_val |= field_value << field->offset % 32;
 		stack.values_size = 0;
 	}
 	free(stack.values);
-	printf("0x%08"PRIx32",\n", reg_val);
+	if (reg >= ctx->first && reg <= ctx->last) {
+		printf("0x%08"PRIx32",\n", reg_val);
+	}
 }
 
 void read_lines(struct context *ctx, const char *input_ptr, const char *input_end) {
@@ -832,6 +846,8 @@ int main(int argc, char **argv)  {
 	INIT_VEC(ctx.fields);
 	memset(ctx.rep_values, 0, sizeof(ctx.rep_values));
 	ctx.global_reps = 0;
+	ctx.first = 0;
+	ctx.last = UINT16_MAX;
 	
 	DECL_VEC(char, buf);
 
@@ -847,6 +863,7 @@ int main(int argc, char **argv)  {
 	ctx.freq_steps[2] = frequency_table + 0;
 	for (char **arg = argv + 1; *arg; ++arg) {
 		char *cmd = *arg;
+		_Bool flag;
 		if (!strcmp("--read", cmd)) {
 			buf_size = 0;
 			ctx.lines_size = 0;
@@ -911,6 +928,9 @@ int main(int argc, char **argv)  {
 				check(sscanf(*arg, "%"SCNu8, ctx.rep_values + rep) == 1, "could not parse %s as 8-bit uint\n", *arg);
 				check(ctx.rep_values[rep] < rep_num_repetitions[rep], "%s value out of bounds\n", rep_names[rep]);
 			}
+		} else if ((flag = !strcmp("--first", cmd)) || !strcmp("--last", cmd)) {
+			check(*++arg, "%s needs a parameter\n", cmd);
+			check(1 == sscanf(*arg, "%"SCNu16, flag ? &ctx.first : &ctx.last), "could not parse %s as a 16-bit uint\n", *arg);
 		} else {
 			check(0, "unknown command/parameter %s\n", cmd);
 		}
