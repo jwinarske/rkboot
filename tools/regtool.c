@@ -929,6 +929,17 @@ int main(int argc, char **argv)  {
 				check(sscanf(*arg, "%"SCNu8, ctx.rep_values + rep) == 1, "could not parse %s as 8-bit uint\n", *arg);
 				check(ctx.rep_values[rep] < rep_num_repetitions[rep], "%s value out of bounds\n", rep_names[rep]);
 			}
+		} else if (!strcmp("--unset", cmd)) {
+			check(*++arg, "%s needs a parameter\n", cmd);
+			for (enum repetition rep = 0; rep < NUM_REP; ++rep) {
+				if (0 != strcmp(*arg, rep_names[rep])) {continue;}
+				if (!(ctx.global_reps & 1 << rep)) {
+					fprintf(stderr, "Warning: %s is already unset\n", rep_names[rep]);
+				}
+				ctx.global_reps &= ~(1 << rep);
+				ctx.rep_values[rep] = 0;
+				break;
+			}
 		} else if ((flag = !strcmp("--first", cmd)) || !strcmp("--last", cmd)) {
 			check(*++arg, "%s needs a parameter\n", cmd);
 			check(1 == sscanf(*arg, "%"SCNu16, flag ? &ctx.first : &ctx.last), "could not parse %s as a 16-bit uint\n", *arg);
