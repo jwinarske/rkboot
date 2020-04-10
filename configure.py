@@ -63,7 +63,9 @@ cflags = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/inc
 ldflags = {ldflags}
 
 rule buildcc
-    command = {buildcc} {buildcflags} $flags $in -o $out
+    depfile = $out.d
+    deps = gcc
+    command = {buildcc} -MD -MF $out.d {buildcflags} $flags $in -o $out
 rule cc
     depfile = $out.d
     deps = gcc
@@ -80,7 +82,7 @@ rule regtool
 build idbtool: buildcc {src}/tools/idbtool.c
 build levinboot.img: run levinboot-sd.bin | idbtool
     bin = ./idbtool
-build regtool: buildcc {src}/tools/regtool.c
+build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 '''.format(
     cflags=cflags,
     ldflags=os.getenv('LDFLAGS', ''),

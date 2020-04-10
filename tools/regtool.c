@@ -4,129 +4,15 @@
 #include <assert.h>
 #include <unistd.h>
 #include <errno.h>
-#include <stdint.h>
 #include <string.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <fcntl.h>
 
+#include "regtool.h"
 #include "lpddr4_spec_tables.h"
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-#ifdef DEBUG_MSG
-#define debug(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define debug(...)
-#endif
 #define check(expr, ...) do{if (!(expr)) {fprintf(stderr, __VA_ARGS__);exit(1);}}while(0)
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-#define DECL_VEC(type, name) type *name; size_t name##_cap, name##_size
-#define INIT_VEC(name) name = 0; name##_cap = name##_size = 0;
-#define BUMP(name) ((++ name##_size < name##_cap ? 0 : (name = realloc(name, (name##_cap = (name##_cap ? name##_cap << 1 : 8)) * sizeof(*name)), allocation_failed), name ? 0 : allocation_failed()), name + (name##_size - 1))
-static _Noreturn int allocation_failed() {fprintf(stderr, "allocation failed\n");abort();}
-
-
-#define REPETITIONS \
-	X(FREQ, freq, 3)\
-	X(CS, cs, 2)\
-	X(CS4, cs4, 4)\
-	X(ADDRBIT, addrbit, 6)\
-	X(DATABIT, databit, 8)\
-	X(DEVICE, device, 2)\
-	X(DSLICE, dslice, 4)\
-	X(ASLICE, aslice, 3)\
-	X(ACSLICE, acslice, 4)\
-	X(MYSTERY10, mystery10, 10)\
-	X(SYNC, sync, 0)
-
-enum line_type {LINE_PRAGMA, LINE_FIELD};
-enum repetition {
-#define X(caps, normal, num) REP_##caps,
-	REPETITIONS
-#undef X
-	NUM_REP
-};
-enum {
-	RO_BIT = 0,
-	VOLATILE_BIT,
-	COMMAND_BIT,
-	PACKED_BIT,
-	SUBFIELD_BIT,
-	UPPER_LIMIT_BIT,
-	LOWER_LIMIT_BIT,
-	NUM_LINE_FLAGS
-};
-
-enum value_type {
-	VAL_NUMBER,
-	VAL_QMCYC,
-	VAL_PARENTHESIS,
-	VAL_BOOL,
-};
-
-struct value {
-	enum value_type type;
-	u64 val;
-};
-struct stack {DECL_VEC(struct value, values);};
-
-struct context;
-
-struct token {
-	void (*operator)(struct context *, struct stack *, u32 param);
-	u32 param;
-};
-
-struct line {
-	u16 line;
-	u8 indent;
-	enum line_type type;
-	union {
-		struct {
-			const char *name, *value;
-			size_t name_len, value_len;
-			u8 alignment;
-			u8 size;
-			u32 flags;
-		};
-		struct {
-			enum repetition rep;
-			u16 offset_start, offset_end;
-		};
-	};
-};
-
-struct field {
-	size_t line;
-	u32 flags;
-	u16 offset;
-	u8 size;
-	u8 rep_value[NUM_REP];
-};
-
-struct rpn_op {
-	const char *tok;
-	const char *(*op)(struct context *ctx, struct stack *stack, u64 param, const u8 *rep_values);
-	u8 tok_len; u8 inputs;
-	u64 param;
-};
-
-struct context {
-	DECL_VEC(struct line, lines);
-	DECL_VEC(struct field, fields);
-
-	u32 global_reps;
-	u8 rep_values[NUM_REP];
-
-	u16 first, last;
-	u32 freq_mhz[3];
-	const struct frequency_step *freq_steps[3];
-	DECL_VEC(struct rpn_op, ops);
-};
 
 const char *const rep_names[NUM_REP] = {
 #define X(caps, normal, num) #normal,
@@ -143,6 +29,11 @@ const u8 rep_num_repetitions[NUM_REP] = {
 	REPETITIONS
 #undef X
 };
+
+_Noreturn int allocation_failed() {
+	fprintf(stderr, "allocation failed\n");
+	abort();
+}
 
 const char *stripr(const char *start, const char *end) {
 	while (start < end) {
@@ -372,109 +263,6 @@ _Bool parse_hex(const char **start, const char *end, u32 *out) {
 	return 1;
 }
 
-#define RPN_OP(name) const char *op_##name(struct context *ctx, struct stack *stack, u64 param, const u8 *rep_values)
-RPN_OP(timeunit) {
-	struct value *v = stack->values + stack->values_size - 1;
-	if (v->type != VAL_NUMBER) {return "value not a raw number";}
-	v->val *= param >> 16;
-	v->val += param & 0xffff;
-	u8 freq = ctx->global_reps & 1 << REP_FREQ
-		? ctx->rep_values[REP_FREQ]
-		: rep_values[REP_FREQ];
-	assert(freq < 3);
-	v->val *= ctx->freq_mhz[freq];
-	v->type = VAL_QMCYC;
-	return 0;
-}
-
-RPN_OP(clocks) {
-	struct value *v = stack->values + stack->values_size - 1;
-	if (v->type != VAL_NUMBER) {return "value not a raw number";}
-	v->val *= 4000;
-	v->val += param;
-	v->type = VAL_QMCYC;
-	return 0;
-}
-
-RPN_OP(max) {
-	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
-	if (a->type != b->type) {return "inputs are of different type";}
-	stack->values_size -= 1;
-	if (a->val < b->val) {a->val = b->val;}
-	return 0;
-}
-
-RPN_OP(plus) {
-	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
-	if (a->type != b->type) {return "inputs are of different type";}
-	stack->values_size -= 1;
-	a->val += b->val;
-	return 0;
-}
-
-RPN_OP(less) {
-	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
-	if (a->type != b->type) {return "inputs are of different type";}
-	stack->values_size -= 1;
-	a->val = a->val < b->val;
-	a->type = VAL_BOOL;
-	return 0;
-}
-
-RPN_OP(tabulated_latency) {
-	struct value *v = stack->values + stack->values_size - 1;
-	if (v->type != VAL_NUMBER) {return "value not a raw number";}
-	u8 freq = ctx->global_reps & 1 << REP_FREQ
-		? ctx->rep_values[REP_FREQ]
-		: rep_values[REP_FREQ];
-	v->val *= ctx->freq_steps[freq]->values[param];
-	return 0;
-}
-
-RPN_OP(round) {
-	struct value *v = stack->values + stack->values_size - 1;
-	if (v->type != VAL_QMCYC) {return "value not a timing value";}
-	v->val += param;
-	v->val -= v->val % 4000;
-	return 0;
-}
-
-RPN_OP(select) {
-	struct value *a = stack->values + stack->values_size - 3, *b = a + 1, *v = a + 2;
-	if (v->type != VAL_BOOL) {return "condition not a boolean";}
-	if (!v->val) {
-		a->val = b->val;
-	}
-	stack->values_size -= 2;
-	return 0;
-}
-
-RPN_OP(mhz) {
-	struct value *v = BUMP(stack->values);
-	v->type = VAL_NUMBER;
-	u8 freq = ctx->global_reps & 1 << REP_FREQ
-		? ctx->rep_values[REP_FREQ]
-		: rep_values[REP_FREQ];
-	v->val = ctx->freq_mhz[freq];
-	return 0;
-}
-
-RPN_OP(paren_open) {
-	struct value *v = BUMP(stack->values);
-	v->type = VAL_PARENTHESIS;
-	v->val = 0;
-	return 0;
-}
-
-RPN_OP(paren_close) {
-	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
-	if (a->type != VAL_PARENTHESIS) {return "parenthesis unmatched";}
-	stack->values_size -= 1;
-	a->val = b->val;
-	a->type = b->type;
-	return 0;
-}
-
 void hex_blob(struct context *ctx) {
 	u32 mask = 0;
 	u32 reg_val = 0;
@@ -495,31 +283,9 @@ void hex_blob(struct context *ctx) {
 		}
 		size_t demuxed_len;
 		char *demuxed = demultiplex(ctx, line->value, line->value_len, field->flags, field->rep_value, &demuxed_len);
-		const char *demux_end = stripr(demuxed, demuxed + demuxed_len), *demux = stripl(demuxed, demux_end), *demux_stripped = demux;
+		const char *demux_end = stripr(demuxed, demuxed + demuxed_len), *demux_stripped = stripl(demuxed, demux_end);
 		assert(line->size <= 32);
-		const struct rpn_op *ops = ctx->ops;
-		size_t ops_size= ctx->ops_size;
-		while (demux < demux_end) {
-			u32 val;
-			if (parse_hex(&demux, demux_end, &val) || parse_dec(&demux, demux_end, &val)) {
-				struct value *v = BUMP(stack.values);
-				v->type = VAL_NUMBER;
-				v->val = val;
-			} else {
-				for (size_t i = 0; i < ops_size; ++i) {
-					u8 len = ops[i].tok_len;
-					if (demux_end - demux < len || memcmp(demux, ops[i].tok, len)) {continue;}
-					check(stack.values_size >= ops[i].inputs, "line %"PRIu16": not enough values on stack for input to %s in expression '%.*s'", line->line, ops[i].tok, (int)(demux_end - demux_stripped), demux_stripped);
-					const char *error = ops[i].op(ctx, &stack, ops[i].param, field->rep_value);
-					check(!error, "line %"PRIu16": evaluation error '%s' in expression '%.*s'", line->line, error, (int)(demux_end - demux_stripped), demux_stripped);
-					demux += len;
-					goto continue_outer;
-				}
-				check(0, "line %"PRIu16": cannot tokenize value expression '%.*s', starting at '%.*s'\n", line->line, (int)(demux_end - demux_stripped), demux_stripped, (int)(demux_end - demux), demux);
-			}
-			continue_outer:
-			demux = stripl(demux, demux_end);
-		}
+		run_expression(ctx, &stack, demux_stripped, demux_end, line->line, field->flags, field->rep_value);
 		check(stack.values_size == 1, "line %"PRIu16": value expression '%.*s' produced more than one result\n", line->line, (int)(demux_end - demux_stripped), demux_stripped);
 		u32 field_value;
 		if (line->flags & (1 << LOWER_LIMIT_BIT | 1 << UPPER_LIMIT_BIT)) {
@@ -780,64 +546,6 @@ void layout_fields(struct context *ctx) {
 		}
 		pos += 1;
 	}
-}
-
-struct op_template {
-	const char *tok;
-	const char *(*op)(struct context *ctx, struct stack *stack, u64 param, const u8 *rep_values);
-	u64 param;
-};
-
-static void insert_ops(struct  context *ctx, const struct op_template *templ, size_t num, u8 inputs) {
-	for (size_t i = 0; i < num; ++i) {
-		struct rpn_op *op = BUMP(ctx->ops);
-		while (op > ctx->ops && strcmp((op - 1)->tok, templ[i].tok) > 0) {
-			/* insertion sort */
-			memcpy(op, op - 1, sizeof(*op));
-			op -= 1;
-		}
-		op->op = templ[i].op;
-		op->tok = templ[i].tok;
-		op->tok_len = strlen(templ[i].tok);
-		op->inputs = inputs;
-		op->param = templ[i].param;
-	}
-}
-
-void init_ops(struct context *ctx) {
-	INIT_VEC(ctx->ops);
-	static const struct op_template nullary[] = {
-		{.tok = "MHz", .op = op_mhz},
-		{.tok = "(", .op = op_paren_open},
-	};
-	static const struct op_template unary[] = {
-		{.tok = "ns", .op = op_timeunit, .param = 4 << 16},
-		{.tok = ".5ns", .op = op_timeunit, .param = 4 << 16 | 2},
-		{.tok = ".75ns", .op = op_timeunit, .param = 4 << 16 | 3},
-		{.tok = "us", .op = op_timeunit, .param = 4000 << 16},
-		{.tok = "tCK", .op = op_clocks, .param = 0},
-		{.tok = ".5tCK", .op = op_clocks, .param = 2000},
-		{.tok = "tRFC", .op = op_timeunit, .param = 180*4 << 16},
-		{.tok = "ceil", .op = op_round, .param = 3999},
-		{.tok = "floor", .op = op_round, .param = 0},
-#define X(name) {.tok = #name, .op = op_tabulated_latency, .param = LAT_##name},
-		TABULATED_VALUES
-#undef X
-	};
-	static const struct op_template binary[] = {
-		{.tok = "max", .op = op_max},
-		{.tok = "+", .op = op_plus},
-		{.tok = "<", .op = op_less},
-		{.tok = ")", .op = op_paren_close}
-	};
-	static const struct op_template ternary[] = {
-		{.tok = "sel", .op = op_select},
-	};
-	insert_ops(ctx, nullary, ARRAY_SIZE(nullary), 0);
-	insert_ops(ctx, unary, ARRAY_SIZE(unary), 1);
-	insert_ops(ctx, binary, ARRAY_SIZE(binary), 2);
-	insert_ops(ctx, ternary, ARRAY_SIZE(ternary), 3);
-	for (size_t i = 0; i < ctx->ops_size; ++i) {debug("registered op %s\n", ctx->ops[i].tok);}
 }
 
 int main(int argc, char **argv)  {
