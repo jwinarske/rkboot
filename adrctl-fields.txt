@@ -250,7 +250,7 @@ b8	data byte order sel: packed
 dslice 58+24 58+32
 	p2	swizzle = dslice(0, 1, 2, 3)
 b3	adr disable: packed
-freq 59+0 59+3
+aslice 59+0 59+3
 	p1	disable = 0
 b2	AdrCtl mstr dly enc sel = 0
 b1	CS dly upt per AC slice = 0
