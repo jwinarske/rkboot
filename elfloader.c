@@ -120,7 +120,6 @@ static void copy_subtree(const be32 **const src, be32 **const dest, const be32 *
 		cmd = read_be32((*src)++);
 		assert(*src <= src_end);
 		write_be32((*dest)++, cmd);
-		printf("cmd %x", cmd);
 		if (cmd == 1) {
 			depth += 1;
 			u32 v; do {
@@ -193,7 +192,7 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 		assert((u64)(src_struct + 3) < src_end);
 		u32 size = read_be32(src_struct + 1);
 		const char *name = src_string + read_be32(src_struct + 2);
-		printf("prop %s\n", name);
+		debug("prop %s\n", name);
 		if (!strcmp("#address-cells", name)) {
 			puts("addr\n");
 			assert(addr_cells == 0 && size == 4);
