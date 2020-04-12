@@ -108,7 +108,9 @@ for f in modules:
     print(build(f+'.o', 'cc', src, **build_flags))
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
-lib += ('dcache',)
+print('build exc_handlers.o: cc {}'.format(esc(path.join(srcdir, 'exc_handlers.S'))))
+lib += ('dcache', 'exc_handlers')
+lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
 regtool_targets = {

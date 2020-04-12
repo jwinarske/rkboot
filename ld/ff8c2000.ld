@@ -9,11 +9,17 @@ SECTIONS {
 	}
 	.rodata : {
 		*(.rodata*)
+		*(.data.rel.ro.local)
 	}
 	.eh_frame : {
 		*(.eh_frame)
 	}
 	.data : {
 		*(.data)
+	}
+	.bss : {
+		bss_start = .;
+		*(.bss*)
+		bss_end = .;
 	}
 }

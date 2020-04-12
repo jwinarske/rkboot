@@ -78,6 +78,8 @@ static void UNUSED dump_clocks() {
 	}
 }
 
+extern u8 bss_start, bss_end, exc_vector;
+
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
@@ -85,6 +87,10 @@ int32_t ENTRY NO_ASAN main() {
 	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
+	u8 *bss = &bss_start, *bss_end_ptr =  &bss_end;
+	do {*bss++ = 0;} while(bss < bss_end_ptr);
+	__asm__ volatile("msr scr_el3, %0" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ));
+	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(&exc_vector));
 	setup_mmu();
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();

@@ -32,6 +32,12 @@ enum {
 	SCTLR_I = 0x1000,
 	SCTLR_EL3_RES1 = 0x30c50830
 };
+enum {
+	SCR_EA = 8,
+	SCR_FIQ = 4,
+	SCR_IRQ = 2,
+	SCR_EL3_RES1 = 0x30,
+};
 void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
 void flush_dcache();
@@ -50,13 +56,13 @@ void ddrinit();
 static inline void clrset32(volatile u32 *addr, u32 clear, u32 set) {
 	*addr = (*addr & ~clear) | set;
 }
-static inline void apply32v(volatile u32 *addr, u64 op) {
+static inline void UNUSED apply32v(volatile u32 *addr, u64 op) {
 	clrset32(addr, op >> 32, (u32)op);
 }
-static inline void clrset32m(u32 *addr, u32 clear, u32 set) {
+static inline void UNUSED clrset32m(u32 *addr, u32 clear, u32 set) {
 	*addr = (*addr & ~clear) | set;
 }
-static inline void apply32m(u32 *addr, u64 op) {
+static inline void UNUSED apply32m(u32 *addr, u64 op) {
 	clrset32(addr, op >> 32, (u32)op);
 }
 
@@ -71,9 +77,11 @@ static inline void apply32m(u32 *addr, u64 op) {
 #define for_range(i, a, b) for (u32 i = a; i < b; ++i)
 #define for_array(i, arr) for (u32 i = 0; i < ARRAY_SIZE(arr); ++i)
 
-static inline u32 ubfx32(u32 v, u32 shift, u32 length) {
+static inline u32 UNUSED ubfx32(u32 v, u32 shift, u32 length) {
 	return v >> shift & ((1 << length) - 1);
 }
+
+static inline void UNUSED mmio_barrier() {__asm__ volatile("dsb sy");}
 
 enum {
 	ASSUMPTION_16BIT_CHANNEL = 1,
