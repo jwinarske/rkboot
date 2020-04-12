@@ -548,6 +548,40 @@ void layout_fields(struct context *ctx) {
 	}
 }
 
+/*
+=======
+regtool
+=======
+
+synopsis
+========
+
+  **regtool** [**--read** *filename* *option-setting commands* (**--hex** | **--table**)] …
+
+overview
+========
+
+regtool reads a description of MMIO registers and can print tables describing the field layout generated from the description or generated values for the registers from the description to standard output.
+it can compute timing values based on specified frequency values and select values to use for field based on the value of so-called *multiplexing variable*.
+
+the command line interface is a state machine: the program reads commands from it and processes them in order.
+if parsing failure occurs, previous actions will still have been processed.
+
+the state consists of the following items:
+
+- the contents of the loaded file.
+  this is overwritten when a new file is loaded.
+
+- the selected register range.
+  this is overwritten when a new file is loaded.
+
+- globally set variables.
+
+- assignments of frequencies to *freq* variable values
+
+generating a register layout table generally only requires the first two to be set (as it only does stage-1 evaluation of value expressions; see below for more), while generating values for registers requires all three to be set up.
+*/
+
 int main(int argc, char **argv)  {
 	struct context ctx;
 	init_ops(&ctx);
@@ -570,13 +604,24 @@ int main(int argc, char **argv)  {
 	ctx.freq_steps[0] = frequency_table + 1;
 	ctx.freq_steps[1] = frequency_table + 2;
 	ctx.freq_steps[2] = frequency_table + 0;
+/*
+options
+=======
+*/
 	for (char **arg = argv + 1; *arg; ++arg) {
 		char *cmd = *arg;
 		_Bool flag;
+/*
+--read file  read an input file.
+  this replaces the contents of a potentially previously loaded file.
+  see below for the input format.
+*/
 		if (!strcmp("--read", cmd)) {
 			buf_size = 0;
 			ctx.lines_size = 0;
 			ctx.fields_size = 0;
+			ctx.first = 0;
+			ctx.last = UINT16_MAX;
 			char *filename = *++arg;
 			check(filename, "%s needs a filename parameter\n", cmd);
 			int fd = 0;
@@ -601,6 +646,9 @@ int main(int argc, char **argv)  {
 			check(buf_size < INT_MAX, "input longer than INT_MAX bytes\n");
 			read_lines(&ctx, buf, buf + buf_size);
 			layout_fields(&ctx);
+/*
+--mhz freq0 freq1 freq2  this sets the frequencies associated with each value of the *freq* variable to the given MHz value.
+*/
 		} else if (!strcmp("--mhz", cmd)) {
 			char *f0_str, *f1_str, *f2_str;
 			check((f0_str = *++arg) && (f1_str = *++arg) && (f2_str = *++arg),
@@ -624,10 +672,9 @@ int main(int argc, char **argv)  {
 					ctx.freq_steps[f] += 1;
 				}
 			}
-		} else if (!strcmp("--table", cmd)) {
-			reg_table(&ctx);
-		} else if (!strcmp("--hex", cmd)) {
-			hex_blob(&ctx);
+/*
+--set var val  sets the variable *var* globally to *val*
+*/
 		} else if (!strcmp("--set", cmd)) {
 			char *var, *val;
 			check((var = *++arg) && (val = *++arg), "%s needs name and value parameters\n", cmd);
@@ -637,6 +684,9 @@ int main(int argc, char **argv)  {
 				check(sscanf(*arg, "%"SCNu8, ctx.rep_values + rep) == 1, "could not parse %s as 8-bit uint\n", *arg);
 				check(ctx.rep_values[rep] < rep_num_repetitions[rep], "%s value out of bounds\n", rep_names[rep]);
 			}
+/*
+--unset var  unsets the variable *var* globally
+*/
 		} else if (!strcmp("--unset", cmd)) {
 			check(*++arg, "%s needs a parameter\n", cmd);
 			for (enum repetition rep = 0; rep < NUM_REP; ++rep) {
@@ -648,6 +698,22 @@ int main(int argc, char **argv)  {
 				ctx.rep_values[rep] = 0;
 				break;
 			}
+/*
+--table  generates a register layout table
+*/
+		} else if (!strcmp("--table", cmd)) {
+			reg_table(&ctx);
+/*
+--hex  generates register values in hexadecimal form.
+  each register value will be prefixed with '0x' and followed by a comma, for use in C programs
+*/
+		} else if (!strcmp("--hex", cmd)) {
+			hex_blob(&ctx);
+/*
+--first num  sets the number of the first register to be output
+
+--last num  sets the number of the last register to be output
+*/
 		} else if ((flag = !strcmp("--first", cmd)) || !strcmp("--last", cmd)) {
 			check(*++arg, "%s needs a parameter\n", cmd);
 			check(1 == sscanf(*arg, "%"SCNu16, flag ? &ctx.first : &ctx.last), "could not parse %s as a 16-bit uint\n", *arg);
