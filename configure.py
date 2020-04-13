@@ -59,7 +59,7 @@ if cc.endswith('gcc'):
 	cflags += '  -Werror=discarded-qualifiers'
 
 print('''
-cflags = -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem . {cflags}
+cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem . {cflags}
 ldflags = {ldflags}
 
 rule buildcc
