@@ -18,8 +18,10 @@ SECTIONS {
 	.eh_frame : {
 		*(.eh_frame)
 	}
-	.data : {
+	__ro_end__ = .;
+	.data : ALIGN(0x1000){
 		*(.data)
+		__data_end__ = .;
 	}
 	.bss : {
 		__bss_start__ = .;

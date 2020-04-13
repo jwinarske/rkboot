@@ -52,11 +52,19 @@ parser.add_argument(
     dest='excvec',
     help='set up exception vectors at the beginning of each stage'
 )
+parser.add_argument(
+    '--crc',
+    action='store_true',
+    dest='crc',
+    help='compute and print a CRC32C at the beginning of each stage'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
 if args.excvec:
     flags['main'].append('-DCONFIG_EXC_VEC')
+if args.crc:
+	flags['main'].append('-DCONFIG_CRC')
 
 sys.stdout = buildfile
 
