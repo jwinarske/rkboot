@@ -146,7 +146,7 @@ void setup_mmu() {
 		debug("%08zx maps to %08zx\n", i, mapped);
 		assert(mapped == i);
 	}
-	assert(map_address((u64)&uart) == (u64)&uart);
+	assert(map_address((u64)uart) == (u64)uart);
 	__asm__ volatile("msr mair_el3, %0" : : "r"((u64)0xff0c080400));
 #ifdef DEBUG_MSG
 	u64 mair;
