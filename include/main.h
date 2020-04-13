@@ -3,6 +3,7 @@
 
 #include <defs.h>
 #include "../config.h"
+#include <aarch64.h>
 
 void yield();
 void puts(const char *);
@@ -24,31 +25,10 @@ u64 get_timestamp();
 _Noreturn void halt_and_catch_fire();
 
 _Bool setup_pll(volatile u32 *base, u32 freq);
-
-enum {
-	SCTLR_M = 1,
-	SCTLR_C = 4,
-	SCTLR_SA = 8,
-	SCTLR_I = 0x1000,
-	SCTLR_EL3_RES1 = 0x30c50830
-};
-enum {
-	SCR_EA = 8,
-	SCR_FIQ = 4,
-	SCR_IRQ = 2,
-	SCR_EL3_RES1 = 0x30,
-};
 void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
 void flush_dcache();
 void setup_mmu();
-enum {
-	MEM_TYPE_DEV_nGnRnE = 0,
-	MEM_TYPE_DEV_nGnRE = 1,
-	MEM_TYPE_DEV_nGRE = 2,
-	MEM_TYPE_DEV_GRE = 3,
-	MEM_TYPE_NORMAL = 4
-};
 extern const struct mapping {u64 first, last; u8 type;} initial_mappings[];
 
 void ddrinit();
