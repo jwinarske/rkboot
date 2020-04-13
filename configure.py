@@ -56,7 +56,9 @@ cc = os.getenv('CC', 'cc')
 cflags = os.getenv('CFLAGS', '-O3')
 cflags += " -Wall -Wextra -Werror=all -Wno-error=unused-parameter  -Wno-error=comment -Werror=incompatible-pointer-types"
 if cc.endswith('gcc'):
-	cflags += '  -Werror=discarded-qualifiers'
+    cflags += '  -Werror=discarded-qualifiers'
+
+genld = path.join(srcdir, 'gen_linkerscript.sh')
 
 print('''
 cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem . {cflags}
@@ -78,6 +80,8 @@ rule run
     command = $bin <$in >$out
 rule regtool
     command = ./regtool --read $in $flags --hex >$out
+rule ldscript
+    command = {genld} $flags >$out
 
 build idbtool: buildcc {src}/tools/idbtool.c
 build levinboot.img: run levinboot-sd.bin | idbtool
@@ -92,6 +96,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
     buildcc=os.getenv('CC_BUILD', 'cc'),
     buildcflags=os.getenv('CFLAGS_BUILD', ''),
     objcopy=os.getenv('OBJCOPY', 'objcopy'),
+    genld=esc(genld)
 ))
 
 lib = ('timer', 'error', 'uart', 'mmu')
@@ -131,29 +136,33 @@ regtool_targets = {
     'grp_slave_delay_f1': regtool_job('adrctl', flags='--set freq 1 --mhz 50 800 400 --first 20 --last 22'),
 }
 for name, job in regtool_targets.items():
-	print(build(name+'.gen.c', 'regtool', path.join(srcdir, job.input+'-fields.txt'), 'regtool', flags=job.flags))
+    print(build(name+'.gen.c', 'regtool', path.join(srcdir, job.input+'-fields.txt'), 'regtool', flags=job.flags))
 print('build dramcfg.o: cc {src}/dramcfg.c | {deps}'.format(
 	src=esc(srcdir),
 	deps=" ".join(esc(name + ".gen.c") for name in regtool_targets.keys())
 ))
 levinboot += ('dramcfg',)
 
-def binary(name, modules, linkerscript):
-	print(
-'''build {name}.elf: ld {modules} | {script}
-    flags = -T {script}
-build {name}.bin: bin {name}.elf'''
-    .format(
-        name=esc(name),
-        modules=' '.join(esc(x + '.o') for x in modules),
-        script=esc(path.join(srcdir, 'ld', linkerscript))
+base_addresses = set()
+def binary(name, modules, base_address):
+    base_addresses.add(base_address)
+    print(build(
+        name + '.elf',
+        'ld',
+        tuple(x + '.o' for x in modules),
+        deps=base_address + '.ld',
+        flags='-T {}.ld'.format(base_address)
     ))
+    print(build(name + '.bin', 'bin', name + '.elf'))
 
-binary('levinboot-usb', levinboot + lib, 'ff8c2000.ld')
-binary('levinboot-sd', levinboot + lib, 'ff8c2004.ld')
-binary('memtest', ('memtest',) + lib, 'ff8c2000.ld')
-binary('teststage', ('teststage', 'uart', 'error'), '00600000.ld')
+binary('levinboot-usb', levinboot + lib, 'ff8c2000')
+binary('levinboot-sd', levinboot + lib, 'ff8c2004')
+binary('memtest', ('memtest',) + lib, 'ff8c2000')
+binary('teststage', ('teststage', 'uart', 'error'), '00600000')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
 if args.atf_headers:
-    binary('elfloader', ('elfloader', 'pll') + lib, '00100000.ld')
+    binary('elfloader', ('elfloader', 'pll') + lib, '00100000')
     print("default elfloader.bin")
+
+for addr in base_addresses:
+    print(build(addr + '.ld', 'ldscript', (), deps=genld, flags=addr))

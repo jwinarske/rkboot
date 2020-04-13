@@ -1,9 +1,13 @@
-/* SPDX-License-Identifier: CC0-1.0 */
+#!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
+cat <<END
 OUTPUT_FORMAT(elf64-littleaarch64)
-ENTRY(main) 
-start = 0xff8c2000;
+END
+echo __start__ = "0x$1;"
+cat <<END
+ENTRY(__start__)
 SECTIONS {
-	.text start : AT(start) {
+	.text __start__ : AT(__start__) {
 		*(.entry)
 		*(.text)
 	}
@@ -18,8 +22,9 @@ SECTIONS {
 		*(.data)
 	}
 	.bss : {
-		bss_start = .;
+		__bss_start__ = .;
 		*(.bss*)
-		bss_end = .;
+		__bss_end__ = .;
 	}
 }
+END

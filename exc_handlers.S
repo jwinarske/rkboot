@@ -16,9 +16,9 @@
 3:
 .endm
 
-.global exc_vector
+.global __exc_base__
 .align 12
-exc_vector:
+__exc_base__:
 exc_handler
 .asciz "sync SP_EL0"
 exc_handler
