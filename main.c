@@ -3,6 +3,7 @@
 #include <uart.h>
 #include <rk3399.h>
 #include <stage.h>
+#include <rk-spi.h>
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
@@ -79,6 +80,35 @@ static void UNUSED dump_clocks() {
 	}
 }
 
+static void UNUSED read_fast(u16 *buf, u32 buf_size) {
+	const u32 spi_mode_base = SPI_MASTER | SPI_CSM_KEEP_LOW | SPI_SSD_FULL_CYCLE | SPI_LITTLE_ENDIAN | SPI_MSB_FIRST | SPI_POLARITY(1) | SPI_PHASE(1) | SPI_DFS_8BIT;
+	assert((spi_mode_base | SPI_BHT_APB_8BIT) == 0x24c1);
+	assert(buf_size % 2 == 0 && buf_size <= 0xffff);
+	spi->ctrl1 = buf_size - 1;
+	spi->ctrl0 = spi_mode_base | SPI_XFM_RX | SPI_BHT_APB_16BIT;
+	spi->enable = 1;
+	u32 pos = 0, ticks_waited = 0;
+	while (1) {
+		u32 rx_lvl;
+		u64 wait_ts = get_timestamp(), end_wait_ts = wait_ts;
+		while (!(rx_lvl = spi->rx_fifo_level)) {
+			__asm__ volatile("yield");
+			end_wait_ts = get_timestamp();
+			if (end_wait_ts - wait_ts > 1000 * CYCLES_PER_MICROSECOND) {
+				die("SPI timed out\n");
+			}
+		}
+		ticks_waited += end_wait_ts - wait_ts;
+		while (rx_lvl--) {
+			u16 rx = spi->rx;
+			buf[pos++] = rx;
+			if (pos >= buf_size / 2) {goto xfer_finished;}
+		}
+	} xfer_finished:;
+	debug("waited %u ticks, %u left\n", ticks_waited, spi->rx_fifo_level);
+	spi->enable = 0;
+}
+
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
@@ -87,6 +117,48 @@ int32_t ENTRY NO_ASAN main() {
 	setup_mmu();
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();
+	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 1) << 15 | SET_BITS16(7, 3) << 8;
+	const u32 spi_mode_base = SPI_MASTER | SPI_CSM_KEEP_LOW | SPI_SSD_FULL_CYCLE | SPI_LITTLE_ENDIAN | SPI_MSB_FIRST | SPI_POLARITY(1) | SPI_PHASE(1) | SPI_DFS_8BIT;
+	assert((spi_mode_base | SPI_BHT_APB_8BIT) == 0x24c1);
+	spi->ctrl0 = spi_mode_base | SPI_BHT_APB_8BIT;
+	spi->enable = 1; mmio_barrier();
+	spi->slave_enable = 1; mmio_barrier();
+	spi->tx = 0x9f;
+	for_range(i, 0, 3) {spi->tx = 0xff;}
+	u32 val = 0;
+	for_range(i, 0, 4) {
+		while (!spi->rx_fifo_level) {__asm__ volatile("yield");}
+		val = val << 8 | spi->rx;
+	}
+	spi->slave_enable = 0; mmio_barrier();
+	spi->enable = 0;
+	printf("SPI read %x\n", val);
+	u64 xfer_start = get_timestamp();
+	spi->slave_enable = 1; mmio_barrier();
+	spi->ctrl0 = spi_mode_base | SPI_XFM_TX | SPI_BHT_APB_8BIT;
+	spi->enable = 1; mmio_barrier();
+	spi->tx = 0x0b;
+	spi->tx = 0;
+	spi->tx = 0;
+	spi->tx = 0;
+	spi->tx = 0xff;
+	while (spi->status & 1) {__asm__ volatile("yield");}
+	spi->enable = 0;
+	mmio_barrier();
+	u16 *buf = (u16 *)0x100000, *buf_end = buf + (8 << 20);
+	u16 *pos = buf;
+	while (pos < buf_end) {
+		u32 read_size = (const char *)buf_end - (const char *)pos;
+		if (read_size > 0xfffe) {read_size = 0xfffe;}
+		assert(read_size % 2 == 0);
+		read_fast(pos, read_size);
+		pos += read_size / 2;
+	}
+	spi->slave_enable = 0;
+	u64 xfer_end = get_timestamp();
+	buf[512] = 0;
+	puts((const char *)buf);
+	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	stage_teardown(&store);
 	return 0;
 }
