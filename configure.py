@@ -69,7 +69,7 @@ if cc.endswith('gcc'):
 genld = path.join(srcdir, 'gen_linkerscript.sh')
 
 print('''
-cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem . {cflags}
+cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
 ldflags = {ldflags}
 
 rule buildcc
