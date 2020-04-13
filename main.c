@@ -2,6 +2,7 @@
 #include <main.h>
 #include <uart.h>
 #include <rk3399.h>
+#include <stage.h>
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
@@ -78,8 +79,6 @@ static void UNUSED dump_clocks() {
 	}
 }
 
-extern u8 __bss_start__, __bss_end__, __exc_base__;
-
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
@@ -87,10 +86,7 @@ int32_t ENTRY NO_ASAN main() {
 	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
-	u8 *bss = &__bss_start__, *bss_end_ptr =  &__bss_end__;
-	do {*bss++ = 0;} while(bss < bss_end_ptr);
-	__asm__ volatile("msr scr_el3, %0" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ));
-	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(&__exc_base__));
+	stage_setup();
 	setup_mmu();
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();

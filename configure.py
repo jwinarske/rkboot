@@ -46,9 +46,17 @@ parser.add_argument(
     dest='full_debug',
     help='add full debug message output'
 )
+parser.add_argument(
+    '--exception-vectors',
+    action='store_true',
+    dest='excvec',
+    help='set up exception vectors at the beginning of each stage'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
+if args.excvec:
+    flags['main'].append('-DCONFIG_EXC_VEC')
 
 sys.stdout = buildfile
 
@@ -113,8 +121,10 @@ for f in modules:
     print(build(f+'.o', 'cc', src, **build_flags))
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
-print('build exc_handlers.o: cc {}'.format(esc(path.join(srcdir, 'exc_handlers.S'))))
-lib += ('dcache', 'exc_handlers')
+lib += ('dcache',)
+if args.excvec:
+    print('build exc_handlers.o: cc {}'.format(esc(path.join(srcdir, 'exc_handlers.S'))))
+    lib += ('exc_handlers',)
 lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
