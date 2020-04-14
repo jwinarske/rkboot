@@ -58,13 +58,35 @@ parser.add_argument(
     dest='crc',
     help='compute and print a CRC32C at the beginning of each stage'
 )
+parser.add_argument(
+    '--uncached-memtest',
+    action='store_true',
+    dest='uncached_memtest',
+    help='configure the memtest binary to use device memory'
+)
+memtest_prngs = {
+    'splittable': '-DMEMTEST_SPLITTABLE',
+    'speck': '-DMEMTEST_SPECK',
+    'chacha': '-DMEMTEST_CHACHAISH',
+}
+parser.add_argument(
+    '--memtest-prng',
+    type=str,
+    dest='memtest_prng',
+    choices=memtest_prngs.keys(),
+    default='splittable',
+    help='PRNG to use for the memtest binary'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
 if args.excvec:
     flags['main'].append('-DCONFIG_EXC_VEC')
 if args.crc:
-	flags['main'].append('-DCONFIG_CRC')
+    flags['main'].append('-DCONFIG_CRC')
+flags['memtest'].append(memtest_prngs[args.memtest_prng])
+if args.uncached_memtest:
+    flags['memtest'].append('-DUNCACHED_MEMTEST')
 
 sys.stdout = buildfile
 
