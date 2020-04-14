@@ -55,6 +55,8 @@ static inline void UNUSED stage_teardown(struct stage_store *store) {
 	__asm__ volatile("msr vbar_el3, %0" : : "r"(store->vbar));
 	__asm__ volatile("isb;msr DAIFset, #0xf;isb");
 #endif
-	__asm__ volatile("ic iallu;tlbi alle3");
-	puts("end\n");
+	u64 sctlr = store->sctlr;
+	set_sctlr_flush_dcache(sctlr | SCTLR_I);
+	logs("end\n");
+	__asm__ volatile("msr sctlr_el3, %0;isb;ic iallu;tlbi alle3" : : "r"(sctlr));
 }
