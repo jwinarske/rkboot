@@ -116,8 +116,8 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 ))
 
 lib = ('timer', 'error', 'uart', 'mmu')
-levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit', 'spi')
-modules = levinboot + lib + ('memtest', 'elfloader', 'teststage', 'dump_fdt')
+levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
+modules = levinboot + lib + ('memtest', 'elfloader', 'teststage', 'dump_fdt', 'spi')
 
 if args.full_debug:
     for f in modules:
@@ -179,7 +179,7 @@ binary('memtest', ('memtest',) + lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
 if args.atf_headers:
-    binary('elfloader', ('elfloader', 'pll') + lib, '00100000')
+    binary('elfloader', ('elfloader', 'pll', 'spi') + lib, '00100000')
     print("default elfloader.bin")
 
 for addr in base_addresses:

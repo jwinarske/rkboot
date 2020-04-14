@@ -263,6 +263,13 @@ _Noreturn u32 ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
 	setup_mmu();
+	u64 xfer_start = get_timestamp();
+	u8 *buf =(u8 *)0x2000000;
+	spi_read_flash(buf, 16 << 20);
+	u64 xfer_end = get_timestamp();
+	buf[1024] = 0;
+	puts((const char *)buf);
+	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000;
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);

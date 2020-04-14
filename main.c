@@ -105,13 +105,6 @@ int32_t ENTRY NO_ASAN main() {
 	spi->enable = 0;
 	printf("SPI read %x\n", val);
 	assert(val != ~(u32)0);
-	u64 xfer_start = get_timestamp();
-	u8 *buf =(u8 *)0x100000;
-	spi_read_flash(buf, 16 << 20);
-	u64 xfer_end = get_timestamp();
-	buf[1024] = 0;
-	puts((const char *)buf);
-	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	stage_teardown(&store);
 	return 0;
 }
