@@ -116,7 +116,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 ))
 
 lib = ('timer', 'error', 'uart', 'mmu')
-levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
+levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit', 'spi')
 modules = levinboot + lib + ('memtest', 'elfloader', 'teststage', 'dump_fdt')
 
 if args.full_debug:
