@@ -2,6 +2,7 @@
 #include <main.h>
 #include <uart.h>
 #include <rk3399.h>
+#include <stage.h>
 #include "fdt.h"
 #include ATF_HEADER_PATH
 
@@ -259,10 +260,8 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
-	u64 sctlr;
-	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
-	debug("SCTLR_EL3: %016zx\n", sctlr);
-	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
+	struct stage_store store;
+	stage_setup(&store);
 	setup_mmu();
 	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000;
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
@@ -278,8 +277,8 @@ _Noreturn u32 ENTRY main() {
 	bl33_ep.args.arg1 = 0;
 	bl33_ep.args.arg2 = 0;
 	bl33_ep.args.arg3 = 0;
-	set_sctlr_flush_dcache(sctlr | SCTLR_I);
 	setup_pll(cru + CRU_BPLL_CON, 297);
+	stage_teardown(&store);
 	((bl31_entry)header->entry)(&bl_params, 0, 0, 0);
 	puts("return\n");
 	halt_and_catch_fire();
