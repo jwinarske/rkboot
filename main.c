@@ -82,16 +82,11 @@ static void UNUSED dump_clocks() {
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
-	u64 sctlr;
-	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
-	debug("SCTLR_EL3: %016zx\n", sctlr);
-	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
-	stage_setup();
+	struct stage_store store;
+	stage_setup(&store);
 	setup_mmu();
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();
-	set_sctlr_flush_dcache(sctlr);
-	__asm__ volatile("ic iallu;tlbi alle3");
-	puts("end\n");
+	stage_teardown(&store);
 	return 0;
 }
