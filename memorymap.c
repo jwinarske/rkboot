@@ -93,6 +93,7 @@ void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch,
 	u32 cs1_size = 0;
 	if (csmask & 2) {
 		msch[MSCH_DDRSIZE] = cs0_size | (4096/32 - cs0_size) << 8;
+		udelay(3);
 		u32 cs1_row_bits = cs0_row_bits;
 		u32 test_addr = MIRROR_TEST_ADDR + (cs0_size << 25);
 		while (test_mirror(test_addr, row_shift - 1 + cs1_row_bits)) {
