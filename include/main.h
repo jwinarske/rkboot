@@ -4,12 +4,11 @@
 #include <defs.h>
 #include "../config.h"
 #include <aarch64.h>
-#include <output.h>
+#include <lib.h>
 
 void setup_timer();
 void udelay(u32 usec);
 u64 get_timestamp();
-_Noreturn void halt_and_catch_fire();
 
 _Bool setup_pll(volatile u32 *base, u32 freq);
 void invalidate_dcache_set_sctlr(u64);
@@ -34,8 +33,6 @@ static inline void UNUSED apply32m(u32 *addr, u64 op) {
 }
 
 #define STRINGIFY(x) #x
-#define assert_msg(expr, ...) do {if (unlikely(!(expr))) {die(__VA_ARGS__);}}while(0)
-#define assert(expr) assert_msg(expr,  "%s:%s:%u: ASSERTION FAILED: %s\n", __FILE__, __FUNCTION__, __LINE__, #expr)
 #define assert_unimpl(expr, feature) assert_msg(expr, __FILE__":"STRINGIFY(__LINE__)": UNIMPLEMENTED: "feature)
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))

@@ -1,7 +1,8 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include <defs.h>
 #include <aarch64.h>
-#include <output.h>
+#include <lib.h>
 
 extern u8 __bss_start__, __bss_end__, __exc_base__;
 extern u8 __start__, __ro_end__, __data_end__;
