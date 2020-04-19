@@ -13,6 +13,9 @@
 enum compr_probe_status probe_lz4(const u8 *in, const u8 *end, u64 *size);
 const u8 *decompress_lz4(const u8 *in, const u8 *end, u8 **out, u8 *out_end);
 
+enum compr_probe_status probe_gzip(const u8 *in, const u8 *end, u64 *size);
+const u8 *decompress_gzip(const u8 *in, const u8 *end, u8 **out, u8 *out_end);
+
 const char *compr_probe_status_msg[NUM_COMPR_PROBE_STATUS] = {
 #define X(name, msg) msg,
 	DEFINE_COMPR_PROBE_STATUS
@@ -25,6 +28,9 @@ const struct format {
 } formats[] = {
 #ifdef HAVE_LZ4
 	{.probe = probe_lz4, .decompress = decompress_lz4},
+#endif
+#ifdef HAVE_GZIP
+	{.probe = probe_gzip, .decompress = decompress_gzip},
 #endif
 	{.probe = 0}
 };
