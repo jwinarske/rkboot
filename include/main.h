@@ -28,7 +28,6 @@ static inline void UNUSED apply32m(u32 *addr, u64 op) {
 	clrset32(addr, op >> 32, (u32)op);
 }
 
-#define STRINGIFY(x) #x
 #define assert_unimpl(expr, feature) assert_msg(expr, __FILE__":"STRINGIFY(__LINE__)": UNIMPLEMENTED: "feature)
 #define bounds_checked(arr, i) ((unlikely ((i) >= ARRAY_SIZE(arr)) ? die(__FILE__":"STRINGIFY(__LINE__)": ERROR: "#arr "[" #i "] out of bounds") : 0), arr[i])
 

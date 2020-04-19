@@ -11,7 +11,7 @@
 #include "compression.h"
 #include "../include/log.h"
 
-extern const struct decompressor lz4_decompressor, gzip_decompressor;
+extern const struct decompressor lz4_decompressor, gzip_decompressor, zstd_decompressor;
 
 const char *const compr_probe_status_msg[NUM_COMPR_PROBE_STATUS] = {
 #define X(name, msg) msg,
@@ -31,6 +31,9 @@ const struct decompressor *const formats[] = {
 #endif
 #ifdef HAVE_GZIP
 	&gzip_decompressor,
+#endif
+#ifdef HAVE_ZSTD
+	&zstd_decompressor,
 #endif
 	0
 };
@@ -142,22 +145,19 @@ int main(int argc, char **argv) {
 		} else {
 			info("divergence at offset %zu\n", pos);
 			memset(out, 0, size);
-			u8 *ptr = buf;
+			const u8 *ptr = buf;
+			ptr = (*decomp)->init(state, ptr, buf + buf_size);
+			assert(ptr);
 			state->out = out;
 			state->window_start = out;
 			state->out_end = out + pos;
 			while (1) {assert(state->decode);
 				size_t res = state->decode(state, ptr, buf + buf_size);
 				if (res >= NUM_DECODE_STATUS) {
-					assert(state->decode || res > NUM_DECODE_STATUS);
 					ptr += res - NUM_DECODE_STATUS;
 				} else if (res == DECODE_NEED_MORE_SPACE) {break;} else {
 					info("decompression failed, status: %s\n", decode_status_msg[res]);
-					if (ref) {
-						goto decompressed;
-					} else {
-						return 1;
-					}
+					return 1;
 				}
 			}
 			info("divergence at offset %zu (0x%zx), got 0x%02"PRIx8", expected 0x%02"PRIx8"\n", pos, pos, a, b);

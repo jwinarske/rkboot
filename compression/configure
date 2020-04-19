@@ -8,7 +8,7 @@ src=`realpath $0`
 src=`dirname $src`
 src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
 
-files="lz4 lzcommon inflate"
+files="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_sequences"
 
 cat >build.ninja <<END
 ninja_required_version = 1.3
@@ -26,7 +26,7 @@ for f in $files; do
 	echo build $f.o: cc "$src/$f.c" >>build.ninja
 done
 echo build compression.o: cc "$src/compression.c" >>build.ninja
-echo "    flags" = -DHAVE_LZ4 -DHAVE_GZIP >>build.ninja
+echo "    flags" = -DHAVE_LZ4 -DHAVE_GZIP -DHAVE_ZSTD >>build.ninja
 
 echo -n build decompress: ld compression.o >>build.ninja
 for f in $files; do
