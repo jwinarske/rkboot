@@ -34,12 +34,7 @@ static inline void UNUSED apply32m(u32 *addr, u64 op) {
 
 #define STRINGIFY(x) #x
 #define assert_unimpl(expr, feature) assert_msg(expr, __FILE__":"STRINGIFY(__LINE__)": UNIMPLEMENTED: "feature)
-
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 #define bounds_checked(arr, i) ((unlikely ((i) >= ARRAY_SIZE(arr)) ? die(__FILE__":"STRINGIFY(__LINE__)": ERROR: "#arr "[" #i "] out of bounds") : 0), arr[i])
-
-#define for_range(i, a, b) for (u32 i = a; i < b; ++i)
-#define for_array(i, arr) for (u32 i = 0; i < ARRAY_SIZE(arr); ++i)
 
 static inline u32 UNUSED ubfx32(u32 v, u32 shift, u32 length) {
 	return v >> shift & ((1 << length) - 1);

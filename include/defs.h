@@ -17,3 +17,8 @@ typedef uint64_t u64;
 
 #define CHECK_OFFSET(strct, member, offs) _Static_assert(offsetof(struct strct, member) == offs, "wrong offset for " #member)
 
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+
+#define for_range(i, a, b) for (u32 i = a; i < b; ++i)
+#define for_array(i, arr) for (u32 i = 0; i < ARRAY_SIZE(arr); ++i)
+
