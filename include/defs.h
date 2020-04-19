@@ -10,6 +10,7 @@ typedef uint64_t u64;
 
 #define unlikely(x) __builtin_expect((x), 0)
 
+#define FALLTHROUGH __attribute__((fallthrough))
 #define NO_ASAN __attribute__((no_sanitize_address))
 #define UNUSED __attribute__((unused))
 #define PRINTF(str_idx, start) __attribute__((format(printf, str_idx, start)))

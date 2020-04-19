@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include "../include/defs.h"
+#include "compression.h"
 #include <stdio.h>
 #include <inttypes.h>
 #include <assert.h>
@@ -20,10 +21,6 @@
 #else
 #define check(expr, ...) if (unlikely(!(expr))) {fputs("decompression failed\n", stderr);return 0;}
 #endif
-
-enum {LZCOMMON_BLOCK = 8};
-void lzcommon_literal_copy(u8 *dest, const u8 *src, u32 length);
-void lzcommon_match_copy(u8 *dest, u32 dist, u32 length);
 
 enum {
 	FBINDEP = 32,
@@ -101,27 +98,52 @@ static u8 *decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end, u
 	}
 }
 
-_Bool decompress(const u8 *in, const u8 *end, u8 **out, u8 *out_end) {
+enum compr_probe_status probe_lz4(const u8 *in, const u8 *end, u64 *size) {
+	if (end - in < 4) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
+	if (in[0] != 4 || in[1] != 34 || in[2] != 77 || in[3] != 24) {
+		return COMPR_PROBE_WRONG_MAGIC;
+	}
+	if (end - in < 7) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
+	u8 flags = in[4], bd = in[5];
+	in += 6;
+	if ((flags >> 6) != 1) {
+		info("version %"PRIu8" not implemented\n", flags >> 6);
+		return COMPR_PROBE_RESERVED_FEATURE;
+	}
+	if (flags & FRESERVED) {
+		info("reserved feature used in flags\n");
+		return COMPR_PROBE_RESERVED_FEATURE;
+	}
+	if (flags & FDICTID) {
+		info("dictionaries not implemented\n");
+		return COMPR_PROBE_UNIMPLEMENTED_FEATURE;
+	}
+	if (bd & 0x8f) {
+		info("reserved feature used in BD byte\n");
+		return COMPR_PROBE_RESERVED_FEATURE;
+	}
+	u8 block_size_field = bd >> 4 & 7;
+	if (block_size_field < 4) {
+		info("reserved block size value %"PRIu8" used\n", block_size_field);
+		return COMPR_PROBE_RESERVED_FEATURE;
+	}
+	if (flags & FCSIZE) {
+		if (end - in < 9) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
+		*size = in[0] | (u64)in[1] << 8 | (u64)in[2] << 16 | (u64)in[3] << 24 | (u64)in[4] << 32 | (u64)in[5] << 40 | (u64)in[6] << 48 | (u64)in[7] << 56;
+		in += 8;
+		return COMPR_PROBE_SIZE_KNOWN;
+	}
+	return COMPR_PROBE_SIZE_UNKNOWN;
+}
+
+const u8 *decompress_lz4(const u8 *in, const u8 *end, u8 **out, u8 *out_end) {
 	assert(out_end - *out > LZCOMMON_BLOCK);
-	check(end - in >= 7, "not enough data for frame header");
-	check(in[0] == 4 && in[1] == 34 && in[2] == 77 && in[3] == 24, "magic number mismatch");
+	assert(end - in >= 7);
 	u8 flags = in[4], bd = in[5];
 	const u8 UNUSED *frame_header = in;
 	in += 6;
 	info("decompressing LZ4, flags=0x%"PRIx8", bd=%"PRIx8"\n", flags, bd);
-	check(flags >> 6 == 1, "version %"PRIu8" not implemented\n", flags >> 6);
-	check(~flags & FRESERVED, "reserved feature used in flags\n");
-	if (flags & FCSIZE) {
-		check(end - in >= 9, "not enough data for content size field\n");
-		u64 content_size = in[0] | (u64)in[1] << 8 | (u64)in[2] << 16 | (u64)in[3] << 24 | (u64)in[4] << 32 | (u64)in[5] << 40 | (u64)in[6] << 48 | (u64)in[7] << 56;
-		in += 8;
-		check(out_end - *out - LZCOMMON_BLOCK >= content_size, "not enough space for content size\n");
-		out_end = *out + content_size;
-	}
-	check(~flags & FDICTID, "dictionaries not implemented\n");
-	check((bd & 0x8f) == 0, "reserved feature used in BD byte\n");
 	u8 block_size_field = bd >> 4 & 7;
-	check(block_size_field >= 4, "reserved block size value used\n");
 	u32 max_block_size = 256 << (2*block_size_field);
 	/* FIXME: implement checksum */
 	in += 1;
@@ -152,5 +174,5 @@ _Bool decompress(const u8 *in, const u8 *end, u8 **out, u8 *out_end) {
 		}
 		in = next_block_start;
 	}
-	return 1;
+	return in;
 }
