@@ -1,0 +1,34 @@
+#!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
+
+if [ "$CC" = "" ]; then CC=gcc; fi
+if [ "$LD" = "" ]; then LD="$CC"; fi
+if [ "$CFLAGS" = "" ]; then CFLAGS=-O3; fi
+src=`realpath $0`
+src=`dirname $src`
+src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
+
+files="compression lz4 lzcommon"
+
+cat >build.ninja <<END
+ninja_required_version = 1.3
+cflags = -Wall -Werror -Wno-error=unused-parameter -Wextra -Wno-sign-compare $CFLAGS
+rule cc
+    depfile = \$out.d
+    deps = gcc
+    command = $CC -MD -MF \$out.d \$cflags \$flags \$in -c -o \$out
+
+rule ld
+    command = $LD \$in -o \$out
+
+END
+for f in $files; do
+	echo build $f.o: cc $src/$f.c >>build.ninja
+done
+
+echo -n build decompress: ld >>build.ninja
+for f in $files; do
+	echo -n " $f.o" >>build.ninja
+done
+echo >>build.ninja
+echo default decompress >>build.ninja
