@@ -286,7 +286,11 @@ _Noreturn u32 ENTRY main() {
 	stage_setup(&store);
 	setup_mmu();
 	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, blob_addr = 0x02000000;
-	const u8 *blob = (const u8 *)blob_addr, *blob_end = blob + (16 << 20);
+	u8 *blob = (u8 *)blob_addr, *blob_end = blob + (16 << 20);
+	u64 xfer_start = get_timestamp();
+	spi_read_flash(blob, blob_end - blob);
+	u64 xfer_end = get_timestamp();
+	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	blob = decompress(blob, blob_end, (u8 *)elf_addr, (u8 *)fdt_addr);
 	blob = decompress(blob, blob_end, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
 	blob = decompress(blob, blob_end, (u8 *)payload_addr, (u8 *)blob_addr);
