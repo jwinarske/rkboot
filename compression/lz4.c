@@ -205,7 +205,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 	return in + 7;
 }
 
-struct decompressor lz4_decompressor = {
+const struct decompressor lz4_decompressor = {
 	.probe = probe,
 	.state_size = sizeof(struct decompressor_state),
 	.init = init,

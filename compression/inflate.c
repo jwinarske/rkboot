@@ -351,7 +351,7 @@ static decompress_func block_start;
 static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 
-	info("stored block\n");
+	debug("stored block\n");
 	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
 	u16 len = in[0] | (u32)in[1] << 8;
 	u16 nlen = in[2] | (u32)in[3] << 8;
@@ -453,7 +453,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 	struct huffman_state huff = {.bits = st->bits, .num_bits = st->num_bits, .ptr = in};
 
-	info("block header\n");
+	debug("block header\n");
 	REQUIRE_BITS(3);
 	u8 block_header = huff.bits & 7;
 	SHIFT(3);
@@ -470,7 +470,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 		if ((block_header >> 1) == 2) {
 			u8 lengths2[19];
 			u16 length_codes[19];
-			info("dynamic block\n");
+			debug("dynamic block\n");
 			REQUIRE_BITS(14);
 			hlit = huff.bits & 31;
 			hdist = huff.bits >> 5 & 31;
