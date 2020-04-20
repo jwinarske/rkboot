@@ -333,7 +333,7 @@ struct gzip_dec_state {
 static size_t trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 
-	check(end - in == 8, "trailer size %zu, expected 8\n", end - in);
+	if (unlikely(end - in < 8)) {return DECODE_NEED_MORE_DATA;}
 	u32 crc_read = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
 	u32 crc = st->crc ^ 0xffffffff;
 	check(crc_read == crc, "content CRC mismatch: read %08x, computed %08x\n", crc_read, crc);

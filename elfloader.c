@@ -3,6 +3,7 @@
 #include <uart.h>
 #include <rk3399.h>
 #include <stage.h>
+#include <compression.h>
 #include "fdt.h"
 #include ATF_HEADER_PATH
 
@@ -258,12 +259,37 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 	write_be32(&dest_header->struct_size, (u32)(dest_struct - dest_struct_start)*4);
 }
 
+extern const struct decompressor gzip_decompressor;
+
+const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
+	size_t size;
+	u64 start = get_timestamp();
+	if (gzip_decompressor.probe(data, end, &size) < COMPR_PROBE_LAST_SUCCESS) {
+		info("gzip probed\n");
+		struct decompressor_state *state = (struct decompressor_state *)end;
+		assert(data = gzip_decompressor.init(state, data, end));
+		state->out = state->window_start = out;
+		state->out_end = out_end;
+		while (state->decode) {
+			size_t res = state->decode(state, data, end);
+			assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu\n", res);
+			data += res - NUM_DECODE_STATUS;
+		}
+		info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / CYCLES_PER_MICROSECOND);
+	} else {die("couldn't probe");}
+	return data;
+}
+
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
 	struct stage_store store;
 	stage_setup(&store);
 	setup_mmu();
-	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000;
+	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, blob_addr = 0x02000000;
+	const u8 *blob = (const u8 *)blob_addr, *blob_end = blob + (16 << 20);
+	blob = decompress(blob, blob_end, (u8 *)elf_addr, (u8 *)fdt_addr);
+	blob = decompress(blob, blob_end, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
+	blob = decompress(blob, blob_end, (u8 *)payload_addr, (u8 *)blob_addr);
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);
 

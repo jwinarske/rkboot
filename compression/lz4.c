@@ -1,20 +1,10 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include "../include/defs.h"
+#include "../include/log.h"
 #include "compression.h"
 #include <stdio.h>
 #include <inttypes.h>
 #include <assert.h>
-
-#ifndef debug
-#ifndef DEBUG_MSG
-#define debug(...)
-#else
-#define debug(...) fprintf(stderr, __VA_ARGS__)
-#endif
-#endif
-#ifndef info
-#define info(...) fprintf(stderr, __VA_ARGS__)
-#endif
 
 #ifndef TINY
 #define check(expr, ...) if (unlikely(!(expr))) {info(__VA_ARGS__);return 0;}

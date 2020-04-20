@@ -99,7 +99,7 @@ if cc.endswith('gcc'):
 genld = path.join(srcdir, 'gen_linkerscript.sh')
 
 print('''
-cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
+cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
 ldflags = {ldflags}
 
 rule buildcc
@@ -139,16 +139,17 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
-modules = levinboot + lib + ('memtest', 'elfloader', 'teststage', 'dump_fdt')
+modules = levinboot + lib + ('memtest', 'elfloader', 'teststage', 'dump_fdt', 'compression/inflate', 'compression/lz4', 'compression/lzcommon', 'string')
 
 if args.full_debug:
     for f in modules:
         flags[f].append('-DDEBUG_MSG')
 
 for f in modules:
-    build_flags = {'flags': " ".join(flags[f])} if f in flags else {}
+    d, sep, base = f.rpartition("/")
+    build_flags = {'flags': " ".join(flags[base])} if base in flags else {}
     src = path.join(srcdir, f+'.c')
-    print(build(f+'.o', 'cc', src, **build_flags))
+    print(build(base+'.o', 'cc', src, **build_flags))
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
 lib += ('dcache',)
@@ -189,7 +190,7 @@ def binary(name, modules, base_address):
     print(build(
         name + '.elf',
         'ld',
-        tuple(x + '.o' for x in modules),
+        tuple(x.rpartition("/")[2] + '.o' for x in modules),
         deps=base_address + '.ld',
         flags='-T {}.ld'.format(base_address)
     ))
@@ -201,7 +202,7 @@ binary('memtest', ('memtest',) + lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
 if args.atf_headers:
-    binary('elfloader', ('elfloader', 'pll') + lib, '00100000')
+    binary('elfloader', ('elfloader', 'pll', 'compress/inflate', 'compress/lzcommon', 'string') + lib, '00100000')
     print("default elfloader.bin")
 
 for addr in base_addresses:
