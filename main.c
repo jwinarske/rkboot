@@ -3,6 +3,7 @@
 #include <uart.h>
 #include <rk3399.h>
 #include <stage.h>
+#include <rk-spi.h>
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
@@ -87,6 +88,30 @@ int32_t ENTRY NO_ASAN main() {
 	setup_mmu();
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();
+	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 1) << 15 | SET_BITS16(7, 3) << 8;
+	const u32 spi_mode_base = SPI_MASTER | SPI_CSM_KEEP_LOW | SPI_SSD_FULL_CYCLE | SPI_LITTLE_ENDIAN | SPI_MSB_FIRST | SPI_POLARITY(1) | SPI_PHASE(1) | SPI_DFS_8BIT;
+	assert((spi_mode_base | SPI_BHT_APB_8BIT) == 0x24c1);
+	spi->ctrl0 = spi_mode_base | SPI_BHT_APB_8BIT;
+	spi->enable = 1; mmio_barrier();
+	spi->slave_enable = 1; mmio_barrier();
+	spi->tx = 0x9f;
+	for_range(i, 0, 3) {spi->tx = 0xff;}
+	u32 val = 0;
+	for_range(i, 0, 4) {
+		while (!spi->rx_fifo_level) {__asm__ volatile("yield");}
+		val = val << 8 | spi->rx;
+	}
+	spi->slave_enable = 0; mmio_barrier();
+	spi->enable = 0;
+	printf("SPI read %x\n", val);
+	assert(val != ~(u32)0);
+	u64 xfer_start = get_timestamp();
+	u8 *buf =(u8 *)0x100000;
+	spi_read_flash(buf, 16 << 20);
+	u64 xfer_end = get_timestamp();
+	buf[1024] = 0;
+	puts((const char *)buf);
+	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	stage_teardown(&store);
 	return 0;
 }
