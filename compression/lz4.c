@@ -98,7 +98,7 @@ static u8 *decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end, u
 	}
 }
 
-enum compr_probe_status probe_lz4(const u8 *in, const u8 *end, u64 *size) {
+static enum compr_probe_status probe(const u8 *in, const u8 *end, size_t *size) {
 	if (end - in < 4) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
 	if (in[0] != 4 || in[1] != 34 || in[2] != 77 || in[3] != 24) {
 		return COMPR_PROBE_WRONG_MAGIC;
@@ -129,50 +129,84 @@ enum compr_probe_status probe_lz4(const u8 *in, const u8 *end, u64 *size) {
 	}
 	if (flags & FCSIZE) {
 		if (end - in < 9) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
-		*size = in[0] | (u64)in[1] << 8 | (u64)in[2] << 16 | (u64)in[3] << 24 | (u64)in[4] << 32 | (u64)in[5] << 40 | (u64)in[6] << 48 | (u64)in[7] << 56;
+		u64 csize = in[0] | (u64)in[1] << 8 | (u64)in[2] << 16 | (u64)in[3] << 24 | (u64)in[4] << 32 | (u64)in[5] << 40 | (u64)in[6] << 48 | (u64)in[7] << 56;
 		in += 8;
-		return COMPR_PROBE_SIZE_KNOWN;
+		if (csize <= SIZE_MAX) {
+			*size = csize;
+			return COMPR_PROBE_SIZE_KNOWN;
+		} else {
+			return COMPR_PROBE_SIZE_UNKNOWN;
+		}
 	}
 	return COMPR_PROBE_SIZE_UNKNOWN;
 }
 
-const u8 *decompress_lz4(const u8 *in, const u8 *end, u8 **out, u8 *out_end) {
-	assert(out_end - *out > LZCOMMON_BLOCK);
-	assert(end - in >= 7);
-	u8 flags = in[4], bd = in[5];
-	const u8 UNUSED *frame_header = in;
-	in += 6;
-	info("decompressing LZ4, flags=0x%"PRIx8", bd=%"PRIx8"\n", flags, bd);
-	u8 block_size_field = bd >> 4 & 7;
-	u32 max_block_size = 256 << (2*block_size_field);
-	/* FIXME: implement checksum */
-	in += 1;
-	u8 *window_start = *out;
-	while (1) {
-		check(end - in >= 4, "not enough data for block size field\n");
-		u32 block_size = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
-		in += 4;
-		u32 actual_block_size = block_size & 0x7fffffff;
-		if (actual_block_size == 0) {break;}
-		check(actual_block_size <= max_block_size, "block size of %"PRIu32" too large", actual_block_size);
-		check(end - in >= block_size, "not enough data for block");
-		const u8 *next_block_start = in + block_size;
-		if (flags & FBCHECKSUM) {
-			/* FIXME */
-			next_block_start += 4;
-		}
-		check(out_end - *out >= block_size, "not enough space for block");
-		if (block_size & 1 << 31) {
-			lzcommon_literal_copy(*out, in, actual_block_size);
-			*out += actual_block_size;
-		} else {
-			if (flags & FBINDEP) {window_start = *out;}
-			u8 *out_limit = out_end - *out < max_block_size ? out_end : *out + max_block_size;
-			u8 *block_end = decompress_block(in, in + block_size, *out, out_limit, window_start);
-			if (!block_end) {return 0;}
-			*out = block_end;
-		}
-		in = next_block_start;
+struct lz4_dec_state {
+	struct decompressor_state st;
+	u32 max_block_size;
+	u8 flags;
+};
+
+static size_t decode_trailer(struct decompressor_state *state,  const u8 *in,  const u8 *end) {
+	struct lz4_dec_state *st = (struct lz4_dec_state *)state;
+	st->st.decode = 0;
+	if (st->flags & FCCHECKSUM) {
+		check(end - in >= 4, "not enough data for content checksum\n");
+		/* FIXME: implement */
+		return NUM_DECODE_STATUS + 4;
 	}
-	return in;
+	return NUM_DECODE_STATUS;
 }
+
+static size_t decode_block(struct decompressor_state *state,  const u8 *in,  const u8 *end) {
+	struct lz4_dec_state *st = (struct lz4_dec_state *)state;
+	check(end - in >= 4, "not enough data for block size field\n");
+	u32 block_size = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
+	in += 4;
+	u32 actual_block_size = block_size & 0x7fffffff;
+	if (actual_block_size == 0) {
+		info("ending\n");
+		st->st.decode = decode_trailer;
+		return NUM_DECODE_STATUS + 4;
+	}
+	info("block size %"PRIu32" (0x%"PRIx32")\n", block_size, actual_block_size);
+	check(actual_block_size <= st->max_block_size, "block size of %"PRIu32" too large\n", actual_block_size);
+	if (unlikely(end - in < actual_block_size)) {return DECODE_NEED_MORE_DATA;}
+	size_t total_size = actual_block_size + 4;
+	if (st->flags & FBCHECKSUM) {
+		/* FIXME */
+		total_size += 4;
+	}
+	u8 **out = &state->out, *out_end = state->out_end, *window_start = state->window_start;
+	if (unlikely(out_end - *out < actual_block_size)) {return DECODE_NEED_MORE_SPACE;}
+	if (block_size & 1 << 31) {
+		lzcommon_literal_copy(*out, in, actual_block_size);
+		*out += actual_block_size;
+	} else {
+		u8 *out_limit = out_end - *out < st->max_block_size ? out_end : *out + st->max_block_size;
+		u8 *block_end = decompress_block(in, in + block_size, *out, out_limit, window_start);
+		if (!block_end) {return DECODE_ERR;}
+		*out = block_end;
+	}
+	if (st->flags & FBINDEP) {state->window_start = *out;}
+	return NUM_DECODE_STATUS + total_size;
+}
+
+static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	assert(end - in >= 7);
+	struct lz4_dec_state *st = (struct lz4_dec_state *)state;
+	st->flags = in[4];
+	u8 bd = in[5];
+	info("decompressing LZ4, flags=0x%"PRIx8", bd=%"PRIx8"\n", st->flags, bd);
+	u8 block_size_field = bd >> 4 & 7;
+	st->max_block_size = 256 << (2*block_size_field);
+	/* FIXME: implement header checksum */
+	st->st.decode = decode_block;
+	return in + 7;
+}
+
+struct decompressor lz4_decompressor = {
+	.probe = probe,
+	.state_size = sizeof(struct decompressor_state),
+	.init = init,
+};

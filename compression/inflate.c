@@ -206,8 +206,6 @@ static inline struct huffman_state huff_with_extra(struct huffman_state huff, co
 	return huff;
 }
 
-#define REQUIRE_BITS(n, context) do {huff.val = (n); huff = require_bits(huff, end); check(huff.num_bits >= (n), "no more bytes to read in " context);} while (0)
-
 static struct huffman_state decode_lengths(struct huffman_state huff, const u8 *end, u16 *dectable, u8 *lengths) {
 	u32 num_symbols = huff.val;
 	static const u8 clength_extra[3] = {2, 3, 7};
@@ -254,194 +252,21 @@ static struct huffman_state decode_lengths(struct huffman_state huff, const u8 *
 	return huff;
 }
 
-void lzcommon_match_copy(u8 *dest, u32 dist, u32 length);
-void lzcommon_literal_copy(u8 *dest, const u8 *src, u32 length);
-
-_Bool inflate(const u8 **in, const u8 *end, u8 **out_ptr, u8 *out_end, u32 *crc_ptr, const u32 *crc_table) {
-	u32 crc = *crc_ptr;
-	struct huffman_state huff;
-	huff.ptr = *in;
-	u8 *out = *out_ptr;
-	huff.bits = *huff.ptr++;
-	huff.num_bits = 8;
-	u8 block_header;
-	u8 lengths2[19];
-	u16 length_codes[19];
-	u16 dectable_dist[512], UNUSED dectable_lit[512];
-	u8 lit_lengths[286], dist_lengths[30];
-	u16 lit_codes[286], lit_overlength[286], dist_codes[30], dist_overlength[30];
-	u16 lit_oloff[7], dist_oloff[7];
-	static const u8 lit_extra[21] = {
-		1, 1, 1, 1,
-		2, 2, 2, 2,
-		3, 3, 3, 3,
-		4, 4, 4, 4,
-		5, 5, 5, 5,
-		0
-	};
-	static const u8 dist_extra[26] = {
-		1, 1, 2, 2, 3, 3,
-		4, 4, 5, 5, 6, 6,
-		7, 7, 8, 8, 9, 9,
-		10, 10, 11, 11, 12, 12,
-		13, 13
-	};
-	u16 lit_base[21], dist_base[26];
-	u16 base = 0;
-	info("lit_base: ");
-	for_array(i, lit_base) {
-		debug(" %"PRIu16, base + 11);
-		lit_base[i] = base;
-		base += 1 << lit_extra[i];
-	}
-	info("\n");
-	base = 0;
-	for_array(i, dist_base) {
-		dist_base[i] = base;
-		base += 1 << dist_extra[i];
-	}
-	do {
-		REQUIRE_BITS(3, "block header");
-		block_header = huff.bits & 7;
-		SHIFT(3);
-		debug("block header %u\n", (unsigned)block_header);
-		if ((block_header >> 1) == BTYPE_UNCOMPRESSED) {
-			info("stored block\n");
-			check(end - huff.ptr >= 4, "input not long enough to read LEN+NLEN\n");
-			u16 len = huff.ptr[0] | (u32)huff.ptr[1] << 8;
-			huff.ptr += 2;
-			u16 nlen = huff.ptr[0] | (u32)huff.ptr[1] << 8;
-			huff.ptr += 2;
-			check(len == (nlen ^ 0xffff), "length 0x%04x is not ~0x%04x\n", (unsigned)len, (unsigned)nlen);
-			huff.bits = 0;
-			huff.num_bits = 0;
-			check(out_end - out >= len, "not enough output buffer to copy stored block");
-			check(end - huff.ptr >= len, "not enough input data to copy stored block");
-			while (len--) {
-				u8 c = *out++ = *huff.ptr++;
-				crc = crc >> 8 ^ crc_table[(u8)crc ^ c];
-			}
-		} else {
-			check((block_header >> 1) <= 2, "reserved block type used\n");
-			u32 hlit, UNUSED hdist;
-			if ((block_header >> 1) == 2) {
-				info("dynamic block\n");
-				REQUIRE_BITS(14, "dynamic block header");
-				hlit = huff.bits & 31;
-				hdist = huff.bits >> 5 & 31;
-				u32 hclen = huff.bits >> 10 & 15;
-				SHIFT(14);
-				hclen += 4;
-				hlit += 257;
-				hdist += 1;
-				debug("hclen%u hlit%u hdist%u\n", hclen, hlit, hdist);
-				check(hlit <= 286, "literal alphabet too large\n");
-				check(hdist <= 30, "distance alphabet too large\n");
-				static const u8 hclen_order[19] = {
-					16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
-				};
-				for_range(i, 0, hclen) {
-					REQUIRE_BITS(3, "code length code length");
-					u32 code = huff.bits & 7;
-					debug("length code length %u\n", code);
-					lengths2[hclen_order[i]] = code;
-					SHIFT(3);
-				}
-				for_range(i, hclen, 19) {lengths2[hclen_order[i]] = 0;}
-				construct_codes(19, lengths2, length_codes);
-				for_array(i, length_codes) {
-					debug("code length code %u length: %u, code %x\n", i, (unsigned)lengths2[i], (unsigned)length_codes[i]);
-				}
-				construct_dectable(19, lengths2, length_codes, dectable_dist, dist_oloff, dist_overlength);
-				/*for (size_t i = 0; i < 512; i += 4) {
-					debug("%04x %04x %04x %04x\n", dectable_dist[i], dectable_dist[i+1], dectable_dist[i+2], dectable_dist[i+3]);
-				}*/
-				huff.val = hlit;
-				huff = decode_lengths(huff, end, dectable_dist, lit_lengths);
-				check(huff.ptr, "ran out of data while decoding literal code lengths\n");
-				check(huff.val == NO_ERROR, "%s", error_msg[huff.val]);
-				for_range(lit, hlit, 286) {lit_lengths[lit] = 0;}
-				huff.val = hdist;
-				huff = decode_lengths(huff, end, dectable_dist, dist_lengths);
-				check(huff.ptr, "ran out of data while decoding distance code lengths\n");
-				check(huff.val == NO_ERROR, "%s\n", error_msg[huff.val]);
-				for_range(dist, hdist, 30) {dist_lengths[dist] = 0;}
-				construct_codes(286, lit_lengths, lit_codes);
-				construct_dectable(286, lit_lengths, lit_codes, dectable_lit, lit_oloff, lit_overlength);
-				construct_codes(30, dist_lengths, dist_codes);
-				construct_dectable(30, dist_lengths, dist_codes, dectable_dist, dist_oloff, dist_overlength);
-			} else {
-				info("fixed huffman block\n");
-				static const u8 bitrev_nibble[16] = {
-					0x0, 0x8, 0x4, 0xc,
-					0x2, 0xa, 0x6, 0xe,
-					0x1, 0x9, 0x5, 0xd,
-					0x3, 0xb, 0x7, 0xf,
-				};
-				for_range(i, 0, 512) {
-					u16 rev = (i << 8 & 0x100) | bitrev_nibble[i >> 1 & 15] << 4 | bitrev_nibble[i >> 5 & 15];
-					dectable_lit[i] = rev < 0x5f ? ((rev >> 2) + 256) << 4 | 7
-						: rev < 0x17f ? ((rev >> 1) - 0x30) << 4 | 8
-						: rev < 0x18b ? ((rev >> 1) - 0xc0 + 280) << 4 | 8
-						: rev < 0x18f ? 10
-						: (rev - 0x190 + 144) << 4 | 9;
-				}
-				for_array(i, lit_oloff) {lit_oloff[i] = 0;}
-				assert(dectable_lit[0] == 0x1007);
-				assert(dectable_lit[0xc] == 0x8);
-				info("%x\n", (unsigned)dectable_lit[3]);
-				assert(dectable_lit[0x3] == (280 << 4 | 8));
-				assert(dectable_lit[0x13] == 0x909);
-
-				for_range(i, 0, 512) {
-					u16 rev = (i << 4 & 0x10) | bitrev_nibble[i >> 1 & 15];
-					dectable_dist[i] = rev < 30 ? rev << 4 | 5 : 10;
-				}
-				for_array(i, dist_oloff) {dist_oloff[i] = 0;}
-			}
-			while (1) {
-				huff.val = 265;
-				huff = huff_with_extra(huff, end, dectable_lit, lit_extra, lit_base, lit_oloff, lit_overlength, lit_codes);
-				check(huff.ptr, "ran out of data during a length/literal symbol\n");
-				if (huff.val < 256) {
-					debug("literal 0x%02x %c\n", huff.val, huff.val >= 0x20 && huff.val < 0x7f ? (char)huff.val : '.');
-					check(out < out_end, "ran out of output buffer while decoding a literal\n");
-					*out++ = huff.val;
-					crc = crc >> 8 ^ crc_table[(u8)crc ^ huff.val];
-				} else if (huff.val > 256) {
-					u32 length = huff.val - 257 + 3;
-					debug("match length=%u ", length);
-					huff.val = 4;
-					huff = huff_with_extra(huff, end, dectable_dist, dist_extra, dist_base, dist_oloff, dist_overlength, dist_codes);
-					check(huff.ptr, "ran out of data during a distance symbol\n");
-					u32 dist = huff.val + 1;
-					check(dist <= out - *out_ptr, "match distance of %u beyond start of buffer", dist);
-					if (length >= 258) {
-						check(length != 258, "file used literal/length symbol 284 with 5 1-bits, which is specced invalid (without it being specially noted no less, WTF)\n");
-						length = 258;
-					}
-					debug(" dist=%"PRIu32" %.*s…\n", dist, length < dist ? (int)length : (int)dist, out - dist);
-					check(length < out_end - out, "not enough output buffer to perform a match copy of size %u\n", length);
-					lzcommon_match_copy(out, dist, length);
-					do {
-						crc = crc >> 8 ^ crc_table[(u8)crc ^ *out++];
-					} while (--length);
-					if (out - *out_ptr > 100) {
-						debug("%.100s\n", out - 100);
-					} else {
-						debug("%.*s\n", (int)(out - *out_ptr), *out_ptr);
-					}
-				} else {
-					break;
-				}
-			}
-		}
-	} while (!(block_header & BFINAL));
-	*out_ptr = out;
-	*in = huff.ptr;
-	*crc_ptr = crc;
-	return 1;
-}
+static const u8 lit_extra[21] = {
+	1, 1, 1, 1,
+	2, 2, 2, 2,
+	3, 3, 3, 3,
+	4, 4, 4, 4,
+	5, 5, 5, 5,
+	0
+};
+static const u8 dist_extra[26] = {
+	1, 1, 2, 2, 3, 3,
+	4, 4, 5, 5, 6, 6,
+	7, 7, 8, 8, 9, 9,
+	10, 10, 11, 11, 12, 12,
+	13, 13
+};
 
 enum {
 	FTEXT = 1,
@@ -452,7 +277,7 @@ enum {
 	FRESERVED_MASK = 0xe0
 };
 
-enum compr_probe_status probe_gzip(const u8 *in, const u8 *end, u64 *size) {
+static enum compr_probe_status probe(const u8 *in, const u8 *end, size_t UNUSED *size) {
 	if (end - in < 2) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
 	if (in[0] != 31 || in[1] != 139) {return COMPR_PROBE_WRONG_MAGIC;}
 	if (end - in < 18) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
@@ -488,13 +313,251 @@ enum compr_probe_status probe_gzip(const u8 *in, const u8 *end, u64 *size) {
 	return COMPR_PROBE_SIZE_UNKNOWN;
 }
 
-const u8 *decompress_gzip(const u8 *in, const u8 *end, u8 **out, u8 *out_end) {
-	u32 poly = 0xedb88320;
+struct gzip_dec_state {
+	struct decompressor_state st;
 	u32 crc_table[256];
-	for_array(i, crc_table) {
-		crc_table[i] = crc32_byte(i, poly);
+
+	u32 crc;
+	u32 isize;
+	u32 bits;
+	u8 num_bits;
+	_Bool last_block;
+
+	u16 dectable_dist[512], dectable_lit[512];
+	u8 lit_lengths[286], dist_lengths[30];
+	u16 lit_codes[286], lit_overlength[286], dist_codes[30], dist_overlength[30];
+	u16 lit_oloff[7], dist_oloff[7];
+	u16 lit_base[21], dist_base[26];
+};
+
+static size_t trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
+
+	check(end - in == 8, "trailer size %zu, expected 8\n", end - in);
+	u32 crc_read = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
+	u32 crc = st->crc ^ 0xffffffff;
+	check(crc_read == crc, "content CRC mismatch: read %08x, computed %08x\n", crc_read, crc);
+	info("CRC32: %08x\n", crc);
+	in += 4;
+	u32 isize = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
+	in += 4;
+	check(st->isize == isize, "compressed size mismatch, read %08x, decompressed %08x (mod 1 << 32)\n", isize, st->isize);
+	st->st.decode = 0;
+	return NUM_DECODE_STATUS + 8;
+}
+
+static decompress_func block_start;
+
+static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
+
+	info("stored block\n");
+	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
+	u16 len = in[0] | (u32)in[1] << 8;
+	u16 nlen = in[2] | (u32)in[3] << 8;
+	check(len == (nlen ^ 0xffff), "length 0x%04x is not ~0x%04x\n", (unsigned)len, (unsigned)nlen);
+	in += 4;
+	if (unlikely(end - in < len)) {return DECODE_NEED_MORE_DATA;}
+	end = in + len;
+	u8 *out = st->st.out;
+	if (st->st.out_end - out < len) {return DECODE_NEED_MORE_SPACE;}
+	u32 crc = st->crc;
+	while (in < end) {
+		u8 c = *out++ = *in++;
+		crc = crc >> 8 ^ st->crc_table[(u8)crc ^ c];
 	}
+	st->st.decode = !st->last_block ?  block_start : trailer;
+	st->st.out = out;
+	st->crc = crc;
+	st->isize += len;
+	return NUM_DECODE_STATUS + 4 + len;
+}
+
+static size_t huff_block(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
+	struct huffman_state huff = {.ptr = in, .bits = st->bits, .num_bits = st->num_bits};
+	u8 *out = st->st.out, *out_start = out, *out_end = st->st.out_end;
+	const u8 *ptr_save;
+	u32 crc = st->crc, bits_save;
+	u8 num_bits_save;
+	size_t res;
+	debug("huffman block\n");
+
+	while (1) {
+		ptr_save = huff.ptr; bits_save = huff.bits; num_bits_save = huff.num_bits;
+		huff.val = 265;
+		huff = huff_with_extra(huff, end, st->dectable_lit, lit_extra, st->lit_base, st->lit_oloff, st->lit_overlength, st->lit_codes);
+		if (unlikely(!huff.ptr)) {
+			res = DECODE_NEED_MORE_DATA;
+			goto interrupted;
+		}
+		if (huff.val < 256) {
+			debug("literal 0x%02x %c\n", huff.val, huff.val >= 0x20 && huff.val < 0x7f ? (char)huff.val : '.');
+			if (unlikely(out >= out_end)) {
+				res = DECODE_NEED_MORE_SPACE;
+				goto interrupted;
+			}
+			*out++ = huff.val;
+			crc = crc >> 8 ^ st->crc_table[(u8)crc ^ huff.val];
+		} else if (huff.val > 256) {
+			u32 length = huff.val - 257 + 3;
+			debug("match length=%u ", length);
+			huff.val = 4;
+			huff = huff_with_extra(huff, end, st->dectable_dist, dist_extra, st->dist_base, st->dist_oloff, st->dist_overlength, st->dist_codes);
+			if (unlikely(!huff.ptr)) {
+				res = DECODE_NEED_MORE_DATA;
+				goto interrupted;
+			}
+			u32 dist = huff.val + 1;
+			check(dist <= out - st->st.window_start, "match distance of %u beyond start of buffer", dist);
+			if (length >= 258) {
+				check(length != 258, "file used literal/length symbol 284 with 5 1-bits, which is specced invalid (without it being specially noted no less, WTF)\n");
+				length = 258;
+			}
+			debug(" dist=%"PRIu32" %.*s…\n", dist, length < dist ? (int)length : (int)dist, out - dist);
+			if (unlikely(out_end - out < length)) {
+				res = DECODE_NEED_MORE_SPACE;
+				goto interrupted;
+			}
+			lzcommon_match_copy(out, dist, length);
+			do {
+				crc = crc >> 8 ^ st->crc_table[(u8)crc ^ *out++];
+			} while (--length);
+			if (out - st->st.window_start > 100) {
+				debug("%.100s\n", out - 100);
+			} else {
+				debug("%.*s\n", (int)(out - st->st.window_start), st->st.window_start);
+			}
+		} else {
+			st->st.decode = !st->last_block ? block_start : trailer;
+			st->num_bits = huff.num_bits;
+			st->bits = huff.bits;
+			res = NUM_DECODE_STATUS + (huff.ptr - in);
+			goto end;
+		}
+	}
+	interrupted:;
+	if (out > out_start) {res = NUM_DECODE_STATUS + (ptr_save - in);}
+	st->num_bits = num_bits_save;
+	st->bits = bits_save;
+	end:;
+	st->st.out = out;
+	st->isize += out - out_start;
+	st->crc = crc;
+	return res;
+}
+
+
+#define REQUIRE_BITS(n) do {huff.val = (n); huff = require_bits(huff, end); if (unlikely(huff.num_bits < (n))) {return DECODE_NEED_MORE_DATA;}} while (0)
+static size_t block_start(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
+	struct huffman_state huff = {.bits = st->bits, .num_bits = st->num_bits, .ptr = in};
+
+	info("block header\n");
+	REQUIRE_BITS(3);
+	u8 block_header = huff.bits & 7;
+	SHIFT(3);
+	debug("block header %u\n", (unsigned)block_header);
+	st->last_block = block_header & 1;
+	if ((block_header >> 1) == BTYPE_UNCOMPRESSED) {
+		st->st.decode = raw_block;
+		st->bits = 0;
+		st->num_bits = 0;
+		return NUM_DECODE_STATUS + (huff.ptr - in);
+	} else {
+		check((block_header >> 1) <= 2, "reserved block type used\n");
+		u32 hlit, UNUSED hdist;
+		if ((block_header >> 1) == 2) {
+			u8 lengths2[19];
+			u16 length_codes[19];
+			info("dynamic block\n");
+			REQUIRE_BITS(14);
+			hlit = huff.bits & 31;
+			hdist = huff.bits >> 5 & 31;
+			u32 hclen = huff.bits >> 10 & 15;
+			SHIFT(14);
+			hclen += 4;
+			hlit += 257;
+			hdist += 1;
+			debug("hclen%u hlit%u hdist%u\n", hclen, hlit, hdist);
+			check(hlit <= 286, "literal alphabet too large\n");
+			check(hdist <= 30, "distance alphabet too large\n");
+			static const u8 hclen_order[19] = {
+				16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+			};
+			for_range(i, 0, hclen) {
+				REQUIRE_BITS(3);
+				u32 code = huff.bits & 7;
+				debug("length code length %u\n", code);
+				lengths2[hclen_order[i]] = code;
+				SHIFT(3);
+			}
+			for_range(i, hclen, 19) {lengths2[hclen_order[i]] = 0;}
+			construct_codes(19, lengths2, length_codes);
+			for_array(i, length_codes) {
+				debug("code length code %u length: %u, code %x\n", i, (unsigned)lengths2[i], (unsigned)length_codes[i]);
+			}
+			construct_dectable(19, lengths2, length_codes, st->dectable_dist, st->dist_oloff, st->dist_overlength);
+			/*for (size_t i = 0; i < 512; i += 4) {
+				debug("%04x %04x %04x %04x\n", dectable_dist[i], dectable_dist[i+1], dectable_dist[i+2], dectable_dist[i+3]);
+			}*/
+			huff.val = hlit;
+			huff = decode_lengths(huff, end, st->dectable_dist, st->lit_lengths);
+			if (unlikely(!huff.ptr)) {return DECODE_NEED_MORE_DATA;}
+			check(huff.val == NO_ERROR, "%s", error_msg[huff.val]);
+			for_range(lit, hlit, 286) {st->lit_lengths[lit] = 0;}
+			huff.val = hdist;
+			huff = decode_lengths(huff, end, st->dectable_dist, st->dist_lengths);
+			if (unlikely(!huff.ptr)) {return DECODE_NEED_MORE_DATA;}
+			check(huff.val == NO_ERROR, "%s\n", error_msg[huff.val]);
+			for_range(dist, hdist, 30) {st->dist_lengths[dist] = 0;}
+			construct_codes(286, st->lit_lengths, st->lit_codes);
+			construct_dectable(286, st->lit_lengths, st->lit_codes, st->dectable_lit, st->lit_oloff, st->lit_overlength);
+			construct_codes(30, st->dist_lengths, st->dist_codes);
+			construct_dectable(30, st->dist_lengths, st->dist_codes, st->dectable_dist, st->dist_oloff, st->dist_overlength);
+		} else {
+			info("fixed huffman block\n");
+			static const u8 bitrev_nibble[16] = {
+				0x0, 0x8, 0x4, 0xc,
+				0x2, 0xa, 0x6, 0xe,
+				0x1, 0x9, 0x5, 0xd,
+				0x3, 0xb, 0x7, 0xf,
+			};
+			for_range(i, 0, 512) {
+				u16 rev = (i << 8 & 0x100) | bitrev_nibble[i >> 1 & 15] << 4 | bitrev_nibble[i >> 5 & 15];
+				st->dectable_lit[i] = rev < 0x5f ? ((rev >> 2) + 256) << 4 | 7
+					: rev < 0x17f ? ((rev >> 1) - 0x30) << 4 | 8
+					: rev < 0x18b ? ((rev >> 1) - 0xc0 + 280) << 4 | 8
+					: rev < 0x18f ? 10
+					: (rev - 0x190 + 144) << 4 | 9;
+			}
+			for_array(i, st->lit_oloff) {st->lit_oloff[i] = 0;}
+			assert(st->dectable_lit[0] == 0x1007);
+			assert(st->dectable_lit[0xc] == 0x8);
+			info("%x\n", (unsigned)st->dectable_lit[3]);
+			assert(st->dectable_lit[0x3] == (280 << 4 | 8));
+			assert(st->dectable_lit[0x13] == 0x909);
+
+			for_range(i, 0, 512) {
+				u16 rev = (i << 4 & 0x10) | bitrev_nibble[i >> 1 & 15];
+				st->dectable_dist[i] = rev < 30 ? rev << 4 | 5 : 10;
+			}
+			for_array(i, st->dist_oloff) {st->dist_oloff[i] = 0;}
+		}
+		st->st.decode = huff_block;
+		st->bits = huff.bits;
+		st->num_bits = huff.num_bits;
+		return NUM_DECODE_STATUS + (huff.ptr - in);
+	}
+}
+
+static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	assert(end - in >= 18);
+	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
+	u32 poly = 0xedb88320;
+	for_array(i, st->crc_table) {
+		st->crc_table[i] = crc32_byte(i, poly);
+	}
 	u8 flags = in[3];
 	info("decompressing gzip, flags: 0x%x\n", (unsigned)flags);
 	const u8 *content = in + 10;
@@ -522,24 +585,36 @@ const u8 *decompress_gzip(const u8 *in, const u8 *end, u8 **out, u8 *out_end) {
 		const u8 *ptr = in;
 		u32 hcrc_comp = ~(u32)0;
 		do {
-			hcrc_comp = hcrc_comp >> 8 ^ crc_table[(u8)hcrc_comp ^ *ptr];
+			hcrc_comp = hcrc_comp >> 8 ^ st->crc_table[(u8)hcrc_comp ^ *ptr];
 		} while (++ptr < content);
 		check((u16)hcrc_comp == hcrc, "header CRC mismatch, read %04x, computed %04x\n", (unsigned)hcrc, (unsigned)(u16)hcrc_comp);
 		content += 2;
 	}
 	check(end - content > 8, "gzip input not long enough (%zu (%zx) bytes after header) for compressed stream and trailer\n", end - content, end - content);
-	u32 crc = ~(u32)0;
-	u8 *out_start = *out;
-	check(inflate(&content, end, out, out_end, &crc, crc_table), "deflate decompression failed\n");
-	check(end - content == 8, "trailer size %zu, expected 8\n", end - content);
-	u32 crc_read = content[0] | (u32)content[1] << 8 | (u32)content[2] << 16 | (u32)content[3] << 24;
-	crc ^= 0xffffffff;
-	check(crc_read == crc, "content CRC mismatch: read %08x, computed %08x\n", crc_read, crc);
-	info("CRC32: %08x\n", crc);
-	content += 4;
-	u32 isize = content[0] | (u32)content[1] << 8 | (u32)content[2] << 16 | (u32)content[3] << 24;
-	content += 4;
-	u32 isize_comp = (u32)(*out - out_start);
-	check(isize_comp == isize, "compressed size mismatch, read %08x, decompressed %08x (mod 1 << 32)\n", isize, isize_comp);
+	u16 base = 0;
+	debug("lit_base: ");
+	for_array(i, st->lit_base) {
+		debug(" %"PRIu16, base + 11);
+		st->lit_base[i] = base;
+		base += 1 << lit_extra[i];
+	}
+	debug("\n");
+	base = 0;
+	for_array(i, st->dist_base) {
+		st->dist_base[i] = base;
+		base += 1 << dist_extra[i];
+	}
+	st->bits = 0;
+	st->num_bits = 0;
+	st->last_block = 0;
+	st->isize = 0;
+	st->crc = ~(u32)0;
+	st->st.decode = block_start;
 	return content;
 }
+
+const struct decompressor gzip_decompressor = {
+	.probe = probe,
+	.state_size = sizeof(struct gzip_dec_state),
+	.init = init
+};
