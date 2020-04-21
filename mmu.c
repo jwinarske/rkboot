@@ -31,6 +31,7 @@ static u64 UNUSED *get_page_table() {
 	return &pagetables[next_pagetable++][0];
 }
 
+#ifdef DEBUG_MSG
 static void UNUSED dump_page_tables() {
 	for_range(table, 0, next_pagetable) {
 		for (u32 i = 0; i < ARRAY_SIZE(pagetables[table]); i += 4) {
@@ -38,6 +39,7 @@ static void UNUSED dump_page_tables() {
 		}
 	}
 }
+#endif
 
 #define MASK64(n) (((u64)1 << (n)) - 1)
 
@@ -141,12 +143,14 @@ void setup_mmu() {
 #ifdef DEBUG_MSG
 	dump_page_tables();
 #endif
+#ifndef NDEBUG
 	for (u64 i = 0xff8c0000; i < 0xff8f0000; i += 0x1000) {
 		u64 mapped = map_address(i);
 		debug("%08zx maps to %08zx\n", i, mapped);
 		assert(mapped == i);
 	}
 	assert(map_address((u64)uart) == (u64)uart);
+#endif
 	__asm__ volatile("msr mair_el3, %0" : : "r"((u64)0xff0c080400));
 #ifdef DEBUG_MSG
 	u64 mair;
