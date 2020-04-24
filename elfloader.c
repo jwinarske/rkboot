@@ -299,8 +299,6 @@ _Noreturn u32 ENTRY main() {
 
 	transform_fdt((const struct fdt_header *)fdt_addr, (void *)fdt_out_addr);
 
-	while (uart->tx_level) {__asm__ volatile("yield");}
-	uart->shadow_fifo_enable = 0;
 	bl33_ep.pc = payload_addr;
 	bl33_ep.spsr = 9; /* jump into EL2 with SPSel = 1 */
 	bl33_ep.args.arg0 = fdt_out_addr;
@@ -309,6 +307,8 @@ _Noreturn u32 ENTRY main() {
 	bl33_ep.args.arg3 = 0;
 	setup_pll(cru + CRU_BPLL_CON, 297);
 	stage_teardown(&store);
+	while (~uart->line_status & 0x60) {__asm__ volatile("yield");}
+	uart->shadow_fifo_enable = 0;
 	((bl31_entry)header->entry)(&bl_params, 0, 0, 0);
 	puts("return\n");
 	halt_and_catch_fire();
