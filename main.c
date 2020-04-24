@@ -4,6 +4,7 @@
 #include <rk3399.h>
 #include <stage.h>
 #include <rk-spi.h>
+#include <compression.h>
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
@@ -80,6 +81,13 @@ static void UNUSED dump_clocks() {
 	}
 }
 
+#ifdef CONFIG_EMBED_ELFLOADER
+extern const u8 _binary_elfloader_bin_start[], _binary_elfloader_bin_end;
+
+__asm__("jump: add sp, x5, #0; br x4");
+_Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
+#endif
+
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
@@ -105,6 +113,13 @@ int32_t ENTRY NO_ASAN main() {
 	spi->enable = 0;
 	printf("SPI read %x\n", val);
 	assert(val != ~(u32)0);
+#ifdef CONFIG_EMBED_ELFLOADER
+	void *loadaddr = (void *)0x100000;
+	lzcommon_literal_copy((u8 *)loadaddr, _binary_elfloader_bin_start, &_binary_elfloader_bin_end - _binary_elfloader_bin_start);
+	stage_teardown(&store);
+	jump(0, 0, 0, 0, loadaddr, (void *)0x1000);
+#else
 	stage_teardown(&store);
 	return 0;
+#endif
 }

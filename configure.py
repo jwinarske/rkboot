@@ -77,6 +77,12 @@ parser.add_argument(
     default='splittable',
     help='PRNG to use for the memtest binary'
 )
+parser.add_argument(
+    '--embed-elfloader',
+    action='store_true',
+    dest='embed_elfloader',
+    help='embed the elfloader stage into levinboot proper'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
@@ -87,6 +93,8 @@ if args.crc:
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
+if args.embed_elfloader:
+    flags['main'].append('-DCONFIG_EMBED_ELFLOADER')
 
 sys.stdout = buildfile
 
@@ -102,6 +110,8 @@ print('''
 cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
 ldflags = {ldflags}
 
+incbin_flags = --rename-section .data=.rodata,alloc,load,readonly,data,contents
+
 rule buildcc
     depfile = $out.d
     deps = gcc
@@ -114,6 +124,8 @@ rule ld
     command = {ld} $ldflags $flags $in -o $out
 rule bin
     command = {objcopy} -O binary $in $out
+rule incbin
+    command = {objcopy} -I binary -O elf64-littleaarch64 -B aarch64 $incbin_flags $flags $in $out
 rule run
     command = $bin <$in >$out
 rule regtool
@@ -184,6 +196,11 @@ print('build dramcfg.o: cc {src}/dramcfg.c | {deps}'.format(
 ))
 levinboot += ('dramcfg',)
 
+levinboot = levinboot + lib
+if args.embed_elfloader:
+    print(build('elfloader.bin.o', 'incbin', 'elfloader.bin'))
+    levinboot = levinboot + ('elfloader.bin', 'compression/lzcommon')
+
 base_addresses = set()
 def binary(name, modules, base_address):
     base_addresses.add(base_address)
@@ -196,8 +213,8 @@ def binary(name, modules, base_address):
     ))
     print(build(name + '.bin', 'bin', name + '.elf'))
 
-binary('levinboot-usb', levinboot + lib, 'ff8c2000')
-binary('levinboot-sd', levinboot + lib, 'ff8c2004')
+binary('levinboot-usb', levinboot, 'ff8c2000')
+binary('levinboot-sd', levinboot, 'ff8c2004')
 binary('memtest', ('memtest',) + lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
