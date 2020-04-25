@@ -89,6 +89,12 @@ parser.add_argument(
     dest='elfloader_spi',
     help='configure elfloader to load its images from SPI flash'
 )
+parser.add_argument(
+    '--elfloader-decompression',
+    action='store_true',
+    dest='elfloader_decompression',
+    help='configure elfloader to decompress its payload instead of expecting it loaded uncompressed at the load addresses'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
@@ -101,8 +107,6 @@ if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
 if args.embed_elfloader:
     flags['main'].append('-DCONFIG_EMBED_ELFLOADER')
-if args.elfloader_spi:
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI')
 
 sys.stdout = buildfile
 
@@ -159,8 +163,12 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
-elfloader = ('elfloader', 'pll', 'compression/inflate', 'compression/lz4', 'compression/lzcommon', 'string')
+elfloader = ('elfloader', 'pll')
+if args.elfloader_spi or args.elfloader_decompression:
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
+    elfloader = elfloader + ('compression/inflate', 'compression/lz4', 'compression/lzcommon', 'string')
 if args.elfloader_spi:
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI')
     elfloader = elfloader + ('spi',)
 modules = set(lib + levinboot + elfloader + ('memtest', 'teststage', 'dump_fdt'))
 

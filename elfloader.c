@@ -259,6 +259,7 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 	write_be32(&dest_header->struct_size, (u32)(dest_struct - dest_struct_start)*4);
 }
 
+#ifdef CONFIG_ELFLOADER_DECOMPRESSION
 extern const struct decompressor gzip_decompressor;
 
 const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
@@ -279,13 +280,15 @@ const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
 	} else {die("couldn't probe");}
 	return data;
 }
+#endif
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
 	struct stage_store store;
 	stage_setup(&store);
 	setup_mmu();
-	u64 elf_addr = 0x00200000, UNUSED fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, blob_addr = 0x02000000;
+	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, UNUSED blob_addr = 0x02000000;
+#ifdef CONFIG_ELFLOADER_DECOMPRESSION
 	u8 *blob = (u8 *)blob_addr, *blob_end = blob + (16 << 20);
 #ifdef CONFIG_ELFLOADER_SPI
 	u64 xfer_start = get_timestamp();
@@ -296,6 +299,7 @@ _Noreturn u32 ENTRY main() {
 	const u8 *blob2 = decompress(blob, blob_end, (u8 *)elf_addr, (u8 *)fdt_addr);
 	blob2 = decompress(blob2, blob_end, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
 	blob2 = decompress(blob2, blob_end, (u8 *)payload_addr, (u8 *)blob_addr);
+#endif
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);
 
