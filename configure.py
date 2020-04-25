@@ -83,6 +83,12 @@ parser.add_argument(
     dest='embed_elfloader',
     help='embed the elfloader stage into levinboot proper'
 )
+parser.add_argument(
+    '--elfloader-spi',
+    action='store_true',
+    dest='elfloader_spi',
+    help='configure elfloader to load its images from SPI flash'
+)
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
@@ -95,6 +101,8 @@ if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
 if args.embed_elfloader:
     flags['main'].append('-DCONFIG_EMBED_ELFLOADER')
+if args.elfloader_spi:
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI')
 
 sys.stdout = buildfile
 
@@ -151,7 +159,10 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
-modules = levinboot + lib + ('memtest', 'elfloader', 'teststage', 'dump_fdt', 'spi', 'compression/inflate', 'compression/lz4', 'compression/lzcommon', 'string')
+elfloader = ('elfloader', 'pll', 'compression/inflate', 'compression/lz4', 'compression/lzcommon', 'string')
+if args.elfloader_spi:
+    elfloader = elfloader + ('spi',)
+modules = set(lib + levinboot + elfloader + ('memtest', 'teststage', 'dump_fdt'))
 
 if args.full_debug:
     for f in modules:
@@ -219,7 +230,8 @@ binary('memtest', ('memtest',) + lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
 if args.atf_headers:
-    binary('elfloader', ('elfloader', 'pll', 'compress/inflate', 'compress/lzcommon', 'string', 'spi') + lib, '00100000')
+    elfloader = elfloader + lib
+    binary('elfloader', elfloader, '00100000')
     print("default elfloader.bin")
 
 for addr in base_addresses:
