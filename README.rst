@@ -9,7 +9,7 @@ The levinboot bootloader
 
 levinboot (name always lowercase) is a bootloader for (currently) RK3399 platforms with LPDDR4 memory.
 
-The project is currently in an α-state, as indicated by its version number (0.1).
+The project is currently in an α-state, as indicated by its version number (0.2).
 
 Important project goals include:
 
