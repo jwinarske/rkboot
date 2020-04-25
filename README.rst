@@ -5,6 +5,7 @@ The levinboot bootloader
 .. role:: output(code)
 .. role:: command(code)
    :language: shell
+.. role:: cmdargs(code)
 
 levinboot (name always lowercase) is a bootloader for (currently) RK3399 platforms with LPDDR4 memory.
 
@@ -27,11 +28,13 @@ What should work at this point:
 
 - Boot to Linux via TF-A over USB. This is described in _`Booting via USB`.
 
+- Boot to Linux from SPI, with levinboot on SD/MMC. This is described in _`Booting from SPI`
+
 What is intended to work at some point, but not implemented yet:
 
-- Boot from SPI. This requires adding zero-padding support to :command:`idbtool`, as well as probably adding payload loading support for SPI.
+- Boot completely from SPI. This requires adding zero-padding support to :command:`idbtool`.
 
-- Payload loading. Currently, levinboot cannot read any boot media to find further boot stages, meaning that currently the only way to get further stages is by spoon-feeding them through :command:`usbtool`.
+- Payload loading from other media.
 
 License
 =======
@@ -48,11 +51,21 @@ Build process
 
 levinboot uses a Ninja-based build system. The build is configured by running :src:`configure.py`. This can (but doesn't have to be) be done in a different directory, keeping the build files separate from the sources.
 
+Important command-line arguments for :src:`configure.py` are:
+
+--with-atf-headers PATH  tells :src:`configure.py` where the ATF export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
+
+--elfloader-spi  configures :output:`elfloader.bin` to load payload images from SPI flash instead of expecting them preloaded at specific addresses.
+
+--embed-elfloader  configures the :output:`levinboot-*` targets to contain the :output:`elfloader.bin` binary, copy it where it needs to be and run it, instead of just returning to the mask ROM.
+  This only makes sense if :output:`elfloader.bin` has is configured to load a payload by itself (see above), since otherwise it will just fail (or behave erratically in case DRAM retention has left parts of a BL31 image in RAM).
+
 Primary build targets are:
 
 - :output:`levinboot-usb.bin`: this is used for _`Booting via USB`.
 
-- :output:`levinboot-sd.img`: this is an image that can be written to sector 64 on an SD/eMMC drive. (FIXME: currently has no payload and is untested)
+- :output:`levinboot.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
+  Configure with :cmdargs:`--elfloader-spi --embed-elfloader` to make this useful.
 
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
@@ -61,10 +74,18 @@ Primary build targets are:
 
 - :output:`teststage.bin`: this is a simple EL2 payload. Currently it only dumps the passed FDT blob, if it is detected at :code:`*X0`.
 
+The Payload Blob
+================
+
+The current payload format used by levinboot consists of 3 concatenated gzip frames, in the following order: BL31 ELF file, flattened device tree, kernel image.
+
+If you want to use levinboot to boot actual systems, keep in mind that it does not load an initcpio and will only insert a /memory node (FIXME: which is currently hardcoded to 4GB) into the device tree, so you will need to insert command line arguments or other ways to set a root file system into the device tree blob yourself.
+See :src:`overlay-example.dts` for an example overlay that could be applied (using, e. g. :command:`fdtoverlay` from the U-Boot tools) on an upstream kernel device tree, which designates the part of flash starting at 7MiB as a block device containing a squashfs root.
+
 Booting via USB
 ===============
 
-The only way to currently boot a system using levinboot is to use USB spoon feeding via RK3399 mask ROM mode.
+The least-setup/fastest-iteration way boot a system using levinboot is to use USB spoon feeding via RK3399 mask ROM mode.
 
 To do this:
 
@@ -82,7 +103,7 @@ To do this:
 
   - an SD card.
 
-- connect a USB OTG port (for the Pinebook Pro and RockPro64, this is the USB-C port) of your RK3399 device with a USB host port of your development host.
+- connect a USB OTG port (for the Pinebook Pro and RockPro64, this is the USB-C port) of your RK3399 device with a USB host port of your development host. Make sure your OS gives you access to USB devices of ID 2207:330c (RK3399 in Mask ROM mode).
 
   You should also connect a serial console to UART2, so you can observe the boot process.
   This is pins 6, 8, 10 on the RockPro64 (ground, TX and RX respectively) and the headphone jack on the Pinebook Pro (keep in mind this has to be activated using a switch on the board).
@@ -96,11 +117,28 @@ To do this:
     - levinboot and `memtest.bin`: run :command:`usbtool --call levinboot-usb.bin --run memtest.bin`.
       This should run levinboot and then start testing memory.
 
-    - levinboot and BL31 with `teststage.bin`: run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 200000 path/to/bl31.elf --load 500000 path/to/fdt-blob.dtb --load 680000 teststage.bin --jump 100000 2000` (with the paths substituted for your system).
+    - levinboot and BL31 with `teststage.bin`: run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 path/to/bl31.elf --load 500000 path/to/fdt-blob.dtb --load 680000 teststage.bin --jump 100000 2000` (with the paths substituted for your system).
 
       This should run levinboot to initialize DRAM, load all payload files into DRAM, and finally jump to :output:`elfloader.bin` which will start BL31, which will give control to :output:`teststage.bin`, which should dump the FDT header as well as its contents in DTS syntax.
 
     - levinboot and BL31 with a Linux kernel: this is basically the same as the previous command, just with your (uncompressed) kernel image instead of :output:`teststage.bin`.
 
       Beware that the loading step will take a while, because :command:`usbtool` currently uses the mask ROM code to transfer the files, which is anything but fast at receiving (or most likely, verifying) data sent over USB.
-      levinboot also does not clock up the boot CPU, so an additional delay of a few seconds between end of the transfer and getting kernel output over serial
+
+    - either of the previous two with compression: configure the build with :cmdargs:`--elfloader-decompression` and run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 path/to/payload-blob --jump 100000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`. This may save transfer time. (TODO: improve :command:`usbtool` so pipes can be used to construct the payload blob on-the-fly)
+
+Booting from SPI
+================
+
+levinboot can load its payload images from SPI flash. This way it can be used as the first stage in a kexec-based boot flow.
+Currently the build system can only produce images usable on SD or eMMC chips, not for SPI flash itself.
+This is probably for the best since right now levinboot is not considered production-ready yet and as such it makes sense to store the critical part on easily-removed/-disabled storage in case it breaks.
+
+Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader`. This will produce :output:`levinboot.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
+
+You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot.img` to sector 64 on SD/eMMC for use in self-booting.
+
+After DRAM init, this will read the first 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro; FIXME: this is unnecessarily slow, since usually only a part is needed, and decompression does not need to wait for the entirety to be loaded), and will decompress the payload blob from it.
+The flash contents after the end of _`The Payload Blob` are not used by levinboot.
+
+See the notes about _`The Payload Blob` for general advice on how to create it.
