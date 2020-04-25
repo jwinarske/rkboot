@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: CC0-1.0
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "pine64,rockpro64", "pine64,pinebook-pro";
+	fragment@0 {
+		target-path = "/chosen";
+		__overlay__ {
+			/* boot using a squashfs root located at 7MiB in SPI flash */
+			bootargs = "earlycon=uart8250,mmio32,0xff1a0000 root=/dev/mtdblock1 rootflags=ro rootfstype=squashfs mtdparts=spi0.0:7M(boot),-(bootroot)";
+		};
+	};
+	fragment@1 {
+		target-path = "/opp-table1";
+		__overlay__ {
+			/* this is not useful for cpufreq (and in fact the kernel will spam errors if you don't prevent it from trying to clock down that far) but kexec'd kernels will hang while bringing up the big cores if no 24 MHz OPP is present (unless you forbid it from using those cores in general using maxcpus=4), because ATF will set BPLL to slow mode when the entire big cluster is offlined during kexec. Need to set a cpufreq policy that excludes this OPP in any system that uses this device tree. */
+			opp24mhz {
+				opp-hz = /bits/ 64 <24000000>;
+				opp-microvolt = <800000>;
+			};
+		};
+	};
+};
