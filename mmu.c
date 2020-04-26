@@ -5,6 +5,7 @@
 #include "include/mmu.h"
 #include <stdio.h>
 #include <assert.h>
+#include <inttypes.h>
 
 static u64 __attribute__((aligned(4096))) pagetables[4][512];
 static u32 next_pagetable = 1;
@@ -30,7 +31,7 @@ enum {
 #define PGTAB_NSTABLE ((u64)1 << 63)
 #define PGTAB_NS (1 << 5)
 
-static u64 UNUSED *get_page_table() {
+static u64 *alloc_page_table() {
 	assert(next_pagetable < 4);
 	return &pagetables[next_pagetable++][0];
 }
@@ -71,78 +72,69 @@ static u64 UNUSED map_address(u64 addr) {
 	return (pte_l3 & MASK64(36) << 12) | (addr & MASK64(12));
 }
 
-void split_table(u64 *entry, u32 shift) {
-	assert(shift > 12);
-	u64 val = *entry;
-	assert_msg((val & 3) != 3, "split_table: entry is subtable: %016zx\n", val);
-	u64 *table = get_page_table();
-	*entry = (u64)table | PGTAB_SUBTABLE;
-	if (shift == 21) {val |= 2;} /* L2 block descriptors break up into page descriptors */
-	if (val & 1) {
-		for_range(i, 0, 512) {table[i] = val | i << (shift - 9);}
-	} else {
-		for_range(i, 0, 512) {table[i] = 0;}
+static const struct pte_lvl {
+	u32 lvl : 2;
+	u32 shift : 6;
+	u32 contiguous : 4;
+	u32 last_level : 1;
+	u32 mapping_allowed : 1;
+} pte_lvls[] = {
+	{.lvl = 0, .shift = 39, .contiguous = 0, .last_level = 0, .mapping_allowed = 0},
+	{.lvl = 1, .shift = 30, .contiguous = 4, .last_level = 0, .mapping_allowed = 1},
+	{.lvl = 2, .shift = 21, .contiguous = 4, .last_level = 0, .mapping_allowed = 1},
+	{.lvl = 3, .shift = 12, .contiguous = 4, .last_level = 1, .mapping_allowed = 1},
+};
+#define GRANULE_SHIFT 12
+#define NUM_MAPPING_LEVELS 4
+#define MAPPING_LEVEL_SHIFT (GRANULE_SHIFT - 3)
+
+static u64 map_one(u64 *pt, u64 first, u64 last, u8 attridx) {
+	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
+	for_array(lvl, pte_lvls) {
+		u32 shift = pte_lvls[lvl].shift;
+		u64 mask = MASK64(shift);
+		_Bool end_aligned = (last & mask) == mask, not_also_last = first >> shift < last >> shift;
+		u32 first_entry = first >> shift & MASK64(MAPPING_LEVEL_SHIFT);
+		if (pte_lvls[lvl].mapping_allowed && (first & mask) == 0 && (end_aligned || not_also_last)) {
+			if (!end_aligned) {
+				/* round down to the nearest block boundary */
+				last = (last - ((u64)1 << shift)) | mask;
+			}
+			u32 last_entry = last >> shift & MASK64(MAPPING_LEVEL_SHIFT);
+			u64 template = pte_lvls[lvl].last_level ? PGTAB_PAGE(attridx) : PGTAB_BLOCK(attridx);
+			for_range(i, first_entry, last_entry + 1) {
+				assert(!(pt[i] & 1));
+				u64 addr = first + ((i - first_entry) << shift);
+				pt[i] = addr | template;
+			}
+			return last;
+		}
+		assert_msg(!pte_lvls[lvl].last_level, "mapping 0x%016"PRIx64"–0x%016"PRIx64" is more fine-grained than the granule\n", first, last);
+		u64 entry = pt[first_entry];
+		if ((entry & 3) != 3) {
+			assert(!(entry & 1));
+			u64 *next_pt = alloc_page_table();
+			pt[first_entry] = (u64)next_pt | PGTAB_SUBTABLE;
+			pt = next_pt;
+			for_range(i, 0, 1 << MAPPING_LEVEL_SHIFT) {pt[i] = 0;}
+		} else {
+			pt = (u64 *)(entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT);
+		}
+		/* clip off to the end of the next page table range */
+		if (first >> shift < last >> shift) {last = first | mask;}
 	}
+	die("mapping 0x%016"PRIx64"–0x%016"PRIx64" is more fine-grained than the granule\n", first, last);
 }
 
-void map_range(u64 *pt, u64 first, const u64 last, u32 shift, u8 attridx) {
-	debug("map_range @%08zx, %08zx, %08zx, %u, %u\n", (u64)pt, first, last, shift, (unsigned)attridx);
-	u64 mask = MASK64(shift);
-	assert(first < last);
-	const u64 last_entry = last >> shift & 0x1ff;
-	if (shift > 12) {
-		while (first <= last) {
-			const u64 first_entry = first >> shift & 0x1ff;
-			assert(first_entry <= last_entry);
-			if (first & mask) {
-				if ((pt[first_entry] & 3) != 3) {
-					split_table(pt + first_entry, shift);
-				}
-				u64 val = pt[first_entry];
-				assert((val & 3) == 3);
-				_Bool also_last = last_entry == first_entry;
-				map_range(
-					(u64*)(val & MASK64(36) << 12),
-					first,
-					also_last ? last : first | mask,
-					shift - 9,
-					attridx
-				);
-				if (also_last) {return;}
-				first = (first & ~mask) + (1 << shift);
-			} else if (first_entry < last_entry || (first_entry == last_entry && (last & mask) == mask)) {
-				assert(shift <= 30);
-				pt[first_entry] = first | PGTAB_BLOCK(attridx);
-				first += 1 << shift;
-			} else {
-				assert(first_entry == last_entry);
-				if ((pt[first_entry] & 3) != 3) {
-					split_table(pt + first_entry, shift);
-				}
-				u64 val = pt[first_entry];
-				assert_msg((val & 3) == 3, "%016zx is not a subtable entry\n", val);
-				assert(!(first & mask));
-				assert((first >> shift) == (last >> shift));
-				map_range(
-					(u64*)(val & MASK64(36) << 12),
-					first, last, shift - 9, attridx
-				);
-				return;
-			}
-		}
-	} else {
-		assert(!(first & mask) && (last & mask) == mask);
-		assert((first >> (shift + 9)) == (last >> (shift + 9)));
-		for_range(i, first >> shift & 0x1ff, last_entry + 1) {
-			pt[i] = (first & ~MASK64(shift + 9)) | i << shift | PGTAB_PAGE(attridx);
-		}
-	}
+static void map_range(u64 *pt, u64 first, u64 last, u8 attridx) {
+	assert(last > first);
+	while ((first = map_one(pt, first, last, attridx)) < last) {first += 1;}
 }
 
 void setup_mmu() {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
-		map_range(pagetables[0], map->first, map->last, 39, map->type);
+		map_range(pagetables[0], map->first, map->last, map->type);
 	}
 #ifdef DEBUG_MSG
 	dump_page_tables();
