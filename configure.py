@@ -119,7 +119,7 @@ if cc.endswith('gcc'):
 genld = path.join(srcdir, 'gen_linkerscript.sh')
 
 print('''
-cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
+cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem {src}/include/std -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
 ldflags = {ldflags}
 
 incbin_flags = --rename-section .data=.rodata,alloc,load,readonly,data,contents
