@@ -8,3 +8,5 @@ void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
 void flush_dcache();
 void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges);
+void mmu_unmap_range(u64 first, u64 last);
+void mmu_map_range(u64 first, u64 last, u8 attridx);

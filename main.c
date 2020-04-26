@@ -122,6 +122,9 @@ int32_t ENTRY NO_ASAN main() {
 	assert(val != ~(u32)0);
 #ifdef CONFIG_EMBED_ELFLOADER
 	void *loadaddr = (void *)0x100000;
+	mmu_unmap_range(0, 0xf7ffffff);
+	mmu_map_range(0, 0xf7ffffff, MEM_TYPE_NORMAL);
+	__asm__ volatile("dsb sy");
 	lzcommon_literal_copy((u8 *)loadaddr, _binary_elfloader_bin_start, &_binary_elfloader_bin_end - _binary_elfloader_bin_start);
 	stage_teardown(&store);
 	jump(0, 0, 0, 0, loadaddr, (void *)0x1000);

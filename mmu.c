@@ -136,6 +136,51 @@ static void map_range(u64 *pt, u64 first, u64 last, u8 attridx) {
 	while ((first = map_one(pt, first, last, attridx)) < last) {first += 1;}
 }
 
+void mmu_map_range(u64 first, u64 last, u8 attridx) {
+	map_range(pagetables[0], first, last, attridx);
+}
+
+static u64 unmap_one(u64 *pt, u64 first, u64 last) {
+	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
+	for_array(lvl, pte_lvls) {
+		u32 shift = pte_lvls[lvl].shift;
+		u64 mask = MASK64(shift);
+		_Bool end_aligned = (last & mask) == mask, not_also_last = first >> shift < last >> shift;
+		u32 first_entry = first >> shift & MASK64(MAPPING_LEVEL_SHIFT);
+		if (pte_lvls[lvl].mapping_allowed && (first & mask) == 0 && (end_aligned || not_also_last)) {
+			if (!end_aligned) {
+				/* round down to the nearest block boundary */
+				last = (last - ((u64)1 << shift)) | mask;
+			}
+			u32 last_entry = last >> shift & MASK64(MAPPING_LEVEL_SHIFT);
+			u64 template = pte_lvls[lvl].last_level ? 3 : 1;
+			for_range(i, first_entry, last_entry + 1) {
+				assert((pt[i] & 3) == template);
+				pt[i] = 0;
+			}
+			__asm__ volatile("dsb sy");
+			for_range(i, first_entry, last_entry + 1) {
+				assert(!(pt[i] & 1));
+				u64 addr = first + ((i - first_entry) << shift);
+				__asm__ volatile("tlbi vae3, %0" : : "r"(addr));
+			}
+			return last;
+		}
+		assert_msg(!pte_lvls[lvl].last_level, "mapping 0x%016"PRIx64"–0x%016"PRIx64" is more fine-grained than the granule\n", first, last);
+		u64 entry = pt[first_entry];
+		assert((entry & 3) == 3);
+		pt = entry2subtable(entry);
+		/* clip off to the end of the next page table range */
+		if (first >> shift < last >> shift) {last = first | mask;}
+	}
+	assert(UNREACHABLE);
+}
+
+void mmu_unmap_range(u64 first, u64 last) {
+	assert(last > first);
+	while ((first = unmap_one(pagetables[0], first, last)) < last) {first += 1;}
+}
+
 void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges) {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
