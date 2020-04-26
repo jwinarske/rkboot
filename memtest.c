@@ -2,6 +2,7 @@
 #include <main.h>
 #include <rk3399.h>
 #include <stage.h>
+#include <uart.h>
 
 #define MEMTEST_CHACHAISH
 #ifdef MEMTEST_SPLITTABLE
@@ -181,6 +182,12 @@ const struct mapping initial_mappings[] = {
 	{.first = 0xf8000000, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
 	{.first = 0, .last = 0, .type = 0}
+};
+
+const struct address_range critical_ranges[] = {
+	{.first = __start__, .last = __end__},
+	{.first = uart, .last = uart},
+	ADDRESS_RANGE_INVALID
 };
 
 _Noreturn void ENTRY main() {

@@ -4,8 +4,8 @@
 #include <aarch64.h>
 #include <lib.h>
 
-extern u8 __bss_start__, __bss_end__, __exc_base__;
-extern u8 __start__, __ro_end__, __data_end__;
+extern u8 __bss_start__[], __bss_end__[], __exc_base__[];
+extern u8 __start__[], __end__[], __ro_end__[], __data_end__[];
 static inline u32 compute_crc32c(u64 *start, u64 *end, u32 seed) {
     while (start < end) {
 	__asm__("crc32cx %w0, %w0, %1" : "+r"(seed) : "r"(*start++));
@@ -27,7 +27,7 @@ static inline void UNUSED stage_setup(struct stage_store *store) {
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
 	store->sctlr = sctlr;
-	u8 *bss = &__bss_start__, *bss_end_ptr =  &__bss_end__;
+	u8 *bss = __bss_start__, *bss_end_ptr =  __bss_end__;
 	do {*bss++ = 0;} while(bss < bss_end_ptr);
 #ifdef CONFIG_EXC_VEC
 	u64 vbar,  scr;
@@ -36,10 +36,10 @@ static inline void UNUSED stage_setup(struct stage_store *store) {
 	store->vbar = vbar;
 	store->scr = scr;
 	__asm__ volatile("msr scr_el3, %0" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ));
-	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(&__exc_base__));
+	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(__exc_base__));
 #endif
 #ifdef CONFIG_CRC
-	u64 *crc_start = (u64*)&__start__, *crc_mid = (u64*)(((u64)&__ro_end__ + 0xfff) & ~(u64)0xfff), *crc_end = (u64*)(((u64)&__data_end__ + 0xfff) & ~(u64)0xfff);
+	u64 *crc_start = (u64*)__start__, *crc_mid = (u64*)(((u64)__ro_end__ + 0xfff) & ~(u64)0xfff), *crc_end = (u64*)(((u64)__data_end__ + 0xfff) & ~(u64)0xfff);
 	u32 crc_ro =  compute_crc32c(crc_start, crc_mid, ~(u32)0);
 	printf("CRC32C(%08zx, %08zx): %08x\n", (u64)crc_start, (u64)crc_mid, crc_ro);
 	u32 crc_all = compute_crc32c(crc_mid, crc_end, crc_ro);

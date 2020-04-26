@@ -5,17 +5,13 @@
 #include "../config.h"
 #include <aarch64.h>
 #include <lib.h>
+#include <mmu.h>
 
 void setup_timer();
 void udelay(u32 usec);
 u64 get_timestamp();
 
 _Bool setup_pll(volatile u32 *base, u32 freq);
-void invalidate_dcache_set_sctlr(u64);
-void set_sctlr_flush_dcache(u64);
-void flush_dcache();
-void setup_mmu();
-extern const struct mapping {u64 first, last; u8 type;} initial_mappings[];
 
 void ddrinit();
 

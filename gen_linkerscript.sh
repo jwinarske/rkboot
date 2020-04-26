@@ -28,5 +28,6 @@ SECTIONS {
 		*(.bss*)
 		__bss_end__ = .;
 	}
+	__end__ = .;
 }
 END

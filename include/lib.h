@@ -4,9 +4,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <log.h>
-
-_Noreturn int PRINTF(1, 2) die(const char *fmt, ...);
-_Noreturn void halt_and_catch_fire();
+#include <die.h>
 
 u64 get_timestamp();
 

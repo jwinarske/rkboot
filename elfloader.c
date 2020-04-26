@@ -45,6 +45,12 @@ const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0, .type = 0}
 };
 
+const struct address_range critical_ranges[] = {
+	{.first = __start__, .last = __end__},
+	{.first = uart, .last = uart},
+	ADDRESS_RANGE_INVALID
+};
+
 static u64 elf_magic[3] = {
 	0x00010102464c457f,
 	0,

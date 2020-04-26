@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
-#include <uart.h>
+#include "include/log.h"
+#include "include/die.h"
+#include "include/aarch64.h"
+#include "include/mmu.h"
+#include <stdio.h>
+#include <assert.h>
 
 static u64 __attribute__((aligned(4096))) pagetables[4][512];
 static u32 next_pagetable = 1;
@@ -144,12 +148,14 @@ void setup_mmu() {
 	dump_page_tables();
 #endif
 #ifndef NDEBUG
-	for (u64 i = 0xff8c0000; i < 0xff8f0000; i += 0x1000) {
-		u64 mapped = map_address(i);
-		debug("%08zx maps to %08zx\n", i, mapped);
-		assert(mapped == i);
+	u64 first, last;
+	for (size_t pos = 0; (first = (u64)critical_ranges[pos].first) <= (last = (u64)critical_ranges[pos].last); ++pos) {
+		for (u64 addr = first & ~(u64)0xfff; addr <= last; addr += 0x1000) {
+			u64 mapped = map_address(addr);
+			debug("%08zx maps to %08zx\n", addr, mapped);
+			assert(mapped == addr);
+		}
 	}
-	assert(map_address((u64)uart) == (u64)uart);
 #endif
 	__asm__ volatile("msr mair_el3, %0" : : "r"((u64)0xff0c080400));
 #ifdef DEBUG_MSG

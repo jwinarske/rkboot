@@ -12,6 +12,12 @@ const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0, .type = 0}
 };
 
+const struct address_range critical_ranges[] = {
+	{.first = __start__, .last = __end__},
+	{.first = uart, .last = uart},
+	ADDRESS_RANGE_INVALID
+};
+
 static void NO_ASAN setup_uart() {
 	uart->line_control = UART_LCR_8_DATA_BITS | UART_LCR_DIVISOR_ACCESS;
 	uart->divisor_low = CONFIG_UART_CLOCK_DIV;
