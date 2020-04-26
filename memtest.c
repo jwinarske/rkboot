@@ -173,7 +173,7 @@ _Bool memtest(u64 salt) {
 	return res;
 }
 
-const struct mapping initial_mappings[] = {
+static const struct mapping initial_mappings[] = {
 #ifdef UNCACHED_MEMTEST
 	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_DEV_GRE},
 #else
@@ -185,7 +185,7 @@ const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0, .type = 0}
 };
 
-const struct address_range critical_ranges[] = {
+static const struct address_range critical_ranges[] = {
 	{.first = __start__, .last = __end__},
 	{.first = uart, .last = uart},
 	ADDRESS_RANGE_INVALID
@@ -194,7 +194,7 @@ const struct address_range critical_ranges[] = {
 _Noreturn void ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
-	setup_mmu();
+	mmu_setup(initial_mappings, critical_ranges);
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		printf("\nround %zu, %zu failed so far\n", round, failed_rounds);

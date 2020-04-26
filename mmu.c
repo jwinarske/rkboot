@@ -88,6 +88,10 @@ static const struct pte_lvl {
 #define NUM_MAPPING_LEVELS 4
 #define MAPPING_LEVEL_SHIFT (GRANULE_SHIFT - 3)
 
+static inline u64 *entry2subtable(u64 entry) {
+	return (u64 *)(entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT);
+}
+
 static u64 map_one(u64 *pt, u64 first, u64 last, u8 attridx) {
 	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
 	for_array(lvl, pte_lvls) {
@@ -114,16 +118,17 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u8 attridx) {
 		if ((entry & 3) != 3) {
 			assert(!(entry & 1));
 			u64 *next_pt = alloc_page_table();
+			for_range(i, 0, 1 << MAPPING_LEVEL_SHIFT) {next_pt[i] = 0;}
+			__asm__ volatile("dsb sy");
 			pt[first_entry] = (u64)next_pt | PGTAB_SUBTABLE;
 			pt = next_pt;
-			for_range(i, 0, 1 << MAPPING_LEVEL_SHIFT) {pt[i] = 0;}
 		} else {
-			pt = (u64 *)(entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT);
+			pt = entry2subtable(entry);
 		}
 		/* clip off to the end of the next page table range */
 		if (first >> shift < last >> shift) {last = first | mask;}
 	}
-	die("mapping 0x%016"PRIx64"–0x%016"PRIx64" is more fine-grained than the granule\n", first, last);
+	assert(UNREACHABLE);
 }
 
 static void map_range(u64 *pt, u64 first, u64 last, u8 attridx) {
@@ -131,7 +136,7 @@ static void map_range(u64 *pt, u64 first, u64 last, u8 attridx) {
 	while ((first = map_one(pt, first, last, attridx)) < last) {first += 1;}
 }
 
-void setup_mmu() {
+void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges) {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
 		map_range(pagetables[0], map->first, map->last, map->type);

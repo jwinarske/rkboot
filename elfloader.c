@@ -38,7 +38,7 @@ static bl_params_t bl_params = {
 	.head = &bl33_node,
 };
 
-const struct mapping initial_mappings[] = {
+static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_NORMAL},
 	{.first = 0xf8000000, .last = 0xff8bffff, .type = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
@@ -46,7 +46,7 @@ const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0, .type = 0}
 };
 
-const struct address_range critical_ranges[] = {
+static const struct address_range critical_ranges[] = {
 	{.first = __start__, .last = __end__},
 	{.first = uart, .last = uart},
 	ADDRESS_RANGE_INVALID
@@ -293,7 +293,7 @@ _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
 	struct stage_store store;
 	stage_setup(&store);
-	setup_mmu();
+	mmu_setup(initial_mappings, critical_ranges);
 	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, UNUSED blob_addr = 0x02000000;
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
 	u8 *blob = (u8 *)blob_addr, *blob_end = blob + (16 << 20);

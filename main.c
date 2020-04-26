@@ -6,14 +6,14 @@
 #include <rk-spi.h>
 #include <compression.h>
 
-const struct mapping initial_mappings[] = {
+static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xff8bffff, .type = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
 	{.first = 0xff8f0000, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0, .last = 0, .type = 0}
 };
 
-const struct address_range critical_ranges[] = {
+static const struct address_range critical_ranges[] = {
 	{.first = __start__, .last = __end__},
 	{.first = uart, .last = uart},
 	ADDRESS_RANGE_INVALID
@@ -100,7 +100,7 @@ int32_t ENTRY NO_ASAN main() {
 	setup_timer();
 	struct stage_store store;
 	stage_setup(&store);
-	setup_mmu();
+	mmu_setup(initial_mappings, critical_ranges);
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();
 	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 1) << 15 | SET_BITS16(7, 3) << 8;
