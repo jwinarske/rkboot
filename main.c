@@ -31,7 +31,9 @@ static void NO_ASAN setup_uart() {
 }
 
 #ifdef CONFIG_EMBED_ELFLOADER
-extern const u8 _binary_elfloader_bin_start[], _binary_elfloader_bin_end;
+extern const u8 _binary_elfloader_lz4_start[], _binary_elfloader_lz4_end[];
+
+extern const struct decompressor lz4_decompressor;
 
 __asm__("jump: add sp, x5, #0; br x4");
 _Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
@@ -67,7 +69,18 @@ int32_t ENTRY NO_ASAN main() {
 	mmu_unmap_range(0, 0xf7ffffff);
 	mmu_map_range(0, 0xf7ffffff, MEM_TYPE_NORMAL);
 	__asm__ volatile("dsb sy");
-	lzcommon_literal_copy((u8 *)loadaddr, _binary_elfloader_bin_start, &_binary_elfloader_bin_end - _binary_elfloader_bin_start);
+	size_t size;
+	assert_msg(lz4_decompressor.probe(_binary_elfloader_lz4_start, _binary_elfloader_lz4_end, &size) == COMPR_PROBE_SIZE_KNOWN, "could not probe elfloader compression frame\n");
+	struct decompressor_state *state = (struct decompressor_state *)(loadaddr + (size + LZCOMMON_BLOCK + sizeof(max_align_t) - 1)/sizeof(max_align_t)*sizeof(max_align_t));
+	const u8 *ptr = lz4_decompressor.init(state, _binary_elfloader_lz4_start, _binary_elfloader_lz4_end);
+	assert(ptr);
+	state->window_start = state->out = loadaddr;
+	state->out_end = loadaddr + size;
+	while (state->decode) {
+		size_t res = state->decode(state, ptr, _binary_elfloader_lz4_end);
+		assert(res >= NUM_DECODE_STATUS);
+		ptr += res - NUM_DECODE_STATUS;
+	}
 	stage_teardown(&store);
 	jump(0, 0, 0, 0, loadaddr, (void *)0x1000);
 #else

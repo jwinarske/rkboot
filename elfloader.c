@@ -275,7 +275,8 @@ const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
 	if (gzip_decompressor.probe(data, end, &size) < COMPR_PROBE_LAST_SUCCESS) {
 		info("gzip probed\n");
 		struct decompressor_state *state = (struct decompressor_state *)end;
-		assert(data = gzip_decompressor.init(state, data, end));
+		data = gzip_decompressor.init(state, data, end);
+		assert(data);
 		state->out = state->window_start = out;
 		state->out_end = out_end;
 		while (state->decode) {

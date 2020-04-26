@@ -144,6 +144,8 @@ rule regtool
     command = ./regtool --read $in $flags --hex >$out
 rule ldscript
     command = {genld} $flags >$out
+rule lz4
+    command = lz4 -c $flags $in > $out
 
 build idbtool: buildcc {src}/tools/idbtool.c
 build levinboot.img: run levinboot-sd.bin | idbtool
@@ -217,8 +219,9 @@ levinboot += ('dramcfg',)
 
 levinboot = levinboot + lib
 if args.embed_elfloader:
-    print(build('elfloader.bin.o', 'incbin', 'elfloader.bin'))
-    levinboot = levinboot + ('elfloader.bin', 'compression/lzcommon')
+    print(build('elfloader.lz4', 'lz4', 'elfloader.bin', flags='--content-size'))
+    print(build('elfloader.lz4.o', 'incbin', 'elfloader.lz4'))
+    levinboot += ('elfloader.lz4', 'compression/lzcommon', 'compression/lz4')
 
 base_addresses = set()
 def binary(name, modules, base_address):

@@ -192,6 +192,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 	st->max_block_size = 256 << (2*block_size_field);
 	/* FIXME: implement header checksum */
 	st->st.decode = decode_block;
+	if (st->flags & FCSIZE) {in += 8;}
 	return in + 7;
 }
 
