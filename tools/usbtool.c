@@ -3,12 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <libusb.h>
+#include <assert.h>
 #include "tools.h"
 
 uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
@@ -23,16 +22,11 @@ uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
 	return crc;
 }
 
-_Bool final_transfer(libusb_device_handle *handle, uint8_t *buf, size_t pos, uint16_t crc, uint8_t *rc4state, uint16_t opcode) {
-	if (pos >= 4094) {
-		fprintf(stderr, "internal error in %s: wrong block size\n", __FUNCTION__);
-		abort();
-	}
-	rc4(buf, pos, rc4state);
-	crc = crc16(buf, pos, crc);
-	buf[pos] = crc >> 8;
-	buf[pos + 1] = (uint8_t)crc;
-	printf("%zu-byte 0x%x transfer\n", pos + 2, (unsigned)opcode);
+_Bool final_transfer(libusb_device_handle *handle, uint16_t crc, uint16_t opcode) {
+	uint8_t buf[2];
+	buf[0] = crc >> 8;
+	buf[1] = (uint8_t)crc;
+	printf("2-byte 0x%x transfer\n", (unsigned)opcode);
 	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, buf, 2, 20000);
 	if (res != 2) {
 		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
@@ -52,36 +46,33 @@ _Bool block_transfer(libusb_device_handle *handle, uint8_t *buf, uint16_t *crc, 
 	return 1;
 }
 
-_Bool transfer(libusb_device_handle *handle, int fd, uint8_t *buf, size_t pos, size_t max, uint16_t opcode) {
-	u8 rc4state[258];
-	rc4_init(rc4state);
-	uint16_t crc = 0xffff;
-	_Bool eof = 0;
-	size_t transferred = 0;
-	while (!eof && transferred < max) {
-		ssize_t res = read(fd, buf + pos, 4096 - pos);
-		_Bool flush = 0;
-		printf("read %zd\n", res);
+size_t read_file(int fd, uint8_t *buf, size_t size) {
+	size_t pos = 0;
+	while (pos < size) {
+		ssize_t res = read(fd, buf + pos, size - pos);
 		if (res == 0) {
-			flush = 1;
-			eof = 1;
-		} else if (res < 0) {
+			return pos;
+		}
+		if (res < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {continue;}
 			perror("Error while reading input file");
 			exit(1);
-		} else {
-			pos += res;
-			if (pos >= 4096) {flush = 1;}
 		}
-		if (flush) {
-			printf("flushing %zu bytes\n", pos);
-			memset(buf + pos, 0, 4096 - pos);
-			block_transfer(handle, buf, &crc, rc4state);
-			transferred += 4096;
-			pos = 0;
-		}
+		pos += res;
 	}
-	return final_transfer(handle, buf, 0, crc, rc4state, opcode);
+	return pos;
+}
+
+_Bool transfer(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t opcode) {
+	u8 rc4state[258];
+	rc4_init(rc4state);
+	uint16_t crc = 0xffff;
+	assert(!(size & 0xfff));
+	for (size_t pos = 0; pos < size; pos += 4096) {
+		printf("flushing %zu bytes\n", pos);
+		block_transfer(handle, buf + pos, &crc, rc4state);
+	}
+	return final_transfer(handle, crc, opcode);
 }
 
 #define Rd(n) ((n) & 31)
@@ -222,7 +213,8 @@ int main(int UNUSED argc, char UNUSED **argv) {
 		return 2;
 	}
 	libusb_free_device_list(list, 1);
-	uint8_t *buf = malloc(4096);
+	const size_t buf_size = 180 * 1024;
+	uint8_t *buf = malloc(buf_size);
 	if (!buf) {
 		fprintf(stderr, "buffer allocation failed\n");
 		abort();
@@ -242,7 +234,11 @@ int main(int UNUSED argc, char UNUSED **argv) {
 					return 1;
 				}
 			}
-			if (!transfer(handle, fd, buf, 0, 184 * 1024, call ? 0x0471 : 0x0472)) {return 1;}
+			size_t size = read_file(fd, buf, buf_size);
+			size_t rem = 4096 - (size & 0xfff);
+			memset(buf + size, 0, rem);
+			size += rem;
+			if (!transfer(handle, buf, size, call ? 0x0471 : 0x0472)) {return 1;}
 			if (fd) {close(fd);}
 		} else if (!strcmp("--load", *arg)) {
 			char *command = *arg;
@@ -266,28 +262,24 @@ int main(int UNUSED argc, char UNUSED **argv) {
 					return 1;
 				}
 			}
-			struct stat statbuf;
-			if (fstat(fd, &statbuf)) {
-				fprintf(stderr, "failed to fstat %s\n", filename);
-				return 1;
+			const size_t copy_size = sizeof(copy_program), header_size = copy_size + 16;
+			for (int i = 0; i < copy_size; i += 4) {
+				write_le32(buf + i, copy_program[i/4]);
 			}
-			uint64_t filesize = statbuf.st_size, pos = 0;
-			while (pos < filesize) {
-				const size_t copy_size = sizeof(copy_program);
-				const uint64_t max_per_round = 180*1024 - copy_size - 16;
-				for (int i = 0; i < copy_size; i += 4) {
-					write_le32(buf + i, copy_program[i/4]);
-				}
-				uint64_t size = filesize - pos < max_per_round ? filesize - pos : max_per_round;
-				uint64_t start_addr = load_addr + pos, end_addr = load_addr + pos + size;
-				printf("offset 0x%"PRIx64", loading 0x%"PRIx64" bytes to 0x%"PRIx64", end %"PRIx64"\n", pos, size, start_addr, end_addr);
-				write_le32(buf + copy_size, start_addr);
-				write_le32(buf + copy_size + 4, start_addr >> 32);
+			size_t size, total_loaded = 0;
+			do {
+				size = read_file(fd, buf + header_size, buf_size - header_size);
+				size_t rem = (header_size + size) & 0xfff ? 4096 - ((header_size + size) & 0xfff) : 0;
+				memset(buf + header_size + size, 0, rem);
+				uint64_t end_addr = load_addr + size;
+				printf("offset 0x%"PRIx64", loading 0x%"PRIx64" bytes to 0x%"PRIx64", end %"PRIx64"\n", total_loaded, size, load_addr, end_addr);
+				write_le32(buf + copy_size, load_addr);
+				write_le32(buf + copy_size + 4, load_addr >> 32);
 				write_le32(buf + copy_size + 8, end_addr);
 				write_le32(buf + copy_size + 12, end_addr >> 32);
-				if (!transfer(handle, fd, buf, copy_size + 16, size, 0x0471)) {return 1;}
-				pos += size;
-			}
+				if (!transfer(handle, buf, header_size + size + rem, 0x0471)) {return 1;}
+				load_addr = end_addr;
+			} while (size + header_size >= buf_size);
 		} else if ((call = !strcmp("--dramcall", *arg)) || !strcmp("--jump", *arg)) {
 			uint64_t entry_addr, stack_addr;
 			char *command = *arg, *entry_str = *++arg;
@@ -314,7 +306,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 			uint8_t rc4state[258];
 			rc4_init(rc4state);
 			uint16_t crc = 0xffff;
-			if (!block_transfer(handle, buf, &crc, rc4state) || !final_transfer(handle, buf, 0, crc, rc4state, call ? 0x0471 : 0x0472)) {return 1;}
+			if (!block_transfer(handle, buf, &crc, rc4state) || !final_transfer(handle, crc, call ? 0x0471 : 0x0472)) {return 1;}
 		} else {
 			fprintf(stderr, "unknown command line argument %s", *arg);
 			return 1;
