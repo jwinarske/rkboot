@@ -121,6 +121,10 @@ if args.embed_elfloader:
     flags['main'].append('-DCONFIG_EMBED_ELFLOADER')
 
 elfloader_decompression = args.elfloader_lz4 or args.elfloader_gzip or args.elfloader_zstd
+if args.elfloader_spi and not elfloader_decompression:
+    print("WARNING: --elfloader-spi requires decompression support, enabling zstd")
+    elfloader_decompression = True
+    args.elfloader_zstd = True
 
 sys.stdout = buildfile
 
@@ -180,7 +184,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 elfloader = ('elfloader', 'pll')
-if args.elfloader_spi or elfloader_decompression:
+if elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
     elfloader += ('compression/lzcommon', 'string')
     if args.elfloader_lz4:
