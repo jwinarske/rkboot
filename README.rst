@@ -30,11 +30,19 @@ What should work at this point:
 
 - Boot to Linux from SPI, with levinboot on SD/MMC. This is described in _`Booting from SPI`
 
-What is intended to work at some point, but not implemented yet:
+What is intended to work by 1.0, but not implemented yet:
+
+- Use of the correct DRAM size in later stages.
+
+- Asynchronous loading and decompression.
 
 - Boot completely from SPI. This requires adding zero-padding support to :command:`idbtool`.
 
 - Payload loading from other media.
+
+Goals that are not blockers for 1.0 are:
+
+- FIT support
 
 License
 =======
@@ -55,7 +63,10 @@ Important command-line arguments for :src:`configure.py` are:
 
 --with-atf-headers PATH  tells :src:`configure.py` where the ATF export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
 
+--elfloader-lz4, --elfloader-gzip, --elfloader-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats.
+
 --elfloader-spi  configures :output:`elfloader.bin` to load payload images from SPI flash instead of expecting them preloaded at specific addresses.
+  This process requires decompression support to be enabled.
 
 --embed-elfloader  configures the :output:`levinboot-*` targets to contain the :output:`elfloader.bin` binary, copy it where it needs to be and run it, instead of just returning to the mask ROM.
   This only makes sense if :output:`elfloader.bin` has is configured to load a payload by itself (see above), since otherwise it will just fail (or behave erratically in case DRAM retention has left parts of a BL31 image in RAM).
@@ -70,14 +81,17 @@ Primary build targets are:
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
 - :output:`elfloader.bin`: this is the payload loading stage for _`Booting via USB`.
-  It expects a BL31 ELF image, a FDT blob and a Linux kernel (or a similar EL2 payload like `teststage.bin`) at (currently) hardcoded DRAM addresses, loads BL31 into its correct addresses (which includes SRAM), inserts address information into the FDT, and finally jumps to BL31 with parameters telling it to start Linux (or other EL2 payload)
+  It expects a BL31 ELF image, a FDT blob and a Linux kernel (or a similar EL2 payload like `teststage.bin`) at (currently) hardcoded DRAM addresses (or a compressed payload blob at address 32M), loads BL31 into its correct addresses (which includes SRAM), inserts address information into the FDT, and finally jumps to BL31 with parameters telling it to start Linux (or other EL2 payload)
 
 - :output:`teststage.bin`: this is a simple EL2 payload. Currently it only dumps the passed FDT blob, if it is detected at :code:`*X0`.
+
+:src:`release-test.sh` contains a number of configurations that are supposed to be kept working.
 
 The Payload Blob
 ================
 
-The current payload format used by levinboot consists of 3 concatenated gzip frames, in the following order: BL31 ELF file, flattened device tree, kernel image.
+The current payload format used by levinboot consists of 3 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image.
+Depending on your configuration, arbitrary combinations of LZ4, gzip and zstd frames are supported.
 
 If you want to use levinboot to boot actual systems, keep in mind that it does not load an initcpio and will only insert a /memory node (FIXME: which is currently hardcoded to 4GB) into the device tree, so you will need to insert command line arguments or other ways to set a root file system into the device tree blob yourself.
 See :src:`overlay-example.dts` for an example overlay that could be applied (using, e. g. :command:`fdtoverlay` from the U-Boot tools) on an upstream kernel device tree, which designates the part of flash starting at 7MiB as a block device containing a squashfs root.
