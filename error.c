@@ -18,3 +18,5 @@ _Noreturn void halt_and_catch_fire() {
 		__asm__ volatile("wfi");
 	}
 }
+
+_Noreturn void abort() {die("abort() called\n");}

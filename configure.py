@@ -90,10 +90,22 @@ parser.add_argument(
     help='configure elfloader to load its images from SPI flash'
 )
 parser.add_argument(
-    '--elfloader-decompression',
+    '--elfloader-lz4',
     action='store_true',
-    dest='elfloader_decompression',
-    help='configure elfloader to decompress its payload instead of expecting it loaded uncompressed at the load addresses'
+    dest='elfloader_lz4',
+    help='configure elfloader to decompress its payload using LZ4'
+)
+parser.add_argument(
+    '--elfloader-gzip',
+    action='store_true',
+    dest='elfloader_gzip',
+    help='configure elfloader to decompress its payload using gzip'
+)
+parser.add_argument(
+    '--elfloader-zstd',
+    action='store_true',
+    dest='elfloader_zstd',
+    help='configure elfloader to decompress its payload using zstd'
 )
 args = parser.parse_args()
 if args.atf_headers:
@@ -107,6 +119,8 @@ if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
 if args.embed_elfloader:
     flags['main'].append('-DCONFIG_EMBED_ELFLOADER')
+
+elfloader_decompression = args.elfloader_lz4 or args.elfloader_gzip or args.elfloader_zstd
 
 sys.stdout = buildfile
 
@@ -166,9 +180,18 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 elfloader = ('elfloader', 'pll')
-if args.elfloader_spi or args.elfloader_decompression:
+if args.elfloader_spi or elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
-    elfloader = elfloader + ('compression/inflate', 'compression/lz4', 'compression/lzcommon', 'string')
+    elfloader += ('compression/lzcommon', 'string')
+    if args.elfloader_lz4:
+        flags['elfloader'].append('-DHAVE_LZ4')
+        elfloader += ('compression/lz4',)
+    if args.elfloader_gzip:
+        flags['elfloader'].append('-DHAVE_GZIP')
+        elfloader += ('compression/inflate',)
+    if args.elfloader_zstd:
+        flags['elfloader'].append('-DHAVE_ZSTD')
+        elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI')
     elfloader = elfloader + ('spi',)

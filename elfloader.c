@@ -267,26 +267,44 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 }
 
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
-extern const struct decompressor gzip_decompressor;
+extern const struct decompressor lz4_decompressor, gzip_decompressor, zstd_decompressor;
+
+const struct format {
+	char name[8];
+	const struct decompressor *decomp;
+} formats[] = {
+#ifdef HAVE_LZ4
+	{"LZ4", &lz4_decompressor},
+#endif
+#ifdef HAVE_GZIP
+	{"gzip", &gzip_decompressor},
+#endif
+#ifdef HAVE_ZSTD
+	{"zstd", &zstd_decompressor},
+#endif
+};
 
 const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
 	size_t size;
 	u64 start = get_timestamp();
-	if (gzip_decompressor.probe(data, end, &size) < COMPR_PROBE_LAST_SUCCESS) {
-		info("gzip probed\n");
-		struct decompressor_state *state = (struct decompressor_state *)end;
-		data = gzip_decompressor.init(state, data, end);
-		assert(data);
-		state->out = state->window_start = out;
-		state->out_end = out_end;
-		while (state->decode) {
-			size_t res = state->decode(state, data, end);
-			assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu\n", res);
-			data += res - NUM_DECODE_STATUS;
+	for_array(i, formats) {
+		if (formats[i].decomp->probe(data, end, &size) <= COMPR_PROBE_LAST_SUCCESS) {
+			info("%s probed\n", formats[i].name);
+			struct decompressor_state *state = (struct decompressor_state *)end;
+			data = formats[i].decomp->init(state, data, end);
+			assert(data);
+			state->out = state->window_start = out;
+			state->out_end = out_end;
+			while (state->decode) {
+				size_t res = state->decode(state, data, end);
+				assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu\n", res);
+				data += res - NUM_DECODE_STATUS;
+			}
+			info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / CYCLES_PER_MICROSECOND);
+			return data;
 		}
-		info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / CYCLES_PER_MICROSECOND);
-	} else {die("couldn't probe");}
-	return data;
+	}
+	die("couldn't probe");
 }
 #endif
 
