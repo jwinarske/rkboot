@@ -183,6 +183,8 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 
 lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
+if args.embed_elfloader:
+    levinboot += ('compression/lzcommon', 'compression/lz4')
 elfloader = ('elfloader', 'pll')
 if elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
@@ -248,7 +250,7 @@ levinboot = levinboot + lib
 if args.embed_elfloader:
     print(build('elfloader.lz4', 'lz4', 'elfloader.bin', flags='--content-size'))
     print(build('elfloader.lz4.o', 'incbin', 'elfloader.lz4'))
-    levinboot += ('elfloader.lz4', 'compression/lzcommon', 'compression/lz4')
+    levinboot += ('elfloader.lz4',)
 
 base_addresses = set()
 def binary(name, modules, base_address):
