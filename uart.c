@@ -32,7 +32,9 @@ static u32 NO_ASAN fmt_str(const char *str, u32 queue_space) {
 }
 
 void puts(const char *str) {
+	__asm__("msr DAIFSet, #15");
 	fmt_str(str, 0);
+	__asm__("msr DAIFClr, #15");
 }
 
 static u32 fmt_hex(u64 val, char pad, u8 width, u32 queue_space) {
@@ -148,7 +150,9 @@ static u32 fmt_format(const char *fmt, va_list *va, u32 queue_space) {
 void printf(const char *fmt, ...) {
 	va_list va;
 	va_start(va, fmt);
+	__asm__("msr DAIFSet, #15");
 	fmt_format(fmt, &va, 0);
+	__asm__("msr DAIFClr, #15");
 	va_end(va);
 }
 

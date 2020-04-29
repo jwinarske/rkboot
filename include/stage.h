@@ -21,6 +21,12 @@ struct stage_store {
 #endif
 };
 
+#ifdef CONFIG_EXC_VEC
+#ifdef CONFIG_EXC_STACK
+_Alignas(16) u8 exc_stack[4096];
+#endif
+#endif
+
 static inline void UNUSED stage_setup(struct stage_store *store) {
 	u64 sctlr;
 	__asm__ volatile("ic iallu;tlbi alle3;mrs %0, sctlr_el3" : "=r"(sctlr));
@@ -35,7 +41,11 @@ static inline void UNUSED stage_setup(struct stage_store *store) {
 	debug("VBAR=%08zx,  SCR=%zx\n",  vbar,  scr);
 	store->vbar = vbar;
 	store->scr = scr;
-	__asm__ volatile("msr scr_el3, %0" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ));
+	u64 exc_stack_ptr = 0;
+#ifdef CONFIG_EXC_STACK
+	exc_stack_ptr = exc_stack + sizeof(exc_stack);
+#endif
+	__asm__ volatile("msr scr_el3, %0; msr SP_EL0, %1" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ), "r"(exc_stack_ptr));
 	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(__exc_base__));
 #endif
 #ifdef CONFIG_CRC

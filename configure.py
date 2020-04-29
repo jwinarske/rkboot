@@ -32,6 +32,7 @@ def cesc(s): return s.replace('"', '\\"')
 
 srcdir = path.dirname(sys.argv[0])
 flags = defaultdict(list)
+flags['elfloader'].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
@@ -111,7 +112,8 @@ args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
 if args.excvec:
-    flags['main'].append('-DCONFIG_EXC_VEC')
+    for x in ('main', 'memtest'):
+        flags[x].append('-DCONFIG_EXC_VEC')
 if args.crc:
     flags['main'].append('-DCONFIG_CRC')
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
