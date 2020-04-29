@@ -1,9 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <asm.h>
 .global printf
-
-/*.section .rodata, "a", %progbits
-msg: .asciz "inval %08zx, %08zx\n"
-msg2: .asciz "cache %016zx\n"*/
 
 // FIXME: handle ARMv8.3-CCIDX
 
@@ -24,24 +21,6 @@ msg2: .asciz "cache %016zx\n"*/
 	msr csselr_el1, x7
 	isb
 	mrs x15, ccsidr_el1
-	/*sub sp, sp, #0x60
-	stp x30, x8, [sp]
-	stp x9, x10, [sp, #0x10]
-	stp x11, x12, [sp, #0x20]
-	stp x13, x14, [sp, #0x30]
-	stp x15, x16, [sp, #0x40]
-	stp x17, x0, [sp, #0x50]
-	//dc \cacheop, x8
-	adr x0, msg2
-	mov x1, x15
-	bl printf
-	ldp x30, x8, [sp]
-	ldp x9, x10, [sp, #0x10]
-	ldp x11, x12, [sp, #0x20]
-	ldp x13, x14, [sp, #0x30]
-	ldp x15, x16, [sp, #0x40]
-	ldp x17, x0, [sp, #0x50]
-	add sp, sp, #0x60*/
 	and w13, w15, #7	// w13 = log2(linelength) - 4
 	ubfx w12, w15, #3, #10	// w12 = max way number, later left-aligned in 32-bit word and counted down in loop
 	ubfx w11, w15, #13, #15	// w11 = max set number
@@ -56,24 +35,6 @@ msg2: .asciz "cache %016zx\n"*/
 	orr w8, w12, w7
 	orr w8, w8, w15, lsl 4
 	dc \cacheop, x8
-	/*sub sp, sp, #0x60
-	stp x30, x8, [sp]
-	stp x9, x10, [sp, #0x10]
-	stp x11, x12, [sp, #0x20]
-	stp x13, x14, [sp, #0x30]
-	stp x15, x16, [sp, #0x40]
-	stp x17, x0, [sp, #0x50]
-	adr x0, msg
-	mov x1, x8
-	mov x2, x10
-	bl printf
-	ldp x30, x8, [sp]
-	ldp x9, x10, [sp, #0x10]
-	ldp x11, x12, [sp, #0x20]
-	ldp x13, x14, [sp, #0x30]
-	ldp x15, x16, [sp, #0x40]
-	ldp x17, x0, [sp, #0x50]
-	add sp, sp, #0x60*/
 	subs w15, w15, w9
 	b.hs 3b
 	subs w12, w12, w10
@@ -85,8 +46,6 @@ msg2: .asciz "cache %016zx\n"*/
 .endm
 
 .section .text.asm, "ax", %progbits
-#define PROC(name, alignment) .global name;.align alignment; name:
-#define ENDFUNC(name) .type name, %function;.size name, .-name
 PROC(invalidate_dcache_set_sctlr, 2)
 	apply_all_dcache cacheop=isw
 	msr sctlr_el3, x0
