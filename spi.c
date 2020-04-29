@@ -33,18 +33,22 @@ static void spi_recv_fast(u8 *buf, u32 buf_size) {
 	spi->enable = 0;
 }
 
-void spi_read_flash(u8 *buf, u32 buf_size) {
-	spi->slave_enable = 1; mmio_barrier();
+static void tx_fast_read_cmd(u32 addr) {
 	spi->ctrl0 = spi_mode_base | SPI_XFM_TX | SPI_BHT_APB_8BIT;
 	spi->enable = 1; mmio_barrier();
 	spi->tx = 0x0b;
-	spi->tx = 0;
-	spi->tx = 0;
-	spi->tx = 0;
-	spi->tx = 0xff;
+	spi->tx = addr >> 16 & 0xff;
+	spi->tx = addr >> 8 & 0xff;
+	spi->tx = addr & 0xff;
+	spi->tx = 0xff; /* dummy byte */
 	while (spi->status & 1) {__asm__ volatile("yield");}
 	spi->enable = 0;
 	mmio_barrier();
+}
+
+void spi_read_flash(u8 *buf, u32 buf_size) {
+	spi->slave_enable = 1; mmio_barrier();
+	tx_fast_read_cmd(0);
 	u8 *buf_end = buf + buf_size;
 	u8 *pos = buf;
 	while (pos < buf_end) {
