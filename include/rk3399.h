@@ -23,6 +23,8 @@ enum {
 	CRU_LPLL_CON = 0,
 	CRU_BPLL_CON = 0x20 >> 2,
 	CRU_DPLL_CON = 0x040 >> 2,
+	CRU_CPLL_CON = 0x060 >> 2,
+	CRU_GPLL_CON = 0x080 >> 2,
 	CRU_CLKSEL_CON = 0x100 >> 2,
 	CRU_SOFTRST_CON = 0x400 >> 2,
 };
@@ -41,6 +43,10 @@ enum {
 
 enum {CYCLES_PER_MICROSECOND = 24};
 
+struct gic_distributor;
+struct gic_redistributor;
+static volatile struct gic_distributor *const gic500d = (volatile struct gic_distributor *)0xfee00000;
+static volatile struct gic_redistributor *const gic500r = (volatile struct gic_redistributor *)0xfef00000;
 static volatile u32 *const pmu = (volatile u32 *)0xff310000;
 static volatile u32 *const pmugrf = (volatile u32 *)0xff320000;
 static volatile u32 *const pmusgrf = (volatile u32 *)0xff330000;

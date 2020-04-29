@@ -220,6 +220,9 @@ lib += ('dcache',)
 if args.excvec:
     print('build exc_handlers.o: cc {}'.format(esc(path.join(srcdir, 'exc_handlers.S'))))
     lib += ('exc_handlers',)
+if args.elfloader_spi:
+    print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
+    elfloader += ('gicv3',)
 lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
