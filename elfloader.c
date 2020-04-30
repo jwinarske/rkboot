@@ -337,7 +337,9 @@ _Noreturn u32 ENTRY main() {
 	bl33_ep.args.arg1 = 0;
 	bl33_ep.args.arg2 = 0;
 	bl33_ep.args.arg3 = 0;
-	setup_pll(cru + CRU_BPLL_CON, 297);
+	setup_pll(cru + CRU_BPLL_CON, 600);
+	/* aclkm_core_b = clk_core_b = BPLL */
+	cru[CRU_CLKSEL_CON + 2] = SET_BITS16(5, 0) << 8 | SET_BITS16(2, 1) << 6 | SET_BITS16(5, 0);
 	stage_teardown(&store);
 	while (~uart->line_status & 0x60) {__asm__ volatile("yield");}
 	uart->shadow_fifo_enable = 0;
