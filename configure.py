@@ -271,7 +271,7 @@ def binary(name, modules, base_address):
 
 binary('levinboot-usb', levinboot, 'ff8c2000')
 binary('levinboot-sd', levinboot, 'ff8c2004')
-binary('memtest', ('memtest',) + lib, 'ff8c2000')
+binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
 if args.atf_headers:
