@@ -2,6 +2,7 @@
 #include <rk-spi.h>
 #include <rk3399.h>
 #include <inttypes.h>
+#include <gic_regs.h>
 
 static const u32 spi_mode_base = SPI_MASTER | SPI_CSM_KEEP_LOW | SPI_SSD_FULL_CYCLE | SPI_LITTLE_ENDIAN | SPI_MSB_FIRST | SPI_POLARITY(1) | SPI_PHASE(1) | SPI_DFS_8BIT;
 
@@ -111,63 +112,6 @@ static void handle_spi_interrupt(struct spi_xfer_state *state, volatile struct s
 	}
 }
 
-enum {
-	GICD_CTLR_RWP = 1 << 31,
-	GICD_CTLR_ARE_NS = 32,
-	GICD_CTLR_ARE_S = 16,
-	GICD_CTLR_EnableGrp1S = 4,
-	GICD_CTLR_EnableGrp1N = 2,
-	GICD_CTLR_EnableGrp0 = 1,
-};
-
-struct gic_distributor {
-	u32 control;
-	u32 type;
-	u32 implementer_id;
-	u32 reserved1;
-	u32 status;
-	u32 reserved2[3];
-	u32 implementation_defined1[8];
-	struct {
-		u32 set;
-		u32 reserved1;
-		u32 clear;
-		u32 reserved2;
-	} clrsetspi[2];
-	u32 reserved3[8];
-	u32 group[32];
-	u32 enable[32];
-	u32 disable[32];
-	u32 set_pending[32];
-	u32 clear_pending[32];
-	u32 activate[32];
-	u32 deactivate[32];
-	u8 priority[1020];
-	u32 reserved4;
-	u8 targets[1020];
-	u32 reserved5;
-	u32 configuration[64];
-	u32 group_modifier[32];
-	u32 ns_access[64];
-	u32 generate_sgi;
-};
-CHECK_OFFSET(gic_distributor, clrsetspi, 0x40);
-CHECK_OFFSET(gic_distributor, enable, 0x100);
-CHECK_OFFSET(gic_distributor, priority, 0x400);
-CHECK_OFFSET(gic_distributor, group_modifier, 0xd00);
-
-struct gic_redistributor {
-	u32 control;
-	u32 implementer_id;
-	u32 type;
-	u32 status;
-	u32 wake;
-};
-
-#define ICC_IAR0_EL1 "S3_0_C12_C8_0"
-#define ICC_IAR1_EL1 "S3_0_C12_C12_0"
-#define ICC_EOIR0_EL1 "S3_0_C12_C8_1"
-
 static void irq_handler() {
 	u64 grp0_intid;
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1 : "=r"(grp0_intid));
@@ -239,16 +183,6 @@ void gicv3_per_cpu_teardown(volatile struct gic_redistributor *redist);
 void spi_read_flash(u8 *buf, u32 buf_size) {
 	assert(buf_size % 2 == 0);
 	u32 ctlr = gic500d->control;
-	info("GICD_CTLR: 0x%08"PRIx32", CRU_CLKSEL_CON56=0x%04"PRIx32"\n", ctlr, cru[CRU_CLKSEL_CON + 56]);
-	setup_pll(cru + CRU_CPLL_CON, 1000);
-	/* aclk_gic = 200 MHz */
-	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
-	/* aclk_cci = 500 MHz, DTS has 600 */
-	cru[CRU_CLKSEL_CON + 5] = SET_BITS16(2, 0) << 6 | SET_BITS16(5, 1);
-	/* aclk_perilp0 = hclk_perilp0 = 1 GHz, pclk_perilp = 500 MHz */
-	cru[CRU_CLKSEL_CON + 23] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 0) | SET_BITS16(2, 0) << 8 | SET_BITS16(3, 1);
-	/* hclk_perilp1 = pclk_perilp1 = 333 MHz, DTS has 400 */
-	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 2) | SET_BITS16(3, 0) << 8;
 	assert((ctlr & (GICD_CTLR_ARE_NS | GICD_CTLR_ARE_S)) == 0);
 	gic500d->control = GICD_CTLR_EnableGrp0 | GICD_CTLR_EnableGrp1S;
 	assert(!fiq_handler_spx && !irq_handler_spx);

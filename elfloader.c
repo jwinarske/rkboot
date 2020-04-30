@@ -314,6 +314,15 @@ _Noreturn u32 ENTRY main() {
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
 	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, UNUSED blob_addr = 0x02000000;
+	setup_pll(cru + CRU_CPLL_CON, 1000);
+	/* aclk_gic = 200 MHz */
+	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
+	/* aclk_cci = 500 MHz, DTS has 600 */
+	cru[CRU_CLKSEL_CON + 5] = SET_BITS16(2, 0) << 6 | SET_BITS16(5, 1);
+	/* aclk_perilp0 = hclk_perilp0 = 1 GHz, pclk_perilp = 500 MHz */
+	cru[CRU_CLKSEL_CON + 23] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 0) | SET_BITS16(2, 0) << 8 | SET_BITS16(3, 1);
+	/* hclk_perilp1 = pclk_perilp1 = 333 MHz, DTS has 400 */
+	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 2) | SET_BITS16(3, 0) << 8;
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
 	u8 *blob = (u8 *)blob_addr, *blob_end = blob + (16 << 20);
 #ifdef CONFIG_ELFLOADER_SPI
