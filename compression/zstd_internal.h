@@ -32,9 +32,10 @@ struct literals_probe {
 struct sequences_state {
 	u64 bits;
 	const u8 *ptr;
-	u8 num_bits;
+	u32 num_bits;
 	u32 dist1, dist2, dist3;
 	u32 entry_copy, entry_length, entry_dist;
+	size_t bits_left;
 };
 
 static inline u8 UNUSED fse_bits(u32 entry) {return entry & 31;}

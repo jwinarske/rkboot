@@ -11,6 +11,7 @@ typedef u64 timestamp_t;
 #define TICKS_PER_MICROSECOND 24
 
 #define unlikely(x) __builtin_expect((x), 0)
+#define likely(x) __builtin_expect((x), 1)
 
 #define FALLTHROUGH __attribute__((fallthrough))
 #define NO_ASAN __attribute__((no_sanitize_address))
