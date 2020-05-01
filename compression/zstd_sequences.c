@@ -24,7 +24,7 @@
 	};
 #undef X
 #define DECODE3(bits_a, var_a, bits_b, var_b, bits_c, var_c) do {\
-		debug(#bits_a "%"PRIu8" " #bits_b "%"PRIu8" " #bits_c "%"PRIu8"\n", (u8)(bits_a), (u8)(bits_b), (u8)(bits_c));\
+		spew(#bits_a "%"PRIu8" " #bits_b "%"PRIu8" " #bits_c "%"PRIu8"\n", (u8)(bits_a), (u8)(bits_b), (u8)(bits_c));\
 		u8 total_bits = (bits_a) + (bits_b) + (bits_c);\
 		if (num_bits < total_bits) {\
 			check(ptr - start >= (total_bits - num_bits + 7) / 8, "not enough data for sequences bitstream, %zu left\n", num_seq);\
@@ -32,16 +32,16 @@
 				bits = bits << 8 | *--ptr;\
 				num_bits += 8;\
 			} while (num_bits <= 56 && start < ptr);\
-		} debug("0x%"PRIx64"/%"PRIu8"\n", bits, num_bits);\
+		} spew("0x%"PRIx64"/%"PRIu8"\n", bits, num_bits);\
 		u64 tmp1 = bits >> (num_bits - total_bits);\
 		u32 tmp2 = bits >> (num_bits - (bits_a));\
 		num_bits -= total_bits;\
 		u32 tmp3 = tmp1 >> (bits_c);\
-		debug("tmp %"PRIx64" %"PRIx32" %"PRIx32"\n", tmp1, tmp2, tmp3);\
+		spew("tmp %"PRIx64" %"PRIx32" %"PRIx32"\n", tmp1, tmp2, tmp3);\
 		(var_a) = tmp2 & ((1 << (bits_a)) - 1);\
 		(var_b) = tmp3 & ((1 << (bits_b)) - 1);\
 		(var_c) = tmp1 & ((1 << (bits_c)) - 1);\
-		debug(#var_a "%"PRIu32" " #var_b "%"PRIu32" " #var_c "%"PRIu32"\n", (u32)(var_a), (u32)(var_b), (u32)(var_c));\
+		spew(#var_a "%"PRIu32" " #var_b "%"PRIu32" " #var_c "%"PRIu32"\n", (u32)(var_a), (u32)(var_b), (u32)(var_c));\
 	}while (0)
 
 _Bool init_sequences(struct sequences_state *state, const u8 *start, const u8 *ptr, const struct dectables *tables) {
@@ -84,9 +84,9 @@ _Bool decode_sequences(struct sequences_state *state, const u8 *start, size_t nu
 		state_dist += base_dist;
 		entry_copy = table_copy[state_copy], entry_dist = table_dist[state_dist], entry_length = table_length[state_length];
 		const u32 sym_copy = entry_copy >> 5 & 63, sym_dist = entry_dist >> 5 & 63, sym_length = entry_length >> 5 & 63;
-		debug("sym copy%"PRIu8" dist%"PRIu8" length%"PRIu8"\n", sym_copy, sym_dist, sym_length);
+		spew("sym copy%"PRIu8" dist%"PRIu8" length%"PRIu8"\n", sym_copy, sym_dist, sym_length);
 		const u32 const_length = ctable_length[sym_length], const_copy = ctable_copy[sym_copy];
-		debug("clength0x%"PRIx32" ccopy0x%"PRIx32"\n", const_length, const_copy);
+		spew("clength0x%"PRIx32" ccopy0x%"PRIx32"\n", const_length, const_copy);
 		u32 extra_dist, extra_length, extra_copy;
 		const u32 ebits_dist = sym_dist, ebits_length = const_length >> 24, ebits_copy = const_copy >> 24;
 		DECODE3(ebits_dist, extra_dist, ebits_length, extra_length, ebits_copy, extra_copy);
@@ -126,7 +126,7 @@ _Bool decode_sequences(struct sequences_state *state, const u8 *start, size_t nu
 			}
 		}
 		dist1 = used_dist;
-		debug("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32"\n", extra_copy, extra_length + 3, used_dist);
+		spew("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32"\n", extra_copy, extra_length + 3, used_dist);
 		assert(extra_copy < 0x20000 && extra_length < 0x20000);
 		*out++ = extra_copy | (u64)extra_length << 17 | (u64)used_dist << 34;
 	} while (--num_seq);
@@ -138,7 +138,7 @@ _Bool decode_sequences(struct sequences_state *state, const u8 *start, size_t nu
 }
 
 _Bool finish_sequences(struct sequences_state *state, const u8 *start, struct dectables *tables) {
-	info("finishing sequences at %"PRIu8"bits\n", state->num_bits);
+	debug("finishing sequences at %"PRIu8"bits\n", state->num_bits);
 	check(state->num_bits == 0 && state->ptr == start, "sequence bitstream was not fully consumed\n");
 	tables->dist1 = state->dist1; tables->dist2 = state->dist2; tables->dist3 = state->dist3;
 	return 1;

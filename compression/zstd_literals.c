@@ -10,7 +10,7 @@ const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables 
 	u8 weights[256];
 	u8 header = *in++, num;
 	if (header < 128) {
-		info("FSE huff weights\n");
+		debug("FSE huff weights\n");
 		u32 fse_weights[12];
 		const u8 *weights_end = in + header, *huff_start = weights_end;
 		u8 fse_log;
@@ -35,7 +35,7 @@ const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables 
 		u32 entry_even, entry_odd;
 #define ADD_WEIGHT(entry) do {\
 			sum += 1 << (weights[num++] = entry >> 5 & 63) >> 1;\
-			debug("weight %"PRIu8": %"PRIu8" sum%"PRIu32"\n", num - 1, weights[num - 1], sum);\
+			spew("weight %"PRIu8": %"PRIu8" sum%"PRIu32"\n", num - 1, weights[num - 1], sum);\
 		} while (0)
 #define UPDATE_ENTRY(entry) (entry = fse_table[(bits >> (num_bits -= fse_bits(entry)) & MASK31(fse_bits(entry))) + fse_base(entry)])
 		num = 0;
@@ -51,7 +51,7 @@ const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables 
 				bits = bits << 8 | *--weights_end;
 				num_bits += 8;
 			}
-			debug("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
+			spew("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
 			if (num_bits <= 24) {break;}
 			ADD_WEIGHT(entry_even);
 			ADD_WEIGHT(entry_odd);
@@ -78,7 +78,7 @@ const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables 
 		}
 		in = huff_start;
 	} else {
-		info("direct huff weights\n");
+		debug("direct huff weights\n");
 		num = header - 127;
 		check(end - in >= (num + 1) / 2, "not enough data for direct Huffman weights\n");
 		for_range(i, 0, num / 2) {
@@ -128,7 +128,7 @@ const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables 
 		if (!weight) {continue;}
 		u8 len = maxbits + 1 - weight;
 		u16 num_entries = 1 << (11 - len);
-		debug("sym0x%02"PRIx8" weight%"PRIu8" len%"PRIu8" %"PRIu16"entries code0x%03"PRIx16"\n", sym, weight, len, num_entries, code<<1);
+		spew("sym0x%02"PRIx8" weight%"PRIu8" len%"PRIu8" %"PRIu16"entries code0x%03"PRIx16"\n", sym, weight, len, num_entries, code<<1);
 		assert(code % num_entries == 0);
 		for_range(j, 0, num_entries) {
 			assert(code < 2048);
@@ -153,13 +153,13 @@ static _Bool decompress_literal_stream(const u8 *in, const u8 *end, u8 *out, u8 
 		const struct huff_entry *entry;
 		u8 len;
 		while ((len = (entry = table + (bits >> 21))->len) > (32 - shift)) {
-			debug("0x%08"PRIx32"/%"PRIu8"\n", bits, 32 - shift);
+			spew("0x%08"PRIx32"/%"PRIu8"\n", bits, 32 - shift);
 			check(in < end, "not enough data to decode literal stream with %zu left\n", out_end - out);
 			do {
 				bits |= *--end << (shift -= 8);
 			} while (shift >= 8 && in < end);
 		}
-		debug("lit 0x%08"PRIx32"/%"PRIu8" sym%02"PRIx8"\n", bits, 32 - shift, entry->sym);
+		spew("lit 0x%08"PRIx32"/%"PRIu8" sym%02"PRIx8"\n", bits, 32 - shift, entry->sym);
 		shift += len; bits <<= len;
 		*out++ = entry->sym;
 	} while (out < out_end);

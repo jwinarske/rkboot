@@ -50,7 +50,7 @@ static const u8 *handle_decoding_table(const u8 *in, const u8 *end, u8 mode, u8 
 	u32 weights[64];
 	switch (mode) {
 	case Predefined_Mode:
-		info("predef %s\n", settings->title);
+		debug("predef %s\n", settings->title);
 		for_range(i, 0, settings->sym) {
 			u8 w = settings->predef_distr[i];
 			weights[i] = w ? w + 1 : 0;
@@ -58,7 +58,7 @@ static const u8 *handle_decoding_table(const u8 *in, const u8 *end, u8 mode, u8 
 		*log = settings->log;
 		break;
 	case RLE_Mode:
-		info("RLE %s\n", settings->title);
+		debug("RLE %s\n", settings->title);
 		check(end > in, "not enough data for RLE symbol\n");
 		u8 sym = *in++;
 		check(sym < settings->sym, "symbol value for RLE %s is to high\n", settings->title);
@@ -66,13 +66,13 @@ static const u8 *handle_decoding_table(const u8 *in, const u8 *end, u8 mode, u8 
 		table[0] = (u32)sym << 5;
 		return in;
 	case FSE_Compressed_Mode:
-		info("FSE %s\n", settings->title);
+		debug("FSE %s\n", settings->title);
 		assert(settings->sym <= 64);
 		in = decode_fse_distribution(in, end, log, settings->sym, weights);
 		if (!in) {return 0;}
 		break;
 	case Repeat_Mode:
-		info("repeat %s\n", settings->title);
+		debug("repeat %s\n", settings->title);
 		check(*log != TABLE_NOT_AVAILABLE, "no previous %s decoding table for Repeat_Mode\n", settings->title);
 		return in;
 	default:abort();
@@ -151,7 +151,7 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 		literal_ptr = ptr;
 	}
 	debug("%.*s", (int)probe.size, literal_ptr);
-	info("%"PRIu32" sequences\n", num_seq);
+	debug("%"PRIu32" sequences\n", num_seq);
 	if (num_seq >= 128) {
 		if (num_seq == 255) {
 			check(end - in >= 3, "not enough data for Sequences_Section_Header\n");
@@ -165,7 +165,7 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 		check(end - in >= 1, "not enough data for Sequences_Section_Header\n");
 	}
 	u8 scm = *in++;
-	info("scm0x%"PRIx8"\n", scm);
+	debug("scm0x%"PRIx8"\n", scm);
 	check(scm % 4 == 0, "reserved feature used in Sequences_Compression_Modes\n");
 	in = handle_decoding_table(in, end, scm >> 6 & 3, &tables->copy_log, tables->copy_table, &copy_settings);
 	if (!in) {return 0;}
@@ -290,7 +290,7 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 	size_t total_size = block_size + 3;
 	switch (block_header0 >> 1 & 3) {
 	case Raw_Block:
-		info("%"PRIu32"-byte Raw_Block\n", block_size);
+		debug("%"PRIu32"-byte Raw_Block\n", block_size);
 		if (st->st.out_end - st->st.out < block_size) {return DECODE_NEED_MORE_SPACE;}
 		if (end - in < block_size) {return DECODE_NEED_MORE_DATA;}
 		lzcommon_literal_copy(st->st.out, in, block_size);
@@ -298,7 +298,7 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 		in += block_size;
 		break;
 	case RLE_Block:
-		info("%"PRIu32"-byte RLE_Block\n", block_size);
+		debug("%"PRIu32"-byte RLE_Block\n", block_size);
 		if (st->st.out_end - st->st.out < block_size) {return DECODE_NEED_MORE_SPACE;}
 		if (unlikely(end - in < 1)) {return DECODE_NEED_MORE_DATA;}
 		u8 *out = st->st.out;
@@ -310,7 +310,7 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 		total_size = 4;
 		break;
 	case Compressed_Block:
-		info("%"PRIu32"-byte compressed block\n", block_size);
+		debug("%"PRIu32"-byte compressed block\n", block_size);
 		if (end - in < block_size) {return DECODE_NEED_MORE_DATA;}
 		size_t res = decompress_block(in, in + block_size, st->st.out, st->st.out_end, &st->tables, st->st.window_start);
 		if (res < NUM_DECODE_STATUS) {return res;}
@@ -329,7 +329,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 	if ((frame_header_desc & Single_Segment_Flag) || fcs_field_size != 0) {
 		fcs_field_size = 1 << fcs_field_size;
 	}
-	info("fcsfs%"PRIu8"\n", fcs_field_size);
+	debug("fcsfs%"PRIu8"\n", fcs_field_size);
 	u8 frame_header_size = fcs_field_size
 		+ !(frame_header_desc & Single_Segment_Flag); /* window descriptor */
 	assert(end - in > 5 + frame_header_size);

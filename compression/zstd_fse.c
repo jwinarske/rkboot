@@ -22,11 +22,11 @@ const u8 *decode_fse_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 m
 	u8 num_bits = 8;
 	u8 log = *log_ptr = (bits & 15) + 5;
 	bits >>= 4; num_bits -= 4;
-	info("FSE log: %"PRIu8"\n", log);
+	debug("FSE log: %"PRIu8"\n", log);
 	u32 entries_left = 1 << log;
 	for_range(sym, 0, max_sym) {
 		const u8 length = trunc_length(entries_left + 2);
-		debug("left%"PRIu32" len%"PRIu8"\n", entries_left, length);
+		spew("left%"PRIu32" len%"PRIu8"\n", entries_left, length);
 		u32 mask = (1 << length) - 1;
 		u32 cutoff = trunc_cutoff(entries_left + 2, length);
 		while (num_bits < length) {
@@ -34,7 +34,7 @@ const u8 *decode_fse_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 m
 			bits |= *in++ << num_bits;
 			num_bits += 8;
 		}
-			debug("prob 0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
+		spew("prob 0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
 		u32 val = bits & mask;
 		bits >>= length; num_bits -= length;
 		if (val >= cutoff) {
@@ -43,11 +43,11 @@ const u8 *decode_fse_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 m
 				bits |= *in++ << num_bits;
 				num_bits += 8;
 			}
-			debug("hibit 0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
+			spew("hibit 0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
 			val += bits & 1 ? (1 << length) - cutoff : 0;
 			bits >>= 1; num_bits -= 1;
 		}
-		debug("sym%"PRIu32" prob%"PRIu32"\n", sym, val);
+		spew("sym%"PRIu32" prob%"PRIu32"\n", sym, val);
 		weights[sym] = val;
 		if (val != 1) {
 			assert(val == 0 || val - 1 <= entries_left);
@@ -64,11 +64,11 @@ const u8 *decode_fse_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 m
 					check(end - in >= 1, "not enough data for FSE distribution 0-repeat flag\n");
 					bits |= *in++ << num_bits;
 					num_bits += 8;
-					debug("rep 0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
+					spew("rep 0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);
 				}
 				rep = bits & 3;
 				bits >>= 2; num_bits -= 2;
-				debug("rep%"PRIu32"\n", rep);
+				spew("rep%"PRIu32"\n", rep);
 				check(sym + rep <= max_sym, "0-repeat in FSE distribution goes over number of symbols\n");
 				for_range(i, 0, rep) {weights[++sym] = 1;}
 			} while (rep == 3);
