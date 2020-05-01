@@ -32,7 +32,6 @@ def cesc(s): return s.replace('"', '\\"')
 
 srcdir = path.dirname(sys.argv[0])
 flags = defaultdict(list)
-flags['elfloader'].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
@@ -201,7 +200,7 @@ if elfloader_decompression:
         flags['elfloader'].append('-DHAVE_ZSTD')
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI')
+    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
     elfloader = elfloader + ('spi',)
 modules = set(lib + levinboot + elfloader + ('memtest', 'teststage', 'dump_fdt'))
 
@@ -217,12 +216,13 @@ for f in modules:
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
 lib += ('dcache',)
-if args.excvec:
-    print('build exc_handlers.o: cc {}'.format(esc(path.join(srcdir, 'exc_handlers.S'))))
-    lib += ('exc_handlers',)
-if args.elfloader_spi:
-    print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
-    elfloader += ('gicv3',)
+if args.excvec or args.elfloader_spi:
+    print(build('exc_handlers.o', 'cc', path.join(srcdir, 'exc_handlers.S')))
+    if args.excvec:
+        lib += ('exc_handlers',)
+    if args.elfloader_spi:
+        elfloader += ('exc_handlers', 'gicv3')
+        print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
 lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
