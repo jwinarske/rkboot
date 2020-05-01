@@ -102,7 +102,7 @@ static void handle_spi_interrupt(struct spi_xfer_state *state, volatile struct s
 	pos += read_items * 2;
 	state->pos = pos;
 	state->this_xfer_items -= read_items;
-	debug("pos=0x%zx, this_xfer=%"PRIu16"\n", pos, state->this_xfer_items);
+	spew("pos=0x%zx, this_xfer=%"PRIu16"\n", pos, state->this_xfer_items);
 	if (!state->this_xfer_items) {
 		assert(spi->rx_fifo_level == 0);
 		if (pos >= state->total_bytes) {return;}
@@ -117,7 +117,7 @@ static void irq_handler() {
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1 : "=r"(grp0_intid));
 	u64 sp;
 	__asm__("add %0, SP, #0" : "=r"(sp));
-	debug("SP=%"PRIx64"\n", sp);
+	spew("SP=%"PRIx64"\n", sp);
 	if (grp0_intid >= 1020 && grp0_intid < 1023) {
 		if (grp0_intid == 1020) {
 			die("intid1020");
