@@ -9,7 +9,7 @@ The levinboot bootloader
 
 levinboot (name always lowercase) is a bootloader for (currently) RK3399 platforms with LPDDR4 memory.
 
-The project is currently in an α-state, as indicated by its version number (0.2).
+The project is currently in a β-state. Basic features work, but formats and features are still in flux. As a non-commercial project, no warranty is given for any breakage.
 
 Important project goals include:
 
@@ -32,17 +32,13 @@ What should work at this point:
 
 What is intended to work by 1.0, but not implemented yet:
 
-- Use of the correct DRAM size in later stages.
-
-- Asynchronous loading and decompression.
+- Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
 
 - Boot completely from SPI. This requires adding zero-padding support to :command:`idbtool`.
 
-- Payload loading from other media.
+- Payload loading from other media. SD card is critical for 0.4
 
-Goals that are not blockers for 1.0 are:
-
-- FIT support
+- basic FIT support
 
 License
 =======
@@ -139,7 +135,7 @@ To do this:
 
       Beware that the loading step will take a while, because :command:`usbtool` currently uses the mask ROM code to transfer the files, which is anything but fast at receiving (or most likely, verifying) data sent over USB.
 
-    - either of the previous two with compression: configure the build with :cmdargs:`--elfloader-decompression` and run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 path/to/payload-blob --jump 100000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`. This may save transfer time. (TODO: improve :command:`usbtool` so pipes can be used to construct the payload blob on-the-fly)
+    - either of the previous two with compression: configure the build with :cmdargs:`--elfloader-decompression` and run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 path/to/payload-blob --jump 100000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`. This may save transfer time.
 
 Booting from SPI
 ================
@@ -148,11 +144,11 @@ levinboot can load its payload images from SPI flash. This way it can be used as
 Currently the build system can only produce images usable on SD or eMMC chips, not for SPI flash itself.
 This is probably for the best since right now levinboot is not considered production-ready yet and as such it makes sense to store the critical part on easily-removed/-disabled storage in case it breaks.
 
-Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader`. This will produce :output:`levinboot.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
+Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
 
 You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot.img` to sector 64 on SD/eMMC for use in self-booting.
 
-After DRAM init, this will read the first 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro; FIXME: this is unnecessarily slow, since usually only a part is needed, and decompression does not need to wait for the entirety to be loaded), and will decompress the payload blob from it.
-The flash contents after the end of _`The Payload Blob` are not used by levinboot.
+After DRAM init, this will asynchronously read up to 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro) as needed, and will decompress the payload blob from it.
+The flash contents after the end of _`The Payload Blob` are not used by levinboot and may be used for a root file system.
 
 See the notes about _`The Payload Blob` for general advice on how to create it.
