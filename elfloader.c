@@ -286,25 +286,48 @@ const struct format {
 #endif
 };
 
-size_t decompress(struct async_transfer *async, size_t start_offset, u8 *out, u8 *out_end) {
-	size_t size;
+static size_t wait_for_data(struct async_transfer *async, size_t old_pos) {
+	size_t pos;
+	if (old_pos >= async->total_bytes) {
+		die("waited for more data than planned\n");
+	}
+	while ((pos = async->pos) <= old_pos) {
+		debug("waiting for data …\n");
+		__asm__("wfi");
+	}
+	return pos;
+}
+
+static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 *out_end) {
+	struct decompressor_state *state = (struct decompressor_state *)(async->buf + (async->total_bytes + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t));
+	size_t size, xfer_pos = async->pos;
 	u64 start = get_timestamp();
-	const u8 *data = async->buf + start_offset, *end = async->buf + async->total_bytes;
+	const u8 *buf = async->buf;
 	for_array(i, formats) {
-		if (formats[i].decomp->probe(data, end, &size) <= COMPR_PROBE_LAST_SUCCESS) {
+		enum compr_probe_status status;
+		while ((status = formats[i].decomp->probe(buf + offset, buf + xfer_pos, &size)) == COMPR_PROBE_NOT_ENOUGH_DATA) {
+			xfer_pos = wait_for_data(async, xfer_pos);
+		}
+		if (status <= COMPR_PROBE_LAST_SUCCESS) {
 			info("%s probed\n", formats[i].name);
-			struct decompressor_state *state = (struct decompressor_state *)end;
-			data = formats[i].decomp->init(state, data, end);
-			assert(data);
+			{
+				const u8 *data = formats[i].decomp->init(state, buf + offset, buf + xfer_pos);
+				assert(data);
+				offset = data - buf;
+			}
 			state->out = state->window_start = out;
 			state->out_end = out_end;
 			while (state->decode) {
-				size_t res = state->decode(state, data, end);
-				assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu\n", res);
-				data += res - NUM_DECODE_STATUS;
+				size_t res = state->decode(state, buf + offset, buf + xfer_pos);
+				if (res == DECODE_NEED_MORE_DATA) {
+					xfer_pos = wait_for_data(async, xfer_pos);
+				} else {
+					assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu\n", res);
+					offset += res - NUM_DECODE_STATUS;
+				}
 			}
 			info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / CYCLES_PER_MICROSECOND);
-			return data - async->buf;
+			return offset;
 		}
 	}
 	die("couldn't probe");
@@ -349,19 +372,26 @@ _Noreturn u32 ENTRY main() {
 	rkspi_read_flash_poll(spi1, blob, blob_end - blob, 0);
 #else
 	rkspi_start_irq_flash_read(0);
+#ifdef SPI_SYNC_IRQ
 	while (spi1_async.pos < spi1_async.total_bytes) {
 		debug("idle pos=0x%zx rxlvl=%"PRIu32", rxthreshold=%"PRIu32"\n", spi1_state.pos, spi->rx_fifo_level, spi->rx_fifo_threshold);
 		__asm__("wfi");
 	}
+#endif
+#endif
+#endif
+	size_t offset = decompress(async, 0, (u8 *)elf_addr, (u8 *)fdt_addr);
+	offset = decompress(async, offset, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
+	offset = decompress(async, offset, (u8 *)payload_addr, (u8 *)blob_addr);
+
+#ifdef CONFIG_ELFLOADER_SPI
+#ifndef SPI_POLL
 	rkspi_end_irq_flash_read();
 #endif
 	u64 xfer_end = get_timestamp();
 	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	gicv3_per_cpu_teardown(gic500r);
 #endif
-	size_t offset = decompress(async, 0, (u8 *)elf_addr, (u8 *)fdt_addr);
-	offset = decompress(async, offset, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
-	offset = decompress(async, offset, (u8 *)payload_addr, (u8 *)blob_addr);
 #endif
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);

@@ -175,6 +175,7 @@ void rkspi_start_irq_flash_read(u32 addr) {
 void rkspi_end_irq_flash_read() {
 	volatile struct rkspi *spi = spi1;
 	printf("end rxlvl=%"PRIu32", rxthreshold=%"PRIu32" intr_status=0x%"PRIx32"\n", spi->rx_fifo_level, spi->rx_fifo_threshold, spi->intr_raw_status);
+	spi->enable = 0;
 	spi->slave_enable = 0;
 	spi->intr_mask = 0;
 	gicv2_disable_spi(gic500d, spi1_intr);
