@@ -3,7 +3,7 @@
 #include <uart.h>
 #include <rk3399.h>
 #include <stage.h>
-#include <rk-spi.h>
+#include <rkspi_regs.h>
 #include <compression.h>
 
 static const struct mapping initial_mappings[] = {
@@ -50,6 +50,7 @@ int32_t ENTRY NO_ASAN main() {
 	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 1) << 15 | SET_BITS16(7, 3) << 8;
 	const u32 spi_mode_base = SPI_MASTER | SPI_CSM_KEEP_LOW | SPI_SSD_FULL_CYCLE | SPI_LITTLE_ENDIAN | SPI_MSB_FIRST | SPI_POLARITY(1) | SPI_PHASE(1) | SPI_DFS_8BIT;
 	assert((spi_mode_base | SPI_BHT_APB_8BIT) == 0x24c1);
+	volatile struct rkspi *spi = spi1;
 	spi->ctrl0 = spi_mode_base | SPI_BHT_APB_8BIT;
 	spi->enable = 1; mmio_barrier();
 	spi->slave_enable = 1; mmio_barrier();

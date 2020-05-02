@@ -4,6 +4,8 @@
 #include <rk3399.h>
 #include <stage.h>
 #include <compression.h>
+#include <rkspi.h>
+#include <gic.h>
 #include "fdt.h"
 #include ATF_HEADER_PATH
 
@@ -284,9 +286,10 @@ const struct format {
 #endif
 };
 
-const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
+size_t decompress(struct async_transfer *async, size_t start_offset, u8 *out, u8 *out_end) {
 	size_t size;
 	u64 start = get_timestamp();
+	const u8 *data = async->buf + start_offset, *end = async->buf + async->total_bytes;
 	for_array(i, formats) {
 		if (formats[i].decomp->probe(data, end, &size) <= COMPR_PROBE_LAST_SUCCESS) {
 			info("%s probed\n", formats[i].name);
@@ -301,7 +304,7 @@ const u8 *decompress(const u8 *data, const u8 *end, u8 *out, u8 *out_end) {
 				data += res - NUM_DECODE_STATUS;
 			}
 			info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / CYCLES_PER_MICROSECOND);
-			return data;
+			return data - async->buf;
 		}
 	}
 	die("couldn't probe");
@@ -324,16 +327,41 @@ _Noreturn u32 ENTRY main() {
 	/* hclk_perilp1 = pclk_perilp1 = 333 MHz, DTS has 400 */
 	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 2) | SET_BITS16(3, 0) << 8;
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
-	u8 *blob = (u8 *)blob_addr, *blob_end = blob + (16 << 20);
+	struct async_transfer *async;
 #ifdef CONFIG_ELFLOADER_SPI
+	async = &spi1_async;
+	async->buf = (u8 *)blob_addr;
+	async->total_bytes = 16 << 20;
+	async->pos = 0;
+#else
+	struct async_transfer xfer = {
+		.buf = (u8 *)blob_addr,
+		.total_bytes = 16 << 20,
+		.pos = 16 << 20,
+	};
+	async = &xfer;
+#endif
+#ifdef CONFIG_ELFLOADER_SPI
+	gicv2_global_setup(gic500d);
+	gicv3_per_cpu_setup(gic500r);
 	u64 xfer_start = get_timestamp();
-	spi_read_flash(blob, blob_end - blob);
+#ifdef SPI_POLL
+	rkspi_read_flash_poll(spi1, blob, blob_end - blob, 0);
+#else
+	rkspi_start_irq_flash_read(0);
+	while (spi1_async.pos < spi1_async.total_bytes) {
+		debug("idle pos=0x%zx rxlvl=%"PRIu32", rxthreshold=%"PRIu32"\n", spi1_state.pos, spi->rx_fifo_level, spi->rx_fifo_threshold);
+		__asm__("wfi");
+	}
+	rkspi_end_irq_flash_read();
+#endif
 	u64 xfer_end = get_timestamp();
 	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
+	gicv3_per_cpu_teardown(gic500r);
 #endif
-	const u8 *blob2 = decompress(blob, blob_end, (u8 *)elf_addr, (u8 *)fdt_addr);
-	blob2 = decompress(blob2, blob_end, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
-	blob2 = decompress(blob2, blob_end, (u8 *)payload_addr, (u8 *)blob_addr);
+	size_t offset = decompress(async, 0, (u8 *)elf_addr, (u8 *)fdt_addr);
+	offset = decompress(async, offset, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
+	offset = decompress(async, offset, (u8 *)payload_addr, (u8 *)blob_addr);
 #endif
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);

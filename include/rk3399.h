@@ -58,5 +58,8 @@ static volatile u32 *const grf = (volatile u32 *)0xff770000;
 #define SET_BITS16(number, value) (((((u32)1 << number) - 1) << 16) | ((u32)(u16)(value) & (((u32)1 << number) - 1)))
 #define SET_BITS32(number, value) (((((u64)1 << number) - 1) << 32) | (u64)((u32)(value) & (((u32)1 << number) - 1)))
 
+struct rkspi;
+static volatile struct rkspi *const spi1 = (volatile struct rkspi*)0xff1d0000;
+
 enum {SPI_MAX_RECV = 0xfffe};
 void spi_read_flash(u8 *buf, u32 size);

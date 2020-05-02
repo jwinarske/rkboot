@@ -201,7 +201,7 @@ if elfloader_decompression:
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
-    elfloader = elfloader + ('spi',)
+    elfloader = elfloader + ('spi', 'gicv2')
 modules = set(lib + levinboot + elfloader + ('memtest', 'teststage', 'dump_fdt'))
 
 if args.full_debug:

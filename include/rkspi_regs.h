@@ -1,7 +1,7 @@
 #pragma once
 #include <defs.h>
 
-struct spi {
+struct rkspi {
 	u32 ctrl0, ctrl1;
 	u32 enable;
 	u32 slave_enable;
@@ -16,9 +16,9 @@ struct spi {
 	u32 pad1[0x3fc/4];
 	u32 rx;
 };
-CHECK_OFFSET(spi, status, 0x24);
-CHECK_OFFSET(spi, tx, 0x400);
-CHECK_OFFSET(spi, rx, 0x800);
+CHECK_OFFSET(rkspi, status, 0x24);
+CHECK_OFFSET(rkspi, tx, 0x400);
+CHECK_OFFSET(rkspi, rx, 0x800);
 
 enum {
 	SPI_DFS_8BIT = 1,
@@ -44,5 +44,3 @@ enum {
 #define SPI_PHASE(n) ((n) << 6)
 #define SPI_POLARITY(n) ((n) << 7)
 #define SPI_SAMPLE_DELAY(n) ((n) << 14)
-
-static volatile struct spi *const spi = (volatile struct spi*)0xff1d0000;

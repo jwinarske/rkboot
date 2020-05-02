@@ -7,7 +7,7 @@ enum {
 	GICD_CTLR_ARE_NS = 32,
 	GICD_CTLR_ARE_S = 16,
 	GICD_CTLR_EnableGrp1S = 4,
-	GICD_CTLR_EnableGrp1N = 2,
+	GICD_CTLR_EnableGrp1NS = 2,
 	GICD_CTLR_EnableGrp0 = 1,
 };
 
