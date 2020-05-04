@@ -78,7 +78,14 @@ if [ -z "$skip" -o "$skip" == "6" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == "7" ]; then
-	echo "Configuration 7: levinboot SD image with zstd decompressor"
+	echo "Configuration 7: levinboot with embedded SPI elfloader (gzip decompression)"
+	"$src/configure.py" --with-atf-headers "$atf" --embed-elfloader --elfloader-spi --elfloader-gzip
+	ninja levinboot-usb.bin
+	testrun --run levinboot-usb.bin
+fi
+
+if [ -z "$skip" -o "$skip" == "8" ]; then
+	echo "Configuration 8: levinboot SD image with zstd decompressor"
 	"$src/configure.py" --with-atf-headers "$atf" --embed-elfloader --elfloader-spi --elfloader-zstd
 	ninja levinboot.img
 	echo "Build successful"
