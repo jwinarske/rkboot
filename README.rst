@@ -133,9 +133,9 @@ To do this:
 
     - levinboot and BL31 with a Linux kernel: this is basically the same as the previous command, just with your (uncompressed) kernel image instead of :output:`teststage.bin`.
 
-      Beware that the loading step will take a while, because :command:`usbtool` currently uses the mask ROM code to transfer the files, which is anything but fast at receiving (or most likely, verifying) data sent over USB.
+    - The loading step for the previous commands will take a while, because :command:`usbtool` uses the mask ROM code to transfer the files, which is anything but fast at receiving and verifying data sent over USB. Therefore, levinboot includes a hotpatch to the BROM that (by the magic of address translation) hooks into the BROM and replaces the verification and running stages to replace it with a more efficient format. To use it, build :output:`brompatch.bin` and run your configuration like so: :command:`usbtool --call levinboot-usb.bin --load 8000000 brompatch.bin --dramcall 8000000 1000 --pload 500000 path/to/fdt-blob.dtb --pload 680000 path/to/kernel/Image --pload 200000 path/to/bl31.elf --pstart 100000 elfloader.bin` or similar with :output:`teststage.bin`.
 
-    - either of the previous two with compression: configure the build with :cmdargs:`--elfloader-decompression` and run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 path/to/payload-blob --jump 100000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`. This may save transfer time.
+    - compressed payloads: configure the build with :cmdargs:`--elfloader-lz4`, :cmdargs:`--elfloader-gzip` and/or :cmdargs:`--elfloader-zstd` (depending on your taste in compression format) and run :command:`usbtool --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 path/to/payload-blob --jump 100000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`. The same can be done with the BROM hotpatch like :command:`usbtool --call levinboot-usb.bin --load 8000000 brompatch.bin --dramcall 8000000 1000 --pload 2000000 path/to/payload-blob --pstart 100000 elfloader.bin`
 
 Booting from SPI
 ================
