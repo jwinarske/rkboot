@@ -14,10 +14,3 @@ enum {
 	SCR_IRQ = 2,
 	SCR_EL3_RES1 = 0x30,
 };
-enum {
-	MEM_TYPE_DEV_nGnRnE = 0,
-	MEM_TYPE_DEV_nGnRE = 1,
-	MEM_TYPE_DEV_nGRE = 2,
-	MEM_TYPE_DEV_GRE = 3,
-	MEM_TYPE_NORMAL = 4
-};

@@ -206,7 +206,7 @@ void mmu_setup(const struct mapping *initial_mappings, const struct address_rang
 		}
 	}
 #endif
-	__asm__ volatile("msr mair_el3, %0" : : "r"((u64)0xff0c080400));
+	__asm__ volatile("msr mair_el3, %0" : : "r"((u64)0x44ff0c080400));
 #ifdef DEBUG_MSG
 	u64 mair;
 	__asm__ volatile("mrs %0, mair_el3" : "=r"(mair));

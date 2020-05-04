@@ -3,6 +3,15 @@
 
 struct address_range {volatile void *first, *last;};
 #define ADDRESS_RANGE_INVALID {.first = (void*)1, .last = 0}
+
+enum {
+	MEM_TYPE_DEV_nGnRnE = 0,
+	MEM_TYPE_DEV_nGnRE = 1,
+	MEM_TYPE_DEV_nGRE = 2,
+	MEM_TYPE_DEV_GRE = 3,
+	MEM_TYPE_NORMAL = 4,
+	MEM_TYPE_UNCACHED = 5,
+};
 struct mapping {u64 first, last; u8 type;};
 void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
