@@ -37,6 +37,13 @@ static uint32_t crc32(uint8_t *buf, size_t len, uint32_t crc, uint32_t poly) {
 	return crc;
 }
 
+static void write_le32(uint8_t *buf, uint32_t val) {
+	buf[0] = val & 0xff;
+	buf[1] = val >> 8 & 0xff;
+	buf[2] = val >> 16 & 0xff;
+	buf[3] = val >> 24;
+}
+
 _Bool final_transfer(libusb_device_handle *handle, uint16_t crc, uint16_t opcode) {
 	uint8_t buf[2];
 	buf[0] = crc >> 8;
@@ -76,6 +83,32 @@ size_t read_file(int fd, uint8_t *buf, size_t size) {
 		pos += res;
 	}
 	return pos;
+}
+
+_Bool transfer_patched(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t opcode) {
+	uint32_t crc_table[256];
+	for (uint32_t i = 0; i < 256; ++i) {crc_table[i] = crc32_byte(i, crc32c_poly);}
+	uint32_t crc = ~(uint32_t)0;
+	assert(!(size & 0xfff));
+	for (size_t pos = 0; pos < size; pos += 4096) {
+		printf("patched 4096-byte transfer\n");
+		for (size_t p = 0; p < 4096; ++p) {
+			crc = crc >> 8 ^ crc_table[(u8)crc ^ buf[pos + p]];
+		}
+		if (libusb_control_transfer(handle, 0x40, 0xc, 0, 0x0471, buf + pos, 4096, 100) != 4096) {
+			fprintf(stderr, "error while sending data\n");
+			return 0;
+		}
+	}
+	printf("CRC32C: %"PRIx32"\n", ~crc);
+	uint8_t crcbuf[4];
+	write_le32(crcbuf, ~crc);
+	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, crcbuf, 4, 20000);
+	if (res != 4) {
+		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
+		return 0;
+	}
+	return 1;
 }
 
 _Bool transfer(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t opcode) {
@@ -191,13 +224,6 @@ const uint32_t copy_program[24] = {
 	0,
 };
 
-static void write_le32(uint8_t *buf, uint32_t val) {
-	buf[0] = val & 0xff;
-	buf[1] = val >> 8 & 0xff;
-	buf[2] = val >> 16 & 0xff;
-	buf[3] = val >> 24;
-}
-
 int main(int UNUSED argc, char UNUSED **argv) {
 	libusb_context *ctx;
 	if (libusb_init(&ctx)) {
@@ -235,7 +261,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 		abort();
 	}
 	for (char **arg = argv + 1; *arg; ++arg) {
-		_Bool call = 0;
+		_Bool call = 0, unpatched, pstart = 0;
 		if ((call = !strcmp("--call", *arg)) || !strcmp("--run", *arg)) {
 			if (!*++arg) {
 				fprintf(stderr, "%s needs a parameter\n", *--arg);
@@ -258,7 +284,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				return 1;
 			}
 			if (fd) {close(fd);}
-		} else if (!strcmp("--load", *arg)) {
+		} else if ((unpatched =!strcmp("--load", *arg)) || (pstart = !strcmp("--pstart", *arg)) || !strcmp("--pload", *arg)) {
 			char *command = *arg;
 			char *addr_string = *++arg;
 			uint64_t addr_;
@@ -280,7 +306,8 @@ int main(int UNUSED argc, char UNUSED **argv) {
 					return 1;
 				}
 			}
-			const size_t copy_size = sizeof(copy_program), header_size = copy_size + 16;
+			const size_t copy_size = unpatched ? sizeof(copy_program) : 0;
+			const size_t header_size = copy_size + 16;
 			for (int i = 0; i < copy_size; i += 4) {
 				write_le32(buf + i, copy_program[i/4]);
 			}
@@ -295,7 +322,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				write_le32(buf + copy_size + 4, load_addr >> 32);
 				write_le32(buf + copy_size + 8, end_addr);
 				write_le32(buf + copy_size + 12, end_addr >> 32);
-				if (!transfer(handle, buf, header_size + size + rem, 0x0471)) {return 1;}
+				if (!(unpatched ? transfer : transfer_patched)(handle, buf, header_size + size + rem, pstart ? 0x0472 : 0x0471)) {return 1;}
 				load_addr = end_addr;
 			} while (size + header_size >= buf_size);
 		} else if ((call = !strcmp("--dramcall", *arg)) || !strcmp("--jump", *arg)) {

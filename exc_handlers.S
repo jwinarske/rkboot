@@ -6,12 +6,15 @@
 	msr SPSel, #\spsel
 	cmp SP, 0
 	b.eq 0f
-	stp X0, X30, [SP, #-16]!
-	adrp x0, \name
-	ldr x0, [x0, #:lo12:\name]
-	cbz x0, 0f
+	stp X29, X30, [SP, #-192]!
+	add X29, SP, #0
+	stp X0, X1, [SP, #32]
+	adrp x1, \name
+	ldr x1, [x1, #:lo12:\name]
+	cbz x1, 0f
 	bl call_handler
-	ldp X0, X30, [SP], #16
+	ldp X0, X1, [SP, #32]
+	ldp X29, X30, [SP], #192
 	eret
 0:	/* cannot handle (no stack or routine set up) */
 	adr x0, 1f
@@ -63,36 +66,26 @@ exc_handler serror_handler_aarch32, spsel=1
 
 
 SPROC(call_handler, 6)
-	stp X29, X30, [SP, #-160]!
-	add X29, SP, #0
-	stp X1, X2, [SP, #16]
-	stp X3, X4, [SP, #32]
-	stp X5, X6, [SP, #48]
-	stp X7, X8, [SP, #64]
-	stp X9, X10, [SP, #80]
-	stp X11, X12, [SP, #96]
-	stp X13, X14, [SP, #112]
-	stp X15, X16, [SP, #128]
-	stp X17, X18, [SP, #144]
-	/*str x19, [SP, #-8]!
-	mov x1, x0
-	mov x19, x0
-	add x2, SP, #0
-	adr x0, msg
-	bl printf
-	mov x0, x19
-	ldr x19, [SP], #8*/
-	blr X0
-	ldp X1, X2, [SP, #16]
-	ldp X3, X4, [SP, #32]
-	ldp X5, X6, [SP, #48]
-	ldp X7, X8, [SP, #64]
-	ldp X9, X10, [SP, #80]
-	ldp X11, X12, [SP, #96]
-	ldp X13, X14, [SP, #112]
-	ldp X15, X16, [SP, #128]
-	ldp X17, X18, [SP, #144]
-	ldp X29, X30, [SP], #160
+	stp X2, X3, [SP, #48]
+	stp X4, X5, [SP, #64]
+	stp X6, X7, [SP, #80]
+	stp X8, X9, [SP, #96]
+	stp X10, X11, [SP, #112]
+	stp X12, X13, [SP, #128]
+	stp X14, X15, [SP, #144]
+	stp X16, X17, [SP, #160]
+	stp X18, X30, [SP, #176]
+	add x0, sp, #0
+	blr X1
+	ldp X2, X3, [SP, #48]
+	ldp X4, X5, [SP, #64]
+	ldp X6, X7, [SP, #80]
+	ldp X8, X9, [SP, #96]
+	ldp X10, X11, [SP, #112]
+	ldp X12, X13, [SP, #128]
+	ldp X14, X15, [SP, #144]
+	ldp X16, X17, [SP, #160]
+	ldp X18, X30, [SP, #176]
 	ret
 msg: .asciz "exception handler %zx, SP=%zx\n"
 ENDFUNC(call_handler)

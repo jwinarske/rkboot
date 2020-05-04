@@ -32,6 +32,7 @@ def cesc(s): return s.replace('"', '\\"')
 
 srcdir = path.dirname(sys.argv[0])
 flags = defaultdict(list)
+flags['brompatch'].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
@@ -202,7 +203,10 @@ if elfloader_decompression:
 if args.elfloader_spi:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
     elfloader = elfloader + ('spi', 'gicv2')
-modules = set(lib + levinboot + elfloader + ('memtest', 'teststage', 'dump_fdt'))
+modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
+if not args.embed_elfloader:
+    modules += ('memtest', 'brompatch')
+modules = set(modules)
 
 if args.full_debug:
     for f in modules:
@@ -216,13 +220,12 @@ for f in modules:
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
 lib += ('dcache',)
-if args.excvec or args.elfloader_spi:
-    print(build('exc_handlers.o', 'cc', path.join(srcdir, 'exc_handlers.S')))
-    if args.excvec:
-        lib += ('exc_handlers',)
-    if args.elfloader_spi:
-        elfloader += ('exc_handlers', 'gicv3')
-        print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
+print(build('exc_handlers.o', 'cc', path.join(srcdir, 'exc_handlers.S')))
+if args.excvec:
+    lib += ('exc_handlers',)
+if args.elfloader_spi:
+    elfloader += ('exc_handlers', 'gicv3')
+    print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
 lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
@@ -271,9 +274,11 @@ def binary(name, modules, base_address):
 
 binary('levinboot-usb', levinboot, 'ff8c2000')
 binary('levinboot-sd', levinboot, 'ff8c2004')
-binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
+if not args.embed_elfloader:
+    binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
+    binary('brompatch', ('brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '08000000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
-print("default levinboot.img levinboot-usb.bin teststage.bin memtest.bin")
+print("default levinboot.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:
     elfloader = elfloader + lib
     binary('elfloader', elfloader, '00100000')
