@@ -22,6 +22,21 @@ uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
 	return crc;
 }
 
+static const uint32_t crc32c_poly = 0x82f63b78;
+static uint32_t crc32_byte(uint32_t crc, uint32_t poly) {
+	for (int i = 0; i < 8; ++i) {
+		crc = (crc >> 1) ^ (crc & 1 ? poly : 0);
+	}
+	return crc;
+}
+static uint32_t crc32(uint8_t *buf, size_t len, uint32_t crc, uint32_t poly) {
+	for (size_t p = 0; p < len; ++p) {
+		crc ^= buf[p];
+		crc = crc32_byte(crc, poly);
+	}
+	return crc;
+}
+
 _Bool final_transfer(libusb_device_handle *handle, uint16_t crc, uint16_t opcode) {
 	uint8_t buf[2];
 	buf[0] = crc >> 8;
@@ -238,7 +253,10 @@ int main(int UNUSED argc, char UNUSED **argv) {
 			size_t rem = 4096 - (size & 0xfff);
 			memset(buf + size, 0, rem);
 			size += rem;
-			if (!transfer(handle, buf, size, call ? 0x0471 : 0x0472)) {return 1;}
+			fprintf(stderr, "CRC32C: %08"PRIx32"\n", ~crc32(buf, size, ~(uint32_t)0, crc32c_poly));
+			if (!transfer(handle, buf, size, call ? 0x0471 : 0x0472)) {
+				return 1;
+			}
 			if (fd) {close(fd);}
 		} else if (!strcmp("--load", *arg)) {
 			char *command = *arg;
