@@ -85,7 +85,7 @@ _Bool transfer(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t
 	assert(!(size & 0xfff));
 	for (size_t pos = 0; pos < size; pos += 4096) {
 		printf("flushing %zu bytes\n", pos);
-		block_transfer(handle, buf + pos, &crc, rc4state);
+		if (!block_transfer(handle, buf + pos, &crc, rc4state)) {return 0;}
 	}
 	return final_transfer(handle, crc, opcode);
 }
