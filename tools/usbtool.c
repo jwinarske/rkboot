@@ -114,8 +114,8 @@ enum {
 	ADD64IMM = 0x91000000,
 };
 
-#define ADD_IMM(n) ((n) << 12 & 0x003ff000)
-#define ADD_IMM_SHIFTED(n) ((n) & 0x003ff000)
+#define ADD_IMM(n) ((n) << 10 & 0x003ffc00)
+#define ADD_IMM_SHIFTED(n) ((n) >> 2 & 0x003ffc00)
 
 enum pair_const {
 	PAIR_BASE = 5 << 27,
@@ -178,13 +178,13 @@ const uint32_t copy_program[24] = {
 	MOVZ(0, 0) | Rd(0),
 	RET | Rn(30),
 
-	LDR64(56) | Rd(0),
-	ADD64IMM | Rd(0) | Rn(31) | ADD_IMM(0),
-	ADD64IMM | Rd(31) | Rn(1) | ADD_IMM(0),
-	STP64_PRE | PAIR(-2) | Rn(31) | Rd(30) | Rt2(2),
+	LDP64_OFF | PAIR(0) | Rn(0) | Rd(0) | Rt2(2),
+	ADD64IMM | Rd(3) | Rn(31) | ADD_IMM(0),
+	ADD64IMM | Rd(31) | Rn(0) | ADD_IMM(0),
+	STP64_PRE | PAIR(-2) | Rn(31) | Rd(30) | Rt2(3),
 	IC_IALLU,
 	ISB,
-	BLR | Rn(0),
+	BLR | Rn(1),
 	LDP64_OFF | PAIR(0) | Rn(31) | Rd(30) | Rt2(2),
 	ADD64IMM | Rd(31) | Rn(2) | ADD_IMM(0),
 	RET(30),
