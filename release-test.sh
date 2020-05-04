@@ -67,12 +67,12 @@ if [ -z "$skip" -o "$skip" == "5" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == "6" ]; then
-	echo "Configuration 6: levinboot + elfloader + kernel, mixed compression"
+	echo "Configuration 6: levinboot + brompatch + elfloader + kernel, mixed compression"
 	"$src/configure.py" --with-atf-headers "$atf" --elfloader-gzip --elfloader-lz4 --elfloader-zstd
-	ninja levinboot-usb.bin elfloader.bin teststage.bin
+	ninja levinboot-usb.bin brompatch.bin elfloader.bin teststage.bin
 	trap 'rm blob.fifo' ERR
 	mkfifo blob.fifo
-	dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" >blob.fifo & testrun --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 blob.fifo --jump 100000 1000
+	dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" >blob.fifo & testrun --call levinboot-usb.bin --load 8000000 brompatch.bin --dramcall 8000000 1000 --pload 2000000 blob.fifo --pstart 100000 elfloader.bin
 	rm blob.fifo
 	trap '' ERR
 fi
