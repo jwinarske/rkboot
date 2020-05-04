@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <inttypes.h>
 
-static u64 __attribute__((aligned(4096))) pagetables[4][512];
+static u64 __attribute__((aligned(4096))) pagetables[5][512];
 static u32 next_pagetable = 1;
 
 enum {
@@ -32,7 +32,7 @@ enum {
 #define PGTAB_NS (1 << 5)
 
 static u64 *alloc_page_table() {
-	assert(next_pagetable < 4);
+	assert(next_pagetable < ARRAY_SIZE(pagetables));
 	return &pagetables[next_pagetable++][0];
 }
 
