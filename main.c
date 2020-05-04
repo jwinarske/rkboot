@@ -68,7 +68,7 @@ int32_t ENTRY NO_ASAN main() {
 #ifdef CONFIG_EMBED_ELFLOADER
 	void *loadaddr = (void *)0x100000;
 	mmu_unmap_range(0, 0xf7ffffff);
-	mmu_map_range(0, 0xf7ffffff, MEM_TYPE_NORMAL);
+	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_NORMAL);
 	__asm__ volatile("dsb sy");
 	size_t size;
 	assert_msg(lz4_decompressor.probe(_binary_elfloader_lz4_start, _binary_elfloader_lz4_end, &size) == COMPR_PROBE_SIZE_KNOWN, "could not probe elfloader compression frame\n");

@@ -92,7 +92,7 @@ static inline u64 *entry2subtable(u64 entry) {
 	return (u64 *)(entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT);
 }
 
-static u64 map_one(u64 *pt, u64 first, u64 last, u8 attridx) {
+static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u8 attridx) {
 	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
 	for_array(lvl, pte_lvls) {
 		u32 shift = pte_lvls[lvl].shift;
@@ -108,7 +108,7 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u8 attridx) {
 			u64 template = pte_lvls[lvl].last_level ? PGTAB_PAGE(attridx) : PGTAB_BLOCK(attridx);
 			for_range(i, first_entry, last_entry + 1) {
 				assert(!(pt[i] & 1));
-				u64 addr = first + ((i - first_entry) << shift);
+				u64 addr = paddr + ((i - first_entry) << shift);
 				pt[i] = addr | template;
 			}
 			return last;
@@ -131,13 +131,20 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u8 attridx) {
 	assert(UNREACHABLE);
 }
 
-static void map_range(u64 *pt, u64 first, u64 last, u8 attridx) {
+static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u8 attridx) {
 	assert(last > first);
-	while ((first = map_one(pt, first, last, attridx)) < last) {first += 1;}
+	u64 tmp;
+	while ((tmp = map_one(pt, first, last, paddr, attridx)) < last) {
+		paddr += tmp - first + 1;
+		first = tmp +  1;
+	}
 }
 
-void mmu_map_range(u64 first, u64 last, u8 attridx) {
-	map_range(pagetables[0], first, last, attridx);
+void mmu_map_range(u64 first, u64 last, u64 paddr, u8 attridx) {
+	map_range(pagetables[0], first, last, paddr, attridx);
+#ifdef DEBUG_MSG
+	dump_page_tables();
+#endif
 }
 
 static u64 unmap_one(u64 *pt, u64 first, u64 last) {
@@ -184,7 +191,7 @@ void mmu_unmap_range(u64 first, u64 last) {
 void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges) {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
-		map_range(pagetables[0], map->first, map->last, map->type);
+		map_range(pagetables[0], map->first, map->last, map->first, map->type);
 	}
 #ifdef DEBUG_MSG
 	dump_page_tables();
