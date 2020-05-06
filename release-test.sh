@@ -43,14 +43,14 @@ if [ -z "$skip" -o "$skip" == "3" ]; then
 	echo "Configuration 3: levinboot + elfloader + teststage"
 	"$src/configure.py" --with-atf-headers "$atf"
 	ninja levinboot-usb.bin elfloader.bin teststage.bin
-	testrun --call levinboot-usb.bin --load 100000 elfloader.bin --load 200000 "$artifacts/bl31.elf" --load 500000 "$artifacts/fdt.dtb" --load 680000 teststage.bin --jump 100000 1000
+	testrun --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 teststage.bin --jump 4000000 1000
 fi
 
 if [ -z "$skip" -o "$skip" == "4" ]; then
 	echo "Configuration 4: levinboot + elfloader + kernel"
 	"$src/configure.py" --with-atf-headers "$atf"
 	ninja levinboot-usb.bin elfloader.bin
-	testrun --call levinboot-usb.bin --load 100000 elfloader.bin --load 200000 "$artifacts/bl31.elf" --load 500000 "$artifacts/fdt.dtb" --load 680000 "$artifacts/Image" --jump 100000 1000
+	testrun --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 "$artifacts/Image" --jump 4000000 1000
 fi
 
 if [ -z "$skip" -o "$skip" == "5" ]; then
@@ -60,7 +60,7 @@ if [ -z "$skip" -o "$skip" == "5" ]; then
 	gzip -k teststage.bin
 	trap 'rm blob.fifo' ERR
 	mkfifo blob.fifo
-	dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | fdtoverlay -i "$artifacts/fdt.dtb" -o - - | gzip | cat "$artifacts/bl31.gz" - teststage.bin.gz >blob.fifo & testrun --call levinboot-usb.bin --load 100000 elfloader.bin --load 2000000 blob.fifo --jump 100000 1000
+	dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | fdtoverlay -i "$artifacts/fdt.dtb" -o - - | gzip | cat "$artifacts/bl31.gz" - teststage.bin.gz >blob.fifo & testrun --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4400000 blob.fifo --jump 4000000 1000
 	rm blob.fifo
 	trap '' ERR
 	rm teststage.bin.gz
@@ -72,7 +72,7 @@ if [ -z "$skip" -o "$skip" == "6" ]; then
 	ninja levinboot-usb.bin brompatch.bin elfloader.bin teststage.bin
 	trap 'rm blob.fifo' ERR
 	mkfifo blob.fifo
-	dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" >blob.fifo & testrun --call levinboot-usb.bin --load 8000000 brompatch.bin --dramcall 8000000 1000 --pload 2000000 blob.fifo --pstart 100000 elfloader.bin
+	dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" >blob.fifo & testrun --call levinboot-usb.bin --load 4100000 brompatch.bin --dramcall 4100000 1000 --pload 4400000 blob.fifo --pstart 4000000 elfloader.bin
 	rm blob.fifo
 	trap '' ERR
 fi

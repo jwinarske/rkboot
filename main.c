@@ -66,7 +66,7 @@ int32_t ENTRY NO_ASAN main() {
 	printf("SPI read %x\n", val);
 	assert(val != ~(u32)0);
 #ifdef CONFIG_EMBED_ELFLOADER
-	void *loadaddr = (void *)0x100000;
+	void *loadaddr = (void *)0x4000000;
 	mmu_unmap_range(0, 0xf7ffffff);
 	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_NORMAL);
 	__asm__ volatile("dsb sy");
