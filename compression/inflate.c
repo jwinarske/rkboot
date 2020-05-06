@@ -104,7 +104,7 @@ struct huffman_state {
 	u8 num_bits;
 };
 
-#define REPORT(ctx) debug(ctx ": 0x%x/%u\n", huff.bits, (unsigned)huff.num_bits)
+#define REPORT(ctx) spew(ctx ": 0x%x/%u\n", huff.bits, (unsigned)huff.num_bits)
 
 static inline struct huffman_state require_bits(struct huffman_state huff, const u8 *end) {
 	while (huff.num_bits < huff.val) {
@@ -189,7 +189,7 @@ static inline struct huffman_state huff_with_extra(struct huffman_state huff, co
 	u32 idx = sym - huff.val;
 	u8 extra = extra_bit_table[idx];
 	u16 base = baseline_table[idx];
-	debug("sym%u extra%u base%u\n", sym, (unsigned)extra, (unsigned)base);
+	spew("sym%u extra%u base%u\n", sym, (unsigned)extra, (unsigned)base);
 	while (huff.num_bits < extra) {
 		if (huff.ptr >= end) {
 			huff.ptr = 0;
@@ -202,7 +202,7 @@ static inline struct huffman_state huff_with_extra(struct huffman_state huff, co
 	}
 	huff.val += base + (huff.bits & ((1 << extra) - 1));
 	SHIFT(extra);
-	debug("val%u\n", huff.val);
+	spew("val%u\n", huff.val);
 	return huff;
 }
 
@@ -392,7 +392,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			goto interrupted;
 		}
 		if (huff.val < 256) {
-			debug("literal 0x%02x %c\n", huff.val, huff.val >= 0x20 && huff.val < 0x7f ? (char)huff.val : '.');
+			spew("literal 0x%02x %c\n", huff.val, huff.val >= 0x20 && huff.val < 0x7f ? (char)huff.val : '.');
 			if (unlikely(out >= out_end)) {
 				res = DECODE_NEED_MORE_SPACE;
 				goto interrupted;
@@ -401,7 +401,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			crc = crc >> 8 ^ st->crc_table[(u8)crc ^ huff.val];
 		} else if (huff.val > 256) {
 			u32 length = huff.val - 257 + 3;
-			debug("match length=%u ", length);
+			spew("match length=%u ", length);
 			huff.val = 4;
 			huff = huff_with_extra(huff, end, st->dectable_dist, dist_extra, st->dist_base, st->dist_oloff, st->dist_overlength, st->dist_codes);
 			if (unlikely(!huff.ptr)) {
@@ -414,7 +414,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 				check(length != 258, "file used literal/length symbol 284 with 5 1-bits, which is specced invalid (without it being specially noted no less, WTF)\n");
 				length = 258;
 			}
-			debug(" dist=%"PRIu32" %.*s…\n", dist, length < dist ? (int)length : (int)dist, out - dist);
+			spew(" dist=%"PRIu32" %.*s…\n", dist, length < dist ? (int)length : (int)dist, out - dist);
 			if (unlikely(out_end - out < length)) {
 				res = DECODE_NEED_MORE_SPACE;
 				goto interrupted;
@@ -424,9 +424,9 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 				crc = crc >> 8 ^ st->crc_table[(u8)crc ^ *out++];
 			} while (--length);
 			if (out - st->st.window_start > 100) {
-				debug("%.100s\n", out - 100);
+				spew("%.100s\n", out - 100);
 			} else {
-				debug("%.*s\n", (int)(out - st->st.window_start), st->st.window_start);
+				spew("%.*s\n", (int)(out - st->st.window_start), st->st.window_start);
 			}
 		} else {
 			st->st.decode = !st->last_block ? block_start : trailer;
