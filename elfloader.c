@@ -167,7 +167,7 @@ static char *memcpy(char *dest, const char *src, size_t len) {
 
 static u32 dram_size() {return 0xf8000000;}
 
-static void transform_fdt(const struct fdt_header *header, void *dest) {
+static void transform_fdt(const struct fdt_header *header, void *dest, void *initcpio_start, void *initcpio_end) {
 	const u32 src_size = read_be32(&header->totalsize);
 	const u64 src_end = (u64)header + src_size;
 	const u32 version = read_be32(&header->version);
@@ -180,7 +180,13 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 		assert((u64)(src_rsvmap + 2) <= src_end);
 		u64 start = src_rsvmap++->v;
 		u64 length = src_rsvmap++->v;
-		if (!length) {	/* insert fdt address entry at the end */
+		if (!length) {
+			if (initcpio_start) {
+				assert(initcpio_end);
+				write_be64(dest_rsvmap++, (u64)initcpio_start);
+				write_be64(dest_rsvmap++, (u64)(initcpio_end - initcpio_start));
+			}
+			/* insert fdt address entry at the end */
 			write_be64(dest_rsvmap++, (u64)dest);
 			dest_rsvmap++->v = 0;
 			dest_rsvmap++->v = 0;
@@ -220,39 +226,80 @@ static void transform_fdt(const struct fdt_header *header, void *dest) {
 	}
 	assert(addr_cells >= 1 && size_cells >= 1);
 
+	u32 string_size = read_be32(&header->string_size);
+	static const char initrd_start[] = "linux,initrd-start", initrd_end[] = "linux,initrd-end";
+
+	_Bool have_memory = 0, have_chosen = 0;
 	while ((cmd = read_be32(src_struct)) == 1) {
+		assert((u64)(src_struct + 3) <= src_end);
 		if (read_be32(src_struct + 1) == 0x63686f73 && read_be32(src_struct + 2) == 0x656e0000) { /* "chosen" */
+			have_chosen = 1;
+			for_range(i, 0, 3) {dest_struct++->v = src_struct++->v;}
+			while (read_be32(src_struct) == 3) {
+				copy_subtree(&src_struct, &dest_struct, src_struct_end);
+				assert((u64)src_struct < src_end);
+			}
+			if (initcpio_start) {
+				write_be32(dest_struct++, 3);
+				write_be32(dest_struct++, 4 * addr_cells);
+				write_be32(dest_struct++, string_size);
+				for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
+				write_be32(dest_struct++, (u32)(u64)initcpio_start);
+				write_be32(dest_struct++, 3);
+				write_be32(dest_struct++, 4 * addr_cells);
+				write_be32(dest_struct++, string_size + sizeof(initrd_start));
+				for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
+				write_be32(dest_struct++, (u32)(u64)initcpio_end);
+			}
+			assert(read_be32(src_struct++) == 2);
+			write_be32(dest_struct++, 2);
 			break;
+		} else if (read_be32(src_struct + 1) == 0x6d656d6f && read_be32(src_struct + 2) == 0x72790000) {
+			have_memory = 1;
 		}
 		copy_subtree(&src_struct, &dest_struct, src_struct_end);
+		assert((u64)src_struct < src_end);
 	}
+	assert_unimpl(have_chosen/* || !initcpio_start*/, "inserting a /chosen node");
+	while (read_be32(src_struct) == 1) {
+		copy_subtree(&src_struct, &dest_struct, src_struct_end);
+	}
+	assert(read_be32(src_struct) == 2);
 
-	static const char device_type[] = {'d', 'e', 'v', 'i', 'c', 'e', '_', 't', 'y', 'p', 'e', 0};
+	static const char device_type[] = "device_type";
 	static const u32 memory_node1[] = {
 		1, 0x6d656d6f, 0x72790000, 3, 7, 0 /*overwritten later*/, 0x6d656d6f, 0x72790000, 3
 	};
-	for_array(i, memory_node1) {write_be32(dest_struct+i, memory_node1[i]);}
-	u32 string_size = read_be32(&header->string_size);
-	write_be32(dest_struct+5, string_size);
-	dest_struct += ARRAY_SIZE(memory_node1);
-	write_be32(dest_struct++, (addr_cells + size_cells) * 4);
-	write_be32(dest_struct++, string_size + sizeof(device_type));
-	while (--addr_cells) {dest_struct++->v = 0;}
-	write_be32(dest_struct++, DRAM_START + TZRAM_SIZE);
-	while (--size_cells) {dest_struct++->v = 0;}
-	write_be32(dest_struct++, dram_size() - TZRAM_SIZE);
-	write_be32(dest_struct++, 2);
-	while (read_be32(src_struct) == 1) {copy_subtree(&src_struct, &dest_struct, src_struct_end);}
-	assert(read_be32(src_struct) == 2);
+	if (!have_memory) {
+		const u32 str_offset = string_size + sizeof(initrd_start) + sizeof(initrd_end);
+		for_array(i, memory_node1) {write_be32(dest_struct+i, memory_node1[i]);}
+		write_be32(dest_struct+5, str_offset);
+		dest_struct += ARRAY_SIZE(memory_node1);
+		write_be32(dest_struct++, (addr_cells + size_cells) * 4);
+		write_be32(dest_struct++, str_offset + sizeof(device_type));
+		for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
+		write_be32(dest_struct++, DRAM_START + TZRAM_SIZE);
+		for_range(i, 0, size_cells - 1) {dest_struct++->v = 0;}
+		write_be32(dest_struct++, dram_size() - TZRAM_SIZE);
+		write_be32(dest_struct++, 2);
+	}
+
 	write_be32(dest_struct++, 2);
 
 	char *dest_string = (char *)dest_struct, *dest_string_start = dest_string;
 	memcpy(dest_string, src_string, string_size);
 	dest_string += string_size;
-	memcpy(dest_string, device_type, sizeof(device_type));
-	dest_string += sizeof(device_type);
-	memcpy(dest_string, "reg", 4);
-	dest_string += 4;
+	memcpy(dest_string, initrd_start, sizeof(initrd_start));
+	dest_string += sizeof(initrd_start);
+	memcpy(dest_string, initrd_end, sizeof(initrd_end));
+	dest_string += sizeof(initrd_end);
+	if (!have_memory) {
+		memcpy(dest_string, device_type, sizeof(device_type));
+		dest_string += sizeof(device_type);
+		memcpy(dest_string, "reg", 4);
+		dest_string += 4;
+	}
+
 	struct fdt_header *dest_header = dest;
 	write_be32(&dest_header->magic, 0xd00dfeed);
 	u32 totalsize = (u32)(dest_string - (char *)dest);
@@ -298,7 +345,7 @@ static size_t wait_for_data(struct async_transfer *async, size_t old_pos) {
 	return pos;
 }
 
-static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 *out_end) {
+static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 **out_end) {
 	struct decompressor_state *state = (struct decompressor_state *)(async->buf + (async->total_bytes + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t));
 	size_t size, xfer_pos = async->pos;
 	u64 start = get_timestamp();
@@ -316,7 +363,7 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 				offset = data - buf;
 			}
 			state->out = state->window_start = out;
-			state->out_end = out_end;
+			state->out_end = *out_end;
 			while (state->decode) {
 				size_t res = state->decode(state, buf + offset, buf + xfer_pos);
 				if (res == DECODE_NEED_MORE_DATA) {
@@ -327,6 +374,7 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 				}
 			}
 			info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / CYCLES_PER_MICROSECOND);
+			*out_end = state->out;
 			return offset;
 		}
 	}
@@ -339,7 +387,13 @@ _Noreturn u32 ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
-	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000, UNUSED blob_addr = 0x02000000;
+	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000;
+#ifdef CONFIG_ELFLOADER_DECOMPRESSION
+	u64 blob_addr = 0x02000000;
+#ifdef CONFIG_ELFLOADER_INITCPIO
+	u64 initcpio_addr = 0x08100000;
+#endif
+#endif
 	setup_pll(cru + CRU_CPLL_CON, 1000);
 	/* aclk_gic = 200 MHz */
 	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
@@ -380,9 +434,16 @@ _Noreturn u32 ENTRY main() {
 #endif
 #endif
 #endif
-	size_t offset = decompress(async, 0, (u8 *)elf_addr, (u8 *)fdt_addr);
-	offset = decompress(async, offset, (u8 *)fdt_addr, (u8 *)fdt_out_addr);
-	offset = decompress(async, offset, (u8 *)payload_addr, (u8 *)blob_addr);
+	u8 *end = (u8 *)fdt_addr;
+	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);
+	end = (u8 *)fdt_out_addr;
+	offset = decompress(async, offset, (u8 *)fdt_addr, &end);
+	end = (u8 *)blob_addr;
+	offset = decompress(async, offset, (u8 *)payload_addr, &end);
+#ifdef CONFIG_ELFLOADER_INITCPIO
+	u8 *initcpio_end = (u8 *)0xf8000000;
+	offset = decompress(async, offset, (u8 *)initcpio_addr, &initcpio_end);
+#endif
 
 #ifdef CONFIG_ELFLOADER_SPI
 #ifndef SPI_POLL
@@ -396,7 +457,13 @@ _Noreturn u32 ENTRY main() {
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);
 
-	transform_fdt((const struct fdt_header *)fdt_addr, (void *)fdt_out_addr);
+	transform_fdt((const struct fdt_header *)fdt_addr, (void *)fdt_out_addr,
+#ifdef CONFIG_ELFLOADER_INITCPIO
+		(void *)initcpio_addr, initcpio_end
+#else
+		0, 0
+#endif
+	);
 
 	bl33_ep.pc = payload_addr;
 	bl33_ep.spsr = 9; /* jump into EL2 with SPSel = 1 */

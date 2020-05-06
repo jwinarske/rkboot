@@ -91,6 +91,12 @@ parser.add_argument(
     help='configure elfloader to load its images from SPI flash'
 )
 parser.add_argument(
+    '--elfloader-initcpio',
+    action='store_true',
+    dest='elfloader_initcpio',
+    help='configure elfloader to load an initcpio'
+)
+parser.add_argument(
     '--elfloader-lz4',
     action='store_true',
     dest='elfloader_lz4',
@@ -121,10 +127,12 @@ if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
 if args.embed_elfloader:
     flags['main'].append('-DCONFIG_EMBED_ELFLOADER')
+if args.elfloader_initcpio:
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_INITCPIO')
 
 elfloader_decompression = args.elfloader_lz4 or args.elfloader_gzip or args.elfloader_zstd
-if args.elfloader_spi and not elfloader_decompression:
-    print("WARNING: --elfloader-spi requires decompression support, enabling zstd")
+if (args.elfloader_spi or args.elfloader_initcpio) and not elfloader_decompression:
+    print("WARNING: --elfloader-spi and --elfloader-initcpio require decompression support, enabling zstd")
     elfloader_decompression = True
     args.elfloader_zstd = True
 
