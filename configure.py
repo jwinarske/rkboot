@@ -284,12 +284,12 @@ binary('levinboot-usb', levinboot, 'ff8c2000')
 binary('levinboot-sd', levinboot, 'ff8c2004')
 if not args.embed_elfloader:
     binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
-    binary('brompatch', ('brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '08000000')
+    binary('brompatch', ('brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '04100000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:
     elfloader = elfloader + lib
-    binary('elfloader', elfloader, '00100000')
+    binary('elfloader', elfloader, '04000000')
     print("default elfloader.bin")
 
 for addr in base_addresses:

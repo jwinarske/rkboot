@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <inttypes.h>
 #include <main.h>
 #include <uart.h>
 #include <rk3399.h>
@@ -315,6 +316,15 @@ static void transform_fdt(const struct fdt_header *header, void *dest, void *ini
 	write_be32(&dest_header->struct_size, (u32)(dest_struct - dest_struct_start)*4);
 }
 
+static const u64 elf_addr = 0x04200000, fdt_addr = 0x00100000, fdt_out_addr = 0x00180000, payload_addr = 0x00280000;
+#ifdef CONFIG_ELFLOADER_DECOMPRESSION
+static const u64 blob_addr = 0x04400000;
+_Alignas(16) u8 decomp_state[1 << 14];
+#ifdef CONFIG_ELFLOADER_INITCPIO
+static const u64 initcpio_addr = 0x08000000;
+#endif
+#endif
+
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
 extern const struct decompressor lz4_decompressor, gzip_decompressor, zstd_decompressor;
 
@@ -346,7 +356,7 @@ static size_t wait_for_data(struct async_transfer *async, size_t old_pos) {
 }
 
 static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 **out_end) {
-	struct decompressor_state *state = (struct decompressor_state *)(async->buf + (async->total_bytes + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t));
+	struct decompressor_state *state = (struct decompressor_state *)decomp_state;
 	size_t size, xfer_pos = async->pos;
 	u64 start = get_timestamp();
 	const u8 *buf = async->buf;
@@ -356,6 +366,7 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 			xfer_pos = wait_for_data(async, xfer_pos);
 		}
 		if (status <= COMPR_PROBE_LAST_SUCCESS) {
+			assert(sizeof(decomp_state) >= formats[i].decomp->state_size);
 			info("%s probed\n", formats[i].name);
 			{
 				const u8 *data = formats[i].decomp->init(state, buf + offset, buf + xfer_pos);
@@ -363,6 +374,7 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 				offset = data - buf;
 			}
 			state->out = state->window_start = out;
+			debug("output buffer: 0x%"PRIx64"–0x%"PRIx64"\n", (u64)out, (u64)*out_end);
 			state->out_end = *out_end;
 			while (state->decode) {
 				size_t res = state->decode(state, buf + offset, buf + xfer_pos);
@@ -387,13 +399,6 @@ _Noreturn u32 ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
-	u64 elf_addr = 0x00200000, fdt_addr = 0x00500000, fdt_out_addr = 0x00580000, payload_addr = 0x00680000;
-#ifdef CONFIG_ELFLOADER_DECOMPRESSION
-	u64 blob_addr = 0x02000000;
-#ifdef CONFIG_ELFLOADER_INITCPIO
-	u64 initcpio_addr = 0x08100000;
-#endif
-#endif
 	setup_pll(cru + CRU_CPLL_CON, 1000);
 	/* aclk_gic = 200 MHz */
 	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
@@ -413,8 +418,8 @@ _Noreturn u32 ENTRY main() {
 #else
 	struct async_transfer xfer = {
 		.buf = (u8 *)blob_addr,
-		.total_bytes = 16 << 20,
-		.pos = 16 << 20,
+		.total_bytes = 60 << 20,
+		.pos = 60 << 20,
 	};
 	async = &xfer;
 #endif
@@ -434,14 +439,14 @@ _Noreturn u32 ENTRY main() {
 #endif
 #endif
 #endif
-	u8 *end = (u8 *)fdt_addr;
+	u8 *end = (u8 *)blob_addr;
 	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);
 	end = (u8 *)fdt_out_addr;
 	offset = decompress(async, offset, (u8 *)fdt_addr, &end);
-	end = (u8 *)blob_addr;
+	end = __start__;
 	offset = decompress(async, offset, (u8 *)payload_addr, &end);
 #ifdef CONFIG_ELFLOADER_INITCPIO
-	u8 *initcpio_end = (u8 *)0xf8000000;
+	u8 *initcpio_end = (u8 *)(DRAM_START + dram_size());
 	offset = decompress(async, offset, (u8 *)initcpio_addr, &initcpio_end);
 #endif
 
