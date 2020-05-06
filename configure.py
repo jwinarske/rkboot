@@ -163,7 +163,7 @@ rule run
 rule regtool
     command = ./regtool --read $in $flags --hex >$out
 rule ldscript
-    command = {genld} $flags >$out
+    command = bash {genld} $flags >$out
 rule lz4
     command = lz4 -c $flags $in > $out
 
