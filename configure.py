@@ -136,6 +136,9 @@ if (args.elfloader_spi or args.elfloader_initcpio) and not elfloader_decompressi
     elfloader_decompression = True
     args.elfloader_zstd = True
 
+if elfloader_decompression and not args.elfloader_spi:
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_MEMORY=1')
+
 sys.stdout = buildfile
 
 cc = os.getenv('CC', 'cc')
@@ -195,7 +198,7 @@ lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 if args.embed_elfloader:
     levinboot += ('compression/lzcommon', 'compression/lz4')
-elfloader = ('elfloader', 'pll')
+elfloader = ('elfloader', 'transform_fdt', 'pll')
 if elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
     elfloader += ('compression/lzcommon', 'string')
@@ -209,7 +212,7 @@ if elfloader_decompression:
         flags['elfloader'].append('-DHAVE_ZSTD')
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
-    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
+    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
     elfloader = elfloader + ('spi', 'gicv2')
 modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
 if not args.embed_elfloader:
