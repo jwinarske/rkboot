@@ -259,7 +259,9 @@ enum {
 };
 enum {
 	DWMMC_R1 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
+	DWMMC_R2 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT | DWMMC_CMD_RESPONSE_LENGTH,
 	DWMMC_R3 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_RESPONSE_EXPECT, /* no CRC checking */
+	DWMMC_R6 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
 };
 enum {
 	DWMMC_INT_RESP_TIMEOUT = 0x100,
@@ -334,6 +336,21 @@ enum {
 enum {
 	SD_RESP_BUSY = 1 << 31,
 };
+
+static void dwmmc_check_ok_status(volatile struct dwmmc_regs *dwmmc, enum dwmmc_status st, const char *context) {
+	assert_msg(st == DWMMC_STATUS_OK, "error during %s: status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", context, dwmmc->status, dwmmc->rintsts);
+}
+
+static void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
+	u32 cid[4] = {cid0, cid1, cid2, cid3};
+	for_range(i, 0, 4) {
+		info("CID%"PRIu32": %08"PRIx32"\n", i, cid[i]);
+	}
+	info("card month: %04"PRIu32"-%02"PRIu32", serial 0x%08"PRIx32"\n", (cid[0] >> 12 & 0xfff) + 2000, cid[0] >> 8 & 0xf, cid[0] >> 24 | cid[1] << 8);
+	info("mfg 0x%02"PRIx32" oem 0x%04"PRIx32" hwrev %"PRIu32" fwrev %"PRIu32"\n", cid[3] >> 24, cid[3] >> 8 & 0xffff, cid[1] >> 28 & 0xf, cid[1] >> 24 & 0xf);
+	char prod_name[6] = {cid[3] & 0xff, cid[2] >> 24 & 0xff, cid[2] >> 16 & 0xff, cid[2] >> 8 & 0xff, cid[2] & 0xff, 0};
+	info("product name: %s\n", prod_name);
+}
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
@@ -426,21 +443,50 @@ _Noreturn u32 ENTRY main() {
 	assert_msg((sdmmc->resp[0] & 0xff) == 0xaa, "CMD8 check pattern returned incorrectly\n");
 	info("status=%08"PRIx32"\n", sdmmc->status);
 	u32 resp;
-	timestamp_t start = get_timestamp();
-	while (1) {
-		st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, 0, 1000);
-		assert_msg(st == DWMMC_STATUS_OK, "error during CMD55 (APP_CMD): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
-		st = dwmmc_wait_cmd_done(sdmmc, 41 | DWMMC_R3, 0x00ff8000 | SD_OCR_HIGH_CAPACITY | SD_OCR_S18R, 1000);
-		assert_msg(st == DWMMC_STATUS_OK, "error during ACMD41 (OP_COND): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
-		resp = sdmmc->resp[0];
-		if (resp & SD_RESP_BUSY) {break;}
-		if (get_timestamp() - start > 100000 * CYCLES_PER_MICROSECOND) {
-			die("timeout in initialization\n");
+	{
+		timestamp_t start = get_timestamp();
+		while (1) {
+			st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, 0, 1000);
+			assert_msg(st == DWMMC_STATUS_OK, "error during CMD55 (APP_CMD): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
+			st = dwmmc_wait_cmd_done(sdmmc, 41 | DWMMC_R3, 0x00ff8000 | SD_OCR_HIGH_CAPACITY | SD_OCR_S18R, 1000);
+			assert_msg(st == DWMMC_STATUS_OK, "error during ACMD41 (OP_COND): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
+			resp = sdmmc->resp[0];
+			if (resp & SD_RESP_BUSY) {break;}
+			if (get_timestamp() - start > 100000 * CYCLES_PER_MICROSECOND) {
+				die("timeout in initialization\n");
+			}
+			udelay(100);
 		}
-		udelay(100);
 	}
 	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32"\n", resp, sdmmc->status);
 	assert_msg(resp & SD_OCR_HIGH_CAPACITY, "card does not support high capacity addressing\n");
+	st = dwmmc_wait_cmd_done(sdmmc, 2 | DWMMC_R2, 0, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD2 (ALL_SEND_CID)");
+	sd_dump_cid(sdmmc->resp[0], sdmmc->resp[1], sdmmc->resp[2], sdmmc->resp[3]);
+	st = dwmmc_wait_cmd_done(sdmmc, 3 | DWMMC_R6, 0, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD3 (SEND_RELATIVE_ADDRESS)");
+	u32 rca = sdmmc->resp[0];
+	info("RCA: %08"PRIx32"\n", rca);
+	rca &= 0xffff0000;
+	st = dwmmc_wait_cmd_done(sdmmc, 10 | DWMMC_R2, rca, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD10 (SEND_CID)");
+	sd_dump_cid(sdmmc->resp[0], sdmmc->resp[1], sdmmc->resp[2], sdmmc->resp[3]);
+	st = dwmmc_wait_cmd_done(sdmmc, 7 | DWMMC_R1, rca, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD7 (SELECT_CARD)");
+	dwmmc_wait_not_busy(sdmmc, 1000 * CYCLES_PER_MICROSECOND);
+	sdmmc->clkena = 0;
+	dwmmc_wait_cmd(sdmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
+	/* clk_sdmmc = 24 MHz */
+	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 0);
+	sdmmc->clkena = 1;
+	dwmmc_wait_cmd(sdmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
+	st = dwmmc_wait_cmd_done(sdmmc, 16 | DWMMC_R1, 512, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD16 (SET_BLOCKLEN)");
+	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32"\n", sdmmc->resp[0], sdmmc->status);
+	st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, rca, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD55 (APP_CMD)");
+	st = dwmmc_wait_cmd_done(sdmmc, 6 | DWMMC_R1, 2, 1000);
+	sdmmc->ctype = 1;
 #else
 #error No elfloader payload source specified
 #endif
