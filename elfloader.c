@@ -259,6 +259,7 @@ enum {
 };
 enum {
 	DWMMC_R1 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
+	DWMMC_R3 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_RESPONSE_EXPECT, /* no CRC checking */
 };
 enum {
 	DWMMC_INT_RESP_TIMEOUT = 0x100,
@@ -314,7 +315,9 @@ static inline void dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
 }
 
-static inline enum dwmmc_status dwmmc_wait_cmd_done(volatile struct dwmmc_regs *dwmmc, u32 cmd, timestamp_t timeout) {
+static inline enum dwmmc_status dwmmc_wait_cmd_done(volatile struct dwmmc_regs *dwmmc, u32 cmd, u32 arg, timestamp_t timeout) {
+	dwmmc->cmdarg = arg;
+	mmio_barrier();
 	timestamp_t raw_timeout = timeout * CYCLES_PER_MICROSECOND;
 	if (cmd & DWMMC_CMD_SYNC_DATA) {
 		raw_timeout -= dwmmc_wait_not_busy(dwmmc, raw_timeout);
@@ -322,6 +325,15 @@ static inline enum dwmmc_status dwmmc_wait_cmd_done(volatile struct dwmmc_regs *
 	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
 	return dwmmc_wait_cmd_done_inner(dwmmc, raw_timeout);
 }
+
+enum {
+	SD_OCR_HIGH_CAPACITY = 1 << 30,
+	SD_OCR_XPC = 1 << 28,
+	SD_OCR_S18R = 1 << 24,
+};
+enum {
+	SD_RESP_BUSY = 1 << 31,
+};
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
@@ -348,8 +360,7 @@ _Noreturn u32 ENTRY main() {
 	cru[CRU_SDMMC_CON + 1] = SET_BITS16(2, 0) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
 	cru[CRU_SDMMC_CON] = SET_BITS16(1, 0);
 	/* mux out the SD lines */
-	u32 tmp = grf[GRF_GPIO4B_IOMUX] = SET_BITS16(2, 1) | SET_BITS16(2, 1) << 2 | SET_BITS16(2, 1) << 4 | SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8 | SET_BITS16(2, 1) << 10;
-	info("iomux0x%08"PRIx32"\n", tmp);
+	grf[GRF_GPIO4B_IOMUX] = SET_BITS16(2, 1) | SET_BITS16(2, 1) << 2 | SET_BITS16(2, 1) << 4 | SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8 | SET_BITS16(2, 1) << 10;
 	/* mux out card detect */
 	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 14;
 	/* reset SDMMC */
@@ -404,18 +415,32 @@ _Noreturn u32 ENTRY main() {
 	dwmmc_wait_cmd(sdmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
 	info("clock enabled\n");
 	udelay(500);
-	dwmmc_wait_cmd_done(sdmmc, 0 | DWMMC_CMD_SEND_INITIALIZATION | DWMMC_CMD_CHECK_RESPONSE_CRC, 1000);
+	dwmmc_wait_cmd_done(sdmmc, 0 | DWMMC_CMD_SEND_INITIALIZATION | DWMMC_CMD_CHECK_RESPONSE_CRC, 0, 1000);
 	udelay(10000);
 	info("CMD0 resp=%08"PRIx32" rintsts=%"PRIx32"\n", sdmmc->resp[0], sdmmc->rintsts);
-	sdmmc->cmdarg = 0x1aa;
-	mmio_barrier();
 	info("status=%08"PRIx32"\n", sdmmc->status);
-	enum dwmmc_status st = dwmmc_wait_cmd_done(sdmmc, 8 | DWMMC_R1, 100000);
+	enum dwmmc_status st = dwmmc_wait_cmd_done(sdmmc, 8 | DWMMC_R1, 0x1aa, 100000);
 	assert_msg(st != DWMMC_STATUS_ERROR, "error on SET_IF_COND (CMD8)\n");
 	assert_unimpl(st != DWMMC_STATUS_TIMEOUT, "SD <2.0 cards\n");
 	info("CMD8 resp=%08"PRIx32" rintsts=%"PRIx32"\n", sdmmc->resp[0], sdmmc->rintsts);
 	assert_msg((sdmmc->resp[0] & 0xff) == 0xaa, "CMD8 check pattern returned incorrectly\n");
 	info("status=%08"PRIx32"\n", sdmmc->status);
+	u32 resp;
+	timestamp_t start = get_timestamp();
+	while (1) {
+		st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, 0, 1000);
+		assert_msg(st == DWMMC_STATUS_OK, "error during CMD55 (APP_CMD): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
+		st = dwmmc_wait_cmd_done(sdmmc, 41 | DWMMC_R3, 0x00ff8000 | SD_OCR_HIGH_CAPACITY | SD_OCR_S18R, 1000);
+		assert_msg(st == DWMMC_STATUS_OK, "error during ACMD41 (OP_COND): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
+		resp = sdmmc->resp[0];
+		if (resp & SD_RESP_BUSY) {break;}
+		if (get_timestamp() - start > 100000 * CYCLES_PER_MICROSECOND) {
+			die("timeout in initialization\n");
+		}
+		udelay(100);
+	}
+	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32"\n", resp, sdmmc->status);
+	assert_msg(resp & SD_OCR_HIGH_CAPACITY, "card does not support high capacity addressing\n");
 #else
 #error No elfloader payload source specified
 #endif
