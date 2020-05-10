@@ -253,6 +253,7 @@ enum {
 	/* … */
 	DWMMC_CMD_SYNC_DATA = 1 << 13,
 	/* … */
+	DWMMC_CMD_DATA_EXPECTED = 1 << 9,
 	DWMMC_CMD_CHECK_RESPONSE_CRC = 1 << 8,
 	DWMMC_CMD_RESPONSE_LENGTH = 1 << 7,
 	DWMMC_CMD_RESPONSE_EXPECT = 1 << 6,
@@ -266,6 +267,7 @@ enum {
 enum {
 	DWMMC_INT_RESP_TIMEOUT = 0x100,
 	/* … */
+	DWMMC_INT_DATA_TRANSFER_OVER = 8,
 	DWMMC_INT_CMD_DONE = 4,
 	/* … */
 	DWMMC_ERROR_INT_MASK = 0xb8c2
@@ -326,6 +328,10 @@ static inline enum dwmmc_status dwmmc_wait_cmd_done(volatile struct dwmmc_regs *
 	}
 	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
 	return dwmmc_wait_cmd_done_inner(dwmmc, raw_timeout);
+}
+
+void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc) {
+	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32" rintsts=0x%04"PRIx32"\n", dwmmc->resp[0], dwmmc->status, dwmmc->rintsts);
 }
 
 enum {
@@ -421,7 +427,7 @@ _Noreturn u32 ENTRY main() {
 			}
 		}
 	}
-	info("SDMMC resetted\n");
+	info("SDMMC reset successful. HCON=%08"PRIx32"\n", sdmmc->hcon);
 	sdmmc->rst_n = 1;
 	udelay(5);
 	sdmmc->rst_n = 0;
@@ -486,14 +492,40 @@ _Noreturn u32 ENTRY main() {
 	st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, rca, 1000);
 	dwmmc_check_ok_status(sdmmc, st, "CMD55 (APP_CMD)");
 	st = dwmmc_wait_cmd_done(sdmmc, 6 | DWMMC_R1, 2, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "ACMD6 (SET_BUS_WIDTH)");
 	sdmmc->ctype = 1;
+	st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, rca, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD55 (APP_CMD)");
+	sdmmc->blksiz = 64;
+	sdmmc->bytcnt = 64;
+	st = dwmmc_wait_cmd_done(sdmmc, 13 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "ACMD13 (SD_STATUS)");
+	{
+		u32 status;
+		timestamp_t start = get_timestamp();
+		while (~(status = sdmmc->rintsts) & DWMMC_INT_DATA_TRANSFER_OVER) {
+			if (status & DWMMC_ERROR_INT_MASK) {
+				die("error transferring SSR\n");
+			}
+			if (get_timestamp() - start > 1000 * CYCLES_PER_MICROSECOND) {
+				die("SSR timeout\n");
+			}
+		}
+	}
+	dwmmc_print_status(sdmmc);
+	sdmmc->rintsts = DWMMC_INT_DATA_TRANSFER_OVER;
+	for_range(i, 0, 16) {
+		info("SSR%"PRIu32": 0x%08"PRIx32"\n", i, *(u32*)0xfe320200);
+	}
+	dwmmc_print_status(sdmmc);
+	async->total_bytes = 512;
 #else
 #error No elfloader payload source specified
 #endif
 	async->buf = (u8 *)blob_addr;
 	async->pos = 0;
 #endif
-#ifdef CONFIG_ELFLOADER_SPI
+#if CONFIG_ELFLOADER_SPI
 	gicv2_global_setup(gic500d);
 	gicv3_per_cpu_setup(gic500r);
 	u64 xfer_start = get_timestamp();
@@ -508,6 +540,21 @@ _Noreturn u32 ENTRY main() {
 	}
 #endif
 #endif
+#elif CONFIG_ELFLOADER_SD
+	sdmmc->blksiz = sdmmc->bytcnt = 512;
+	st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 64, 1000);
+	dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
+	u32 fifo_items = 0;
+	for_range(i, 0, 128) {
+		if (!fifo_items) {while (1) {
+			fifo_items = sdmmc->status >> 17 & 0x1fff;
+			if (fifo_items) {break;}
+			dwmmc_print_status(sdmmc);
+			udelay(1000);
+		}}
+		info("%3"PRIu32": 0x%08"PRIx32"\n", i, *(u32*)0xfe320200);
+		fifo_items -= 1;
+	}
 #endif
 	u8 *end = (u8 *)blob_addr;
 	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);
