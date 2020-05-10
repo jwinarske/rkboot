@@ -91,6 +91,12 @@ parser.add_argument(
     help='configure elfloader to load its images from SPI flash'
 )
 parser.add_argument(
+    '--elfloader-sd',
+    action='store_true',
+    dest='elfloader_sd',
+    help='configure elfloader to load its images from an SD card'
+)
+parser.add_argument(
     '--elfloader-initcpio',
     action='store_true',
     dest='elfloader_initcpio',
@@ -136,7 +142,7 @@ if (args.elfloader_spi or args.elfloader_initcpio) and not elfloader_decompressi
     elfloader_decompression = True
     args.elfloader_zstd = True
 
-if elfloader_decompression and not args.elfloader_spi:
+if elfloader_decompression and not args.elfloader_spi and not args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_MEMORY=1')
 
 sys.stdout = buildfile
@@ -214,6 +220,8 @@ if elfloader_decompression:
 if args.elfloader_spi:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
     elfloader = elfloader + ('spi', 'gicv2')
+if args.elfloader_sd:
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
 modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
 if not args.embed_elfloader:
     modules += ('memtest', 'brompatch')

@@ -4,6 +4,7 @@
 
 enum {
 	GRF_GPIO2C_IOMUX = 0xe008 >> 2,
+	GRF_GPIO4B_IOMUX = 0xe024 >> 2,
 	GRF_GPIO4C_IOMUX = 0xe028 >> 2,
 	GRF_SOC_CON0 = 0xe200 >> 2,
 	GRF_SOC_CON7 = 0xe21c >> 2,
@@ -11,6 +12,7 @@ enum {
 };
 
 enum {
+	PMUGRF_GPIO0A_IOMUX = 0,
 	PMUGRF_GPIO0B_IOMUX = 0x004 >> 2,
 	PMUGRF_GPIO0B_P = 0x044 >> 2,
 	PMUGRF_OS_REG2 = 0x308 >> 2,
@@ -27,6 +29,7 @@ enum {
 	CRU_GPLL_CON = 0x080 >> 2,
 	CRU_CLKSEL_CON = 0x100 >> 2,
 	CRU_SOFTRST_CON = 0x400 >> 2,
+	CRU_SDMMC_CON = 0x580 >> 2,
 };
 
 enum {

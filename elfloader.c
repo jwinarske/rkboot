@@ -198,7 +198,130 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 	}
 	die("couldn't probe");
 }
+
+#if CONFIG_ELFLOADER_SD
+struct async_transfer sdmmc_async;
 #endif
+#endif
+
+struct dwmmc_regs {
+	u32 ctrl;
+	u32 pwren;
+	u32 clkdiv[1];
+	u32 clksrc;
+	u32 clkena;
+	u32 tmout;
+	u32 ctype;
+	u32 blksiz;
+	u32 bytcnt;
+	u32 intmask;
+	u32 cmdarg;
+	u32 cmd;
+	u32 resp[4];
+	u32 mintsts;
+	u32 rintsts;
+	u32 status;
+	u32 fifoth;
+	u32 cdetect;
+	u32 wrtprt;
+	u32 padding1;
+	u32 tcbcnt;
+	u32 tbbcnt;
+	u32 debnce;
+	u32 usrid;
+	u32 verid;
+	u32 hcon;
+	u32 uhs_reg;
+	u32 rst_n;
+	u32 padding2;
+	u32 bmod;
+};
+CHECK_OFFSET(dwmmc_regs, cmdarg, 0x28);
+CHECK_OFFSET(dwmmc_regs, status, 0x48);
+CHECK_OFFSET(dwmmc_regs, hcon, 0x70);
+CHECK_OFFSET(dwmmc_regs, bmod, 0x80);
+
+enum {
+	DWMMC_CMD_START = 1 << 31,
+	/* … */
+	DWMMC_CMD_USE_HOLD_REG = 1 << 29,
+	DWMMC_CMD_VOLT_SWITCH = 1 << 28,
+	/* … */
+	DWMMC_CMD_UPDATE_CLOCKS = 1 << 21,
+	/* … */
+	DWMMC_CMD_SEND_INITIALIZATION = 1 << 15,
+	/* … */
+	DWMMC_CMD_SYNC_DATA = 1 << 13,
+	/* … */
+	DWMMC_CMD_CHECK_RESPONSE_CRC = 1 << 8,
+	DWMMC_CMD_RESPONSE_LENGTH = 1 << 7,
+	DWMMC_CMD_RESPONSE_EXPECT = 1 << 6,
+};
+enum {
+	DWMMC_R1 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
+};
+enum {
+	DWMMC_INT_RESP_TIMEOUT = 0x100,
+	/* … */
+	DWMMC_INT_CMD_DONE = 4,
+	/* … */
+	DWMMC_ERROR_INT_MASK = 0xb8c2
+};
+
+void dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
+	info("starting command %08"PRIx32"\n", cmd);
+	dwmmc->cmd = cmd;
+	timestamp_t start = get_timestamp();
+	while (dwmmc->cmd & DWMMC_CMD_START) {
+		__asm__("yield");
+		if (get_timestamp() - start > 100 * CYCLES_PER_MICROSECOND) {
+			die("timed out waiting for CIU to accept command\n");
+		}
+	}
+}
+enum dwmmc_status {
+	DWMMC_STATUS_OK = 0,
+	DWMMC_STATUS_TIMEOUT = 1,
+	DWMMC_STATUS_ERROR = 2,
+};
+enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout) {
+	timestamp_t start = get_timestamp();
+	u32 status;
+	while (~(status = dwmmc->rintsts) & DWMMC_INT_CMD_DONE) {
+		__asm__("yield");
+		if (get_timestamp() - start > raw_timeout) {
+			die("timed out waiting for command completion, rintsts=0x%"PRIx32" status=0x%"PRIx32"\n", dwmmc->rintsts, dwmmc->status);
+		}
+	}
+	if (status & DWMMC_ERROR_INT_MASK) {return DWMMC_STATUS_ERROR;}
+	if (status & DWMMC_INT_RESP_TIMEOUT) {return DWMMC_STATUS_TIMEOUT;}
+	dwmmc->rintsts = DWMMC_ERROR_INT_MASK | DWMMC_INT_CMD_DONE | DWMMC_INT_RESP_TIMEOUT;
+	return DWMMC_STATUS_OK;
+}
+
+timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout) {
+	timestamp_t start = get_timestamp(), cur = start;
+	while (dwmmc->status & 1 << 9) {
+		__asm__("yield");
+		if ((cur = get_timestamp()) - start > raw_timeout) {
+			die("timed out waiting for card to not be busy\n");
+		}
+	}
+	return cur - start;
+}
+
+static inline void dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
+	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
+}
+
+static inline enum dwmmc_status dwmmc_wait_cmd_done(volatile struct dwmmc_regs *dwmmc, u32 cmd, timestamp_t timeout) {
+	timestamp_t raw_timeout = timeout * CYCLES_PER_MICROSECOND;
+	if (cmd & DWMMC_CMD_SYNC_DATA) {
+		raw_timeout -= dwmmc_wait_not_busy(dwmmc, raw_timeout);
+	}
+	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
+	return dwmmc_wait_cmd_done_inner(dwmmc, raw_timeout);
+}
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
@@ -214,6 +337,28 @@ _Noreturn u32 ENTRY main() {
 	cru[CRU_CLKSEL_CON + 23] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 0) | SET_BITS16(2, 0) << 8 | SET_BITS16(3, 1);
 	/* hclk_perilp1 = pclk_perilp1 = 333 MHz, DTS has 400 */
 	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 2) | SET_BITS16(3, 0) << 8;
+#if CONFIG_ELFLOADER_SD
+	/* hclk_sd = 200 MHz */
+	cru[CRU_CLKSEL_CON + 13] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
+	/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
+	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 29);
+	/* drive phase 180° */
+	cru[CRU_SDMMC_CON] = SET_BITS16(1, 1);
+	cru[CRU_SDMMC_CON + 0] = SET_BITS16(2, 1) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
+	cru[CRU_SDMMC_CON + 1] = SET_BITS16(2, 0) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
+	cru[CRU_SDMMC_CON] = SET_BITS16(1, 0);
+	/* mux out the SD lines */
+	u32 tmp = grf[GRF_GPIO4B_IOMUX] = SET_BITS16(2, 1) | SET_BITS16(2, 1) << 2 | SET_BITS16(2, 1) << 4 | SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8 | SET_BITS16(2, 1) << 10;
+	info("iomux0x%08"PRIx32"\n", tmp);
+	/* mux out card detect */
+	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 14;
+	/* reset SDMMC */
+	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 1) << 10;
+	udelay(100);
+	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 0) << 10;
+	udelay(2000);
+#endif
+
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
 	struct async_transfer *async;
 #if CONFIG_ELFLOADER_MEMORY
@@ -227,6 +372,50 @@ _Noreturn u32 ENTRY main() {
 #if CONFIG_ELFLOADER_SPI
 	async = &spi1_async;
 	async->total_bytes = 16 << 20;
+#elif CONFIG_ELFLOADER_SD
+	async = &sdmmc_async;
+	async->total_bytes = 0;
+	info("starting SDMMC\n");
+	volatile struct dwmmc_regs *sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
+	sdmmc->pwren = 1;
+	udelay(1000);
+	sdmmc->rintsts = ~(u32)0;
+	sdmmc->intmask = 0;
+	sdmmc->fifoth = 0x307f0080;
+	sdmmc->tmout = 0xffffffff;
+	sdmmc->ctrl = 3;
+	{
+		timestamp_t start = get_timestamp();
+		while (sdmmc->ctrl & 3) {
+			__asm__("yield");
+			if (get_timestamp() - start > 100 * CYCLES_PER_MICROSECOND) {
+				die("reset timeout, ctrl=%08"PRIx32"\n", sdmmc->ctrl);
+			}
+		}
+	}
+	info("SDMMC resetted\n");
+	sdmmc->rst_n = 1;
+	udelay(5);
+	sdmmc->rst_n = 0;
+	sdmmc->ctype = 0;
+	sdmmc->clkdiv[0] = 0;
+	mmio_barrier();
+	sdmmc->clkena = 1;
+	dwmmc_wait_cmd(sdmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
+	info("clock enabled\n");
+	udelay(500);
+	dwmmc_wait_cmd_done(sdmmc, 0 | DWMMC_CMD_SEND_INITIALIZATION | DWMMC_CMD_CHECK_RESPONSE_CRC, 1000);
+	udelay(10000);
+	info("CMD0 resp=%08"PRIx32" rintsts=%"PRIx32"\n", sdmmc->resp[0], sdmmc->rintsts);
+	sdmmc->cmdarg = 0x1aa;
+	mmio_barrier();
+	info("status=%08"PRIx32"\n", sdmmc->status);
+	enum dwmmc_status st = dwmmc_wait_cmd_done(sdmmc, 8 | DWMMC_R1, 100000);
+	assert_msg(st != DWMMC_STATUS_ERROR, "error on SET_IF_COND (CMD8)\n");
+	assert_unimpl(st != DWMMC_STATUS_TIMEOUT, "SD <2.0 cards\n");
+	info("CMD8 resp=%08"PRIx32" rintsts=%"PRIx32"\n", sdmmc->resp[0], sdmmc->rintsts);
+	assert_msg((sdmmc->resp[0] & 0xff) == 0xaa, "CMD8 check pattern returned incorrectly\n");
+	info("status=%08"PRIx32"\n", sdmmc->status);
 #else
 #error No elfloader payload source specified
 #endif

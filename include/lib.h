@@ -6,7 +6,8 @@
 #include <log.h>
 #include <die.h>
 
-u64 get_timestamp();
+typedef u64 timestamp_t;
+timestamp_t get_timestamp();
 
 #define log(fmt, ...) printf("[%zu] " fmt, get_timestamp(), __VA_ARGS__)
 #define logs(str) printf("[%zu] %s", get_timestamp(), str)
