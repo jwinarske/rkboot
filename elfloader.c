@@ -7,6 +7,7 @@
 #include <compression.h>
 #include <rkspi.h>
 #include <gic.h>
+#include <dwmmc.h>
 #include "fdt.h"
 #include ATF_HEADER_PATH
 
@@ -204,136 +205,6 @@ struct async_transfer sdmmc_async;
 #endif
 #endif
 
-struct dwmmc_regs {
-	u32 ctrl;
-	u32 pwren;
-	u32 clkdiv[1];
-	u32 clksrc;
-	u32 clkena;
-	u32 tmout;
-	u32 ctype;
-	u32 blksiz;
-	u32 bytcnt;
-	u32 intmask;
-	u32 cmdarg;
-	u32 cmd;
-	u32 resp[4];
-	u32 mintsts;
-	u32 rintsts;
-	u32 status;
-	u32 fifoth;
-	u32 cdetect;
-	u32 wrtprt;
-	u32 padding1;
-	u32 tcbcnt;
-	u32 tbbcnt;
-	u32 debnce;
-	u32 usrid;
-	u32 verid;
-	u32 hcon;
-	u32 uhs_reg;
-	u32 rst_n;
-	u32 padding2;
-	u32 bmod;
-};
-CHECK_OFFSET(dwmmc_regs, cmdarg, 0x28);
-CHECK_OFFSET(dwmmc_regs, status, 0x48);
-CHECK_OFFSET(dwmmc_regs, hcon, 0x70);
-CHECK_OFFSET(dwmmc_regs, bmod, 0x80);
-
-enum {
-	DWMMC_CMD_START = 1 << 31,
-	/* … */
-	DWMMC_CMD_USE_HOLD_REG = 1 << 29,
-	DWMMC_CMD_VOLT_SWITCH = 1 << 28,
-	/* … */
-	DWMMC_CMD_UPDATE_CLOCKS = 1 << 21,
-	/* … */
-	DWMMC_CMD_SEND_INITIALIZATION = 1 << 15,
-	/* … */
-	DWMMC_CMD_SYNC_DATA = 1 << 13,
-	/* … */
-	DWMMC_CMD_DATA_EXPECTED = 1 << 9,
-	DWMMC_CMD_CHECK_RESPONSE_CRC = 1 << 8,
-	DWMMC_CMD_RESPONSE_LENGTH = 1 << 7,
-	DWMMC_CMD_RESPONSE_EXPECT = 1 << 6,
-};
-enum {
-	DWMMC_R1 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
-	DWMMC_R2 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT | DWMMC_CMD_RESPONSE_LENGTH,
-	DWMMC_R3 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_RESPONSE_EXPECT, /* no CRC checking */
-	DWMMC_R6 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
-};
-enum {
-	DWMMC_INT_RESP_TIMEOUT = 0x100,
-	/* … */
-	DWMMC_INT_DATA_TRANSFER_OVER = 8,
-	DWMMC_INT_CMD_DONE = 4,
-	/* … */
-	DWMMC_ERROR_INT_MASK = 0xb8c2
-};
-
-void dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
-	info("starting command %08"PRIx32"\n", cmd);
-	dwmmc->cmd = cmd;
-	timestamp_t start = get_timestamp();
-	while (dwmmc->cmd & DWMMC_CMD_START) {
-		__asm__("yield");
-		if (get_timestamp() - start > 100 * CYCLES_PER_MICROSECOND) {
-			die("timed out waiting for CIU to accept command\n");
-		}
-	}
-}
-enum dwmmc_status {
-	DWMMC_STATUS_OK = 0,
-	DWMMC_STATUS_TIMEOUT = 1,
-	DWMMC_STATUS_ERROR = 2,
-};
-enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout) {
-	timestamp_t start = get_timestamp();
-	u32 status;
-	while (~(status = dwmmc->rintsts) & DWMMC_INT_CMD_DONE) {
-		__asm__("yield");
-		if (get_timestamp() - start > raw_timeout) {
-			die("timed out waiting for command completion, rintsts=0x%"PRIx32" status=0x%"PRIx32"\n", dwmmc->rintsts, dwmmc->status);
-		}
-	}
-	if (status & DWMMC_ERROR_INT_MASK) {return DWMMC_STATUS_ERROR;}
-	if (status & DWMMC_INT_RESP_TIMEOUT) {return DWMMC_STATUS_TIMEOUT;}
-	dwmmc->rintsts = DWMMC_ERROR_INT_MASK | DWMMC_INT_CMD_DONE | DWMMC_INT_RESP_TIMEOUT;
-	return DWMMC_STATUS_OK;
-}
-
-timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout) {
-	timestamp_t start = get_timestamp(), cur = start;
-	while (dwmmc->status & 1 << 9) {
-		__asm__("yield");
-		if ((cur = get_timestamp()) - start > raw_timeout) {
-			die("timed out waiting for card to not be busy\n");
-		}
-	}
-	return cur - start;
-}
-
-static inline void dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
-	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
-}
-
-static inline enum dwmmc_status dwmmc_wait_cmd_done(volatile struct dwmmc_regs *dwmmc, u32 cmd, u32 arg, timestamp_t timeout) {
-	dwmmc->cmdarg = arg;
-	mmio_barrier();
-	timestamp_t raw_timeout = timeout * CYCLES_PER_MICROSECOND;
-	if (cmd & DWMMC_CMD_SYNC_DATA) {
-		raw_timeout -= dwmmc_wait_not_busy(dwmmc, raw_timeout);
-	}
-	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
-	return dwmmc_wait_cmd_done_inner(dwmmc, raw_timeout);
-}
-
-void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc) {
-	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32" rintsts=0x%04"PRIx32"\n", dwmmc->resp[0], dwmmc->status, dwmmc->rintsts);
-}
-
 enum {
 	SD_OCR_HIGH_CAPACITY = 1 << 30,
 	SD_OCR_XPC = 1 << 28,
@@ -343,11 +214,11 @@ enum {
 	SD_RESP_BUSY = 1 << 31,
 };
 
-static void dwmmc_check_ok_status(volatile struct dwmmc_regs *dwmmc, enum dwmmc_status st, const char *context) {
+static void UNUSED dwmmc_check_ok_status(volatile struct dwmmc_regs *dwmmc, enum dwmmc_status st, const char *context) {
 	assert_msg(st == DWMMC_STATUS_OK, "error during %s: status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", context, dwmmc->status, dwmmc->rintsts);
 }
 
-static void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
+static void UNUSED sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
 	u32 cid[4] = {cid0, cid1, cid2, cid3};
 	for_range(i, 0, 4) {
 		info("CID%"PRIu32": %08"PRIx32"\n", i, cid[i]);
@@ -544,17 +415,20 @@ _Noreturn u32 ENTRY main() {
 	sdmmc->blksiz = sdmmc->bytcnt = 512;
 	st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 64, 1000);
 	dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
-	u32 fifo_items = 0;
-	for_range(i, 0, 128) {
+	u32 fifo_items = 0, pos = 0;
+	while (1) {
 		if (!fifo_items) {while (1) {
 			fifo_items = sdmmc->status >> 17 & 0x1fff;
 			if (fifo_items) {break;}
+			if (sdmmc->rintsts & DWMMC_INT_DATA_TRANSFER_OVER) {goto transfer_over;}
 			dwmmc_print_status(sdmmc);
 			udelay(1000);
 		}}
-		info("%3"PRIu32": 0x%08"PRIx32"\n", i, *(u32*)0xfe320200);
+		info("%3"PRIu32": 0x%08"PRIx32"\n", pos, *(u32*)0xfe320200);
+		pos += 1;
 		fifo_items -= 1;
 	}
+	transfer_over:info("SD transfer over\n");
 #endif
 	u8 *end = (u8 *)blob_addr;
 	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);

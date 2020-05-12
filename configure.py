@@ -221,6 +221,7 @@ if args.elfloader_spi:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
     elfloader = elfloader + ('spi', 'gicv2')
 if args.elfloader_sd:
+    elfloader += ('dwmmc',)
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
 modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
 if not args.embed_elfloader:

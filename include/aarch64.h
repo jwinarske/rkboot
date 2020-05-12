@@ -14,3 +14,5 @@ enum {
 	SCR_IRQ = 2,
 	SCR_EL3_RES1 = 0x30,
 };
+
+static inline void dsb_st() {__asm__("dsb st");}

@@ -44,7 +44,7 @@ enum {
 	CIC_STATUS = 4
 };
 
-enum {CYCLES_PER_MICROSECOND = 24};
+enum {CYCLES_PER_MICROSECOND = TICKS_PER_MICROSECOND};
 
 struct gic_distributor;
 struct gic_redistributor;
