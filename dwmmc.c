@@ -6,7 +6,7 @@
 #include <inttypes.h>
 
 void dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
-	info("starting command %08"PRIx32"\n", cmd);
+	spew("starting command %08"PRIx32"\n", cmd);
 	dwmmc->cmd = cmd;
 	timestamp_t start = get_timestamp();
 	while (dwmmc->cmd & DWMMC_CMD_START) {

@@ -279,7 +279,7 @@ _Noreturn u32 ENTRY main() {
 	async->total_bytes = 16 << 20;
 #elif CONFIG_ELFLOADER_SD
 	async = &sdmmc_async;
-	async->total_bytes = 0;
+	async->total_bytes = 60 << 20;
 	info("starting SDMMC\n");
 	volatile struct dwmmc_regs *sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
 	sdmmc->pwren = 1;
@@ -389,7 +389,6 @@ _Noreturn u32 ENTRY main() {
 		info("SSR%"PRIu32": 0x%08"PRIx32"\n", i, *(u32*)0xfe320200);
 	}
 	dwmmc_print_status(sdmmc);
-	async->total_bytes = 512;
 #else
 #error No elfloader payload source specified
 #endif
@@ -413,22 +412,36 @@ _Noreturn u32 ENTRY main() {
 #endif
 #elif CONFIG_ELFLOADER_SD
 	sdmmc->blksiz = sdmmc->bytcnt = 512;
-	st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 64, 1000);
+	u32 pos = 0, sector = 64, sector_end = 64 + (async->total_bytes >> 9);
+	st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector++, 1000);
 	dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
-	u32 fifo_items = 0, pos = 0;
 	while (1) {
-		if (!fifo_items) {while (1) {
-			fifo_items = sdmmc->status >> 17 & 0x1fff;
-			if (fifo_items) {break;}
-			if (sdmmc->rintsts & DWMMC_INT_DATA_TRANSFER_OVER) {goto transfer_over;}
-			dwmmc_print_status(sdmmc);
+		u32 status = sdmmc->status, intstatus = sdmmc->rintsts;
+		u32 fifo_items = status >> 17 & 0x1fff;
+		for_range(i, 0, fifo_items) {
+			u32 val = *(volatile u32*)0xfe320200;
+			spew("%3"PRIu32": 0x%08"PRIx32"\n", pos, val);
+			*(u32 *)(async->buf + pos) = val;
+			pos += 4;
+			fifo_items -= 1;
+		}
+		async->pos = pos;
+		if (intstatus & DWMMC_INT_DATA_TRANSFER_OVER) {
+			if (sector < sector_end) {
+				st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector++, 1000);
+				dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
+#ifdef SPEW_MSG
+				dwmmc_print_status(sdmmc);
+#endif
+				sdmmc->rintsts = DWMMC_INT_DATA_TRANSFER_OVER;
+			} else if (!fifo_items) {break;}
+		}
+		if (!fifo_items) {
 			udelay(1000);
-		}}
-		info("%3"PRIu32": 0x%08"PRIx32"\n", pos, *(u32*)0xfe320200);
-		pos += 1;
-		fifo_items -= 1;
+			continue;
+		}
 	}
-	transfer_over:info("SD transfer over\n");
+	info("SD transfer over at 0x%zx bytes\n", async->pos);
 #endif
 	u8 *end = (u8 *)blob_addr;
 	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);
