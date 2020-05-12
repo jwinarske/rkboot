@@ -215,7 +215,7 @@ enum {
 };
 
 static void UNUSED dwmmc_check_ok_status(volatile struct dwmmc_regs *dwmmc, enum dwmmc_status st, const char *context) {
-	assert_msg(st == DWMMC_STATUS_OK, "error during %s: status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", context, dwmmc->status, dwmmc->rintsts);
+	assert_msg(st == DWMMC_ST_OK, "error during %s: status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", context, dwmmc->status, dwmmc->rintsts);
 }
 
 static void UNUSED sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
@@ -244,6 +244,8 @@ _Noreturn u32 ENTRY main() {
 	/* hclk_perilp1 = pclk_perilp1 = 333 MHz, DTS has 400 */
 	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 2) | SET_BITS16(3, 0) << 8;
 #if CONFIG_ELFLOADER_SD
+	/* aclk_perihp = 125 MHz, hclk_perihp = aclk_perihp / 2, pclk_perihp = aclk_perihp / 4 */
+	cru[CRU_CLKSEL_CON + 14] = SET_BITS16(3, 3) << 12 | SET_BITS16(2, 1) << 8 | SET_BITS16(1, 0) << 7 | SET_BITS16(5, 7);
 	/* hclk_sd = 200 MHz */
 	cru[CRU_CLKSEL_CON + 13] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
 	/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
@@ -314,8 +316,8 @@ _Noreturn u32 ENTRY main() {
 	info("CMD0 resp=%08"PRIx32" rintsts=%"PRIx32"\n", sdmmc->resp[0], sdmmc->rintsts);
 	info("status=%08"PRIx32"\n", sdmmc->status);
 	enum dwmmc_status st = dwmmc_wait_cmd_done(sdmmc, 8 | DWMMC_R1, 0x1aa, 100000);
-	assert_msg(st != DWMMC_STATUS_ERROR, "error on SET_IF_COND (CMD8)\n");
-	assert_unimpl(st != DWMMC_STATUS_TIMEOUT, "SD <2.0 cards\n");
+	assert_msg(st != DWMMC_ST_ERROR, "error on SET_IF_COND (CMD8)\n");
+	assert_unimpl(st != DWMMC_ST_TIMEOUT, "SD <2.0 cards\n");
 	info("CMD8 resp=%08"PRIx32" rintsts=%"PRIx32"\n", sdmmc->resp[0], sdmmc->rintsts);
 	assert_msg((sdmmc->resp[0] & 0xff) == 0xaa, "CMD8 check pattern returned incorrectly\n");
 	info("status=%08"PRIx32"\n", sdmmc->status);
@@ -324,9 +326,9 @@ _Noreturn u32 ENTRY main() {
 		timestamp_t start = get_timestamp();
 		while (1) {
 			st = dwmmc_wait_cmd_done(sdmmc, 55 | DWMMC_R1, 0, 1000);
-			assert_msg(st == DWMMC_STATUS_OK, "error during CMD55 (APP_CMD): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
+			dwmmc_check_ok_status(sdmmc, st, "CMD55 (APP_CMD)");
 			st = dwmmc_wait_cmd_done(sdmmc, 41 | DWMMC_R3, 0x00ff8000 | SD_OCR_HIGH_CAPACITY | SD_OCR_S18R, 1000);
-			assert_msg(st == DWMMC_STATUS_OK, "error during ACMD41 (OP_COND): status=0x%08"PRIx32" rintsts=0x%08"PRIx32"\n", sdmmc->status, sdmmc->rintsts);
+			dwmmc_check_ok_status(sdmmc, st, "ACMD41 (OP_COND)");
 			resp = sdmmc->resp[0];
 			if (resp & SD_RESP_BUSY) {break;}
 			if (get_timestamp() - start > 100000 * CYCLES_PER_MICROSECOND) {
@@ -411,33 +413,52 @@ _Noreturn u32 ENTRY main() {
 #endif
 #endif
 #elif CONFIG_ELFLOADER_SD
+	assert(async->total_bytes % 512 == 0);
 	sdmmc->blksiz = sdmmc->bytcnt = 512;
 	u32 pos = 0, sector = 64, sector_end = 64 + (async->total_bytes >> 9);
 	st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector++, 1000);
 	dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
+	timestamp_t last_cmd = get_timestamp();
 	while (1) {
-		u32 status = sdmmc->status, intstatus = sdmmc->rintsts;
+		u32 status = sdmmc->status, intstatus = sdmmc->rintsts, cmd = sdmmc->cmd;
+		//dwmmc_print_status(sdmmc);
+		assert((intstatus & DWMMC_ERROR_INT_MASK) == 0);
 		u32 fifo_items = status >> 17 & 0x1fff;
 		for_range(i, 0, fifo_items) {
 			u32 val = *(volatile u32*)0xfe320200;
 			spew("%3"PRIu32": 0x%08"PRIx32"\n", pos, val);
 			*(u32 *)(async->buf + pos) = val;
 			pos += 4;
-			fifo_items -= 1;
 		}
 		async->pos = pos;
-		if (intstatus & DWMMC_INT_DATA_TRANSFER_OVER) {
+		u32 ack = 0;
+		timestamp_t now = get_timestamp();
+		if ((~cmd & DWMMC_CMD_START) && (~status & DWMMC_STATUS_DATA_BUSY)) {
+			last_cmd = now;
 			if (sector < sector_end) {
-				st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector++, 1000);
-				dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
-#ifdef SPEW_MSG
-				dwmmc_print_status(sdmmc);
-#endif
-				sdmmc->rintsts = DWMMC_INT_DATA_TRANSFER_OVER;
-			} else if (!fifo_items) {break;}
+				if (sector % 1024 == 0) {debug("sector %"PRIu32"\n", sector);}
+				sdmmc->cmdarg = sector++;
+				dsb_st();
+				sdmmc->cmd = 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG;
+			}
 		}
+		if (unlikely(now - last_cmd > 100000 * TICKS_PER_MICROSECOND)) {
+			dwmmc_print_status(sdmmc);
+			die("couldn't submit a command for 100 ms\n");
+		}
+		if (intstatus & DWMMC_INT_CMD_DONE) {
+#ifdef SPEW_MSG
+			dwmmc_print_status(sdmmc);
+#endif
+			ack |= DWMMC_INT_CMD_DONE;
+		}
+		if (intstatus & DWMMC_INT_DATA_TRANSFER_OVER) {
+			ack |= DWMMC_INT_DATA_TRANSFER_OVER;
+		}
+		sdmmc->rintsts = ack;
 		if (!fifo_items) {
-			udelay(1000);
+			if (pos >= async->total_bytes) {break;}
+			udelay(100);
 			continue;
 		}
 	}

@@ -4,9 +4,9 @@
 #include <aarch64.h>
 
 void dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd);enum dwmmc_status {
-	DWMMC_STATUS_OK = 0,
-	DWMMC_STATUS_TIMEOUT = 1,
-	DWMMC_STATUS_ERROR = 2,
+	DWMMC_ST_OK = 0,
+	DWMMC_ST_TIMEOUT = 1,
+	DWMMC_ST_ERROR = 2,
 };
 enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout);
 timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout);

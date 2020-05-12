@@ -25,10 +25,10 @@ enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, t
 			die("timed out waiting for command completion, rintsts=0x%"PRIx32" status=0x%"PRIx32"\n", dwmmc->rintsts, dwmmc->status);
 		}
 	}
-	if (status & DWMMC_ERROR_INT_MASK) {return DWMMC_STATUS_ERROR;}
-	if (status & DWMMC_INT_RESP_TIMEOUT) {return DWMMC_STATUS_TIMEOUT;}
+	if (status & DWMMC_ERROR_INT_MASK) {return DWMMC_ST_ERROR;}
+	if (status & DWMMC_INT_RESP_TIMEOUT) {return DWMMC_ST_TIMEOUT;}
 	dwmmc->rintsts = DWMMC_ERROR_INT_MASK | DWMMC_INT_CMD_DONE | DWMMC_INT_RESP_TIMEOUT;
-	return DWMMC_STATUS_OK;
+	return DWMMC_ST_OK;
 }
 
 timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout) {

@@ -70,3 +70,8 @@ enum {
 	/* … */
 	DWMMC_ERROR_INT_MASK = 0xb8c2
 };
+enum {
+	/* … */
+	DWMMC_STATUS_DATA_BUSY = 1 << 9,
+	/* … */
+};
