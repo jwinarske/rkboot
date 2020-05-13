@@ -57,7 +57,7 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc->intmask = 0;
 	dwmmc->fifoth = 0x307f0080;
 	dwmmc->tmout = 0xffffffff;
-	dwmmc->ctrl = 3;
+	dwmmc->ctrl = DWMMC_CTRL_CONTROLLER_RESET | DWMMC_CTRL_FIFO_RESET;
 	{
 		timestamp_t start = get_timestamp();
 		while (dwmmc->ctrl & 3) {
@@ -160,14 +160,13 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc_print_status(dwmmc);
 }
 
-void dwmmc_load_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes) {
+void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes) {
 	assert(total_bytes % 512 == 0);
 	dwmmc->blksiz = 512;
 	dwmmc->bytcnt = total_bytes;
 	size_t pos = 0;
 	enum dwmmc_status st = dwmmc_wait_cmd_done(dwmmc, 18 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector, 1000);
-	sector += 2;
-	dwmmc_check_ok_status(dwmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
+	dwmmc_check_ok_status(dwmmc, st, "CMD18 (READ_MULTIPLE_BLOCK)");
 	while (1) {
 		u32 status = dwmmc->status, intstatus = dwmmc->rintsts;
 		assert((intstatus & DWMMC_ERROR_INT_MASK) == 0);

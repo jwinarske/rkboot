@@ -218,11 +218,11 @@ if elfloader_decompression:
         flags['elfloader'].append('-DHAVE_ZSTD')
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
-    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
+    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1'))
     elfloader = elfloader + ('spi', 'gicv2')
 if args.elfloader_sd:
-    elfloader += ('dwmmc',)
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
+    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1'))
+    elfloader += ('dwmmc', 'gicv2')
 modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
 if not args.embed_elfloader:
     modules += ('memtest', 'brompatch')
@@ -243,7 +243,7 @@ lib += ('dcache',)
 print(build('exc_handlers.o', 'cc', path.join(srcdir, 'exc_handlers.S')))
 if args.excvec:
     lib += ('exc_handlers',)
-if args.elfloader_spi:
+if args.elfloader_spi or args.elfloader_sd:
     elfloader += ('exc_handlers', 'gicv3')
     print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
 lib = tuple(sorted(lib))

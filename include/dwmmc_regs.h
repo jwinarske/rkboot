@@ -40,6 +40,15 @@ CHECK_OFFSET(dwmmc_regs, hcon, 0x70);
 CHECK_OFFSET(dwmmc_regs, bmod, 0x80);
 
 enum {
+	/* … */
+	DWMMC_CTRL_INT_ENABLE = 16,
+	/* bit 3 reserved */
+	DWMMC_CTRL_DMA_RESET = 4,
+	DWMMC_CTRL_FIFO_RESET = 2,
+	DWMMC_CTRL_CONTROLLER_RESET = 1,
+};
+
+enum {
 	DWMMC_CMD_START = 1 << 31,
 	/* … */
 	DWMMC_CMD_USE_HOLD_REG = 1 << 29,
@@ -65,6 +74,8 @@ enum {
 enum {
 	DWMMC_INT_RESP_TIMEOUT = 0x100,
 	/* … */
+	DWMMC_INT_RX_FIFO_DATA_REQ = 0x20,
+	DWMMC_INT_TX_FIFO_DATA_REQ = 0x10,
 	DWMMC_INT_DATA_TRANSFER_OVER = 8,
 	DWMMC_INT_CMD_DONE = 4,
 	/* … */
