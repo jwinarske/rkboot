@@ -294,41 +294,7 @@ _Noreturn u32 ENTRY main() {
 #endif
 #endif
 #elif CONFIG_ELFLOADER_SD
-	assert(async->total_bytes % 512 == 0);
-	sdmmc->blksiz = 512;
-	sdmmc->bytcnt = async->total_bytes;
-	u32 pos = 0, sector = 64;
-	enum dwmmc_status st = dwmmc_wait_cmd_done(sdmmc, 18 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector, 1000);
-	sector += 2;
-	dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
-	while (1) {
-		u32 status = sdmmc->status, intstatus = sdmmc->rintsts;
-		//dwmmc_print_status(sdmmc);
-		assert((intstatus & DWMMC_ERROR_INT_MASK) == 0);
-		u32 fifo_items = status >> 17 & 0x1fff;
-		for_range(i, 0, fifo_items) {
-			u32 val = *(volatile u32*)0xfe320200;
-			spew("%3"PRIu32": 0x%08"PRIx32"\n", pos, val);
-			*(u32 *)(async->buf + pos) = val;
-			pos += 4;
-		}
-		u32 ack = 0;
-		if (intstatus & DWMMC_INT_CMD_DONE) {
-#ifdef SPEW_MSG
-			dwmmc_print_status(sdmmc);
-#endif
-			ack |= DWMMC_INT_CMD_DONE;
-		}
-		if (intstatus & DWMMC_INT_DATA_TRANSFER_OVER) {
-			ack |= DWMMC_INT_DATA_TRANSFER_OVER;
-		}
-		sdmmc->rintsts = ack;
-		if (!fifo_items) {
-			if (pos >= async->total_bytes) {break;}
-			udelay(100);
-			continue;
-		}
-	}
+	dwmmc_load_poll(sdmmc, 64, async->buf, async->total_bytes);
 	async->pos = async->total_bytes;
 #endif
 	u8 *end = (u8 *)blob_addr;

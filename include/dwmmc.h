@@ -14,6 +14,7 @@ enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, t
 timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout);
 void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc);
 void dwmmc_init(volatile struct dwmmc_regs *dwmmc);
+void dwmmc_load_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes);
 
 static inline void UNUSED dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);

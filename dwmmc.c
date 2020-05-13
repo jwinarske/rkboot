@@ -159,3 +159,40 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	}
 	dwmmc_print_status(dwmmc);
 }
+
+void dwmmc_load_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes) {
+	assert(total_bytes % 512 == 0);
+	dwmmc->blksiz = 512;
+	dwmmc->bytcnt = total_bytes;
+	size_t pos = 0;
+	enum dwmmc_status st = dwmmc_wait_cmd_done(dwmmc, 18 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector, 1000);
+	sector += 2;
+	dwmmc_check_ok_status(dwmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
+	while (1) {
+		u32 status = dwmmc->status, intstatus = dwmmc->rintsts;
+		assert((intstatus & DWMMC_ERROR_INT_MASK) == 0);
+		u32 fifo_items = status >> 17 & 0x1fff;
+		for_range(i, 0, fifo_items) {
+			u32 val = *(volatile u32*)0xfe320200;
+			spew("%3"PRIu32": 0x%08"PRIx32"\n", pos, val);
+			*(u32 *)(buf + pos) = val;
+			pos += 4;
+		}
+		u32 ack = 0;
+		if (intstatus & DWMMC_INT_CMD_DONE) {
+#ifdef SPEW_MSG
+			dwmmc_print_status(dwmmc);
+#endif
+			ack |= DWMMC_INT_CMD_DONE;
+		}
+		if (intstatus & DWMMC_INT_DATA_TRANSFER_OVER) {
+			ack |= DWMMC_INT_DATA_TRANSFER_OVER;
+		}
+		dwmmc->rintsts = ack;
+		if (!fifo_items) {
+			if (pos >= total_bytes) {break;}
+			udelay(100);
+			continue;
+		}
+	}
+}
