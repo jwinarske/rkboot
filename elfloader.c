@@ -430,9 +430,13 @@ _Noreturn u32 ENTRY main() {
 
 #endif
 #endif
+
+#if CONFIG_EXC_STACK
 	u64 xfer_end = get_timestamp();
 	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	gicv3_per_cpu_teardown(gic500r);
+#endif
+
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);
 
