@@ -414,13 +414,14 @@ _Noreturn u32 ENTRY main() {
 #endif
 #elif CONFIG_ELFLOADER_SD
 	assert(async->total_bytes % 512 == 0);
-	sdmmc->blksiz = sdmmc->bytcnt = 512;
-	u32 pos = 0, sector = 64, sector_end = 64 + (async->total_bytes >> 9);
-	st = dwmmc_wait_cmd_done(sdmmc, 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector++, 1000);
+	sdmmc->blksiz = 512;
+	sdmmc->bytcnt = async->total_bytes;
+	u32 pos = 0, sector = 64;
+	st = dwmmc_wait_cmd_done(sdmmc, 18 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector, 1000);
+	sector += 2;
 	dwmmc_check_ok_status(sdmmc, st, "CMD17 (READ_SINGLE_BLOCK)");
-	timestamp_t last_cmd = get_timestamp();
 	while (1) {
-		u32 status = sdmmc->status, intstatus = sdmmc->rintsts, cmd = sdmmc->cmd;
+		u32 status = sdmmc->status, intstatus = sdmmc->rintsts;
 		//dwmmc_print_status(sdmmc);
 		assert((intstatus & DWMMC_ERROR_INT_MASK) == 0);
 		u32 fifo_items = status >> 17 & 0x1fff;
@@ -432,20 +433,6 @@ _Noreturn u32 ENTRY main() {
 		}
 		async->pos = pos;
 		u32 ack = 0;
-		timestamp_t now = get_timestamp();
-		if ((~cmd & DWMMC_CMD_START) && (~status & DWMMC_STATUS_DATA_BUSY)) {
-			last_cmd = now;
-			if (sector < sector_end) {
-				if (sector % 1024 == 0) {debug("sector %"PRIu32"\n", sector);}
-				sdmmc->cmdarg = sector++;
-				dsb_st();
-				sdmmc->cmd = 17 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG;
-			}
-		}
-		if (unlikely(now - last_cmd > 100000 * TICKS_PER_MICROSECOND)) {
-			dwmmc_print_status(sdmmc);
-			die("couldn't submit a command for 100 ms\n");
-		}
 		if (intstatus & DWMMC_INT_CMD_DONE) {
 #ifdef SPEW_MSG
 			dwmmc_print_status(sdmmc);
