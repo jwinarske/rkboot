@@ -355,8 +355,8 @@ _Noreturn u32 ENTRY main() {
 	dwmmc_wait_not_busy(sdmmc, 1000 * CYCLES_PER_MICROSECOND);
 	sdmmc->clkena = 0;
 	dwmmc_wait_cmd(sdmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
-	/* clk_sdmmc = 24 MHz */
-	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 0);
+	/* clk_sdmmc = 50 MHz */
+	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 0) << 8 | SET_BITS16(7, 19);
 	sdmmc->clkena = 1;
 	dwmmc_wait_cmd(sdmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
 	st = dwmmc_wait_cmd_done(sdmmc, 16 | DWMMC_R1, 512, 1000);
