@@ -359,6 +359,7 @@ _Noreturn u32 ENTRY main() {
 	async->total_bytes = 60 << 20;
 	info("starting SDMMC\n");
 	dwmmc_init(sdmmc);
+	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
 #else
 #error No elfloader payload source specified
 #endif
@@ -383,10 +384,10 @@ _Noreturn u32 ENTRY main() {
 #elif CONFIG_ELFLOADER_SD
 
 #ifdef SD_POLL
-	dwmmc_read_poll(sdmmc, 64, async->buf, async->total_bytes);
+	dwmmc_read_poll(sdmmc, sd_start_sector, async->buf, async->total_bytes);
 	async->pos = async->total_bytes;
 #else
-	dwmmc_start_irq_read(sdmmc, 64);
+	dwmmc_start_irq_read(sdmmc, sd_start_sector);
 #endif
 
 #endif
