@@ -141,7 +141,7 @@ static void irq_handler() {
 			die("unexpected group 0 interrupt");
 		}
 	}
-	__asm__ volatile("msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
+	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
 }
 
 void rkspi_read_flash_poll(volatile struct rkspi *spi, u8 *buf, size_t buf_size, u32 addr) {
