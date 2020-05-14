@@ -16,14 +16,14 @@ in
 {
   levinboot = aarch64.stdenv.mkDerivation {
     pname = "levinboot";
-    version = "0.0.1";
-    nativeBuildInputs = [host.ninja host.python3];
+    version = "0.4";
+    nativeBuildInputs = [host.ninja host.python3 host.lz4];
     configurePhase = ''
       mkdir build
       cd build
-      python3 ../configure.py --with-atf-headers ${atf-sources}/include/export
+      python3 ../configure.py --with-atf-headers ${atf-sources}/include/export --embed-elfloader --elfloader-gzip --elfloader-initcpio --elfloader-sd
     '';
-    installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img memtest.bin elfloader.bin teststage.bin $out";
+    installPhase = "mkdir -p $out; cp levinboot-usb.bin levinboot.img teststage.bin $out";
     depsBuildBuild = [host.buildPackages.stdenv.cc];
     src = builtins.filterSource
       (path: type:
@@ -32,8 +32,8 @@ in
         || lib.strings.hasSuffix ".c" path
         || lib.strings.hasSuffix ".S" path
         || lib.strings.hasSuffix ".txt" path
-        || lib.strings.hasSuffix ".ld" path
         || lib.strings.hasSuffix ".py" path
+        || lib.strings.hasSuffix ".sh" path
       )
       ./.;
   };
