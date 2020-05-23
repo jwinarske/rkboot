@@ -249,7 +249,7 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 		/* improve dqs and dq phase */
 		for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
 		if (ch == 1) {
-			/* workaround 366 ball reset, FIXME: restore after init */
+			/* workaround 366 ball reset */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
 		}
 	}
@@ -277,6 +277,9 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
 		}
 		clrset32(pctl_base_for(ch) + 68, PWRUP_SREF_EXIT, sref_save[ch] & PWRUP_SREF_EXIT);
+		if (ch == 1) { /* restore reset drive strength */
+			clrset32(&phy->PHY_GLOBAL(937), 0xff, cfg->regs.phy.PHY_GLOBAL(937) & 0xff);
+		}
 		log("channel %u initialized\n", ch);
 	}
 	return 1;
