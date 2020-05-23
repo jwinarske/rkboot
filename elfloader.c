@@ -309,15 +309,15 @@ _Noreturn u32 ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
-	setup_pll(cru + CRU_CPLL_CON, 1000);
+	setup_pll(cru + CRU_CPLL_CON, 800);
 	/* aclk_gic = 200 MHz */
-	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
-	/* aclk_cci = 500 MHz, DTS has 600 */
+	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 3) << 8;
+	/* aclk_cci = 400 MHz, DTS has 600 */
 	cru[CRU_CLKSEL_CON + 5] = SET_BITS16(2, 0) << 6 | SET_BITS16(5, 1);
-	/* aclk_perilp0 = hclk_perilp0 = 1 GHz, pclk_perilp = 500 MHz */
-	cru[CRU_CLKSEL_CON + 23] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 0) | SET_BITS16(2, 0) << 8 | SET_BITS16(3, 1);
-	/* hclk_perilp1 = pclk_perilp1 = 333 MHz, DTS has 400 */
-	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 2) | SET_BITS16(3, 0) << 8;
+	/* aclk_perilp0 = hclk_perilp0 = 100 MHz, pclk_perilp = 50 MHz */
+	cru[CRU_CLKSEL_CON + 23] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 7) | SET_BITS16(2, 0) << 8 | SET_BITS16(3, 1) << 12;
+	/* hclk_perilp1 = pclk_perilp1 = 400 MHz */
+	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 3) | SET_BITS16(3, 1) << 8;
 #if CONFIG_ELFLOADER_SD
 	/* aclk_perihp = 125 MHz, hclk_perihp = aclk_perihp / 2, pclk_perihp = aclk_perihp / 4 */
 	cru[CRU_CLKSEL_CON + 14] = SET_BITS16(3, 3) << 12 | SET_BITS16(2, 1) << 8 | SET_BITS16(1, 0) << 7 | SET_BITS16(5, 7);
