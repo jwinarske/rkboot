@@ -452,15 +452,45 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			}
 			spew("match length=%u ", length);
 			REFILL;
-			struct huffman_state huff = {.ptr = ptr, .bits = bits, .num_bits = num_bits};
-			huff.val = 4;
-			huff = huff_with_extra(huff, end, st->dectable_dist, dist_extra, st->dist_base, st->dist_oloff, st->dist_overlength, st->dist_codes);
-			if (unlikely(!huff.ptr)) {
+
+			_Static_assert(GUARANTEED_BITS >= 15, "Bit container is not big enough");
+			u16 val = st->dectable_dist[bits & 0x1ff], len = val & 0xf;
+			u32 sym;
+			if (len > 9) {
+				len = 10;
+				while (1) {
+					if (unlikely(len > num_bits)) {
+						res = DECODE_NEED_MORE_DATA;
+						goto interrupted;
+					}
+					bits_t mask = ((bits_t)1 << len) - 1, suffix = bits & mask;
+					for_range(i, st->dist_oloff[len - 10], st->dist_oloff[len - 9]) {
+						sym = st->dist_overlength[i];
+						if (st->dist_codes[sym] == suffix) {
+							goto found2;
+						}
+					}
+					if (unlikely(++len == 6)) {return DECODE_ERR;}
+				}found2:;
+			} else if (unlikely(len > num_bits)) {
 				res = DECODE_NEED_MORE_DATA;
 				goto interrupted;
+			} else {
+				sym = val >> 4;
 			}
-			u32 dist = huff.val + 1;
-			ptr = huff.ptr; bits = huff.bits; num_bits = huff.num_bits;
+			bits >>= len; num_bits -= len;
+			u32 dist = sym + 1;
+			if (dist >= 5) {	/* TODO: fold this into the decoding table */
+				REFILL;
+				u8 num_extra = dist_extra[dist - 5];
+				spew("%"PRIu8" extra bits\n", num_extra);
+				dist = st->dist_base[dist - 5] + (bits & ((1 << num_extra) - 1));
+				if (unlikely(num_extra > num_bits)) {
+					res = DECODE_NEED_MORE_DATA;
+					goto interrupted;
+				}
+				bits >>= num_extra; num_bits -= num_extra;
+			}
 			check(dist <= out - st->st.window_start, "match distance of %u beyond start of buffer", dist);
 			if (length >= 258) {
 				check(length != 258, "file used literal/length symbol 284 with 5 1-bits, which is specced invalid (without it being specially noted no less, WTF)\n");
@@ -665,7 +695,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 		base += 1 << lit_extra[i];
 	}
 	debug("\n");
-	base = 0;
+	base = 5;
 	for_array(i, st->dist_base) {
 		st->dist_base[i] = base;
 		base += 1 << dist_extra[i];
