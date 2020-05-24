@@ -12,7 +12,17 @@ static u32 crc32_byte(u32 input, u32 poly) {
 	return input;
 }
 
+typedef u32 bits_t;
+enum {GUARANTEED_BITS = 25};
+#if __aarch64__ && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define LDU32LEU(var, addr) __asm__("ldr %w0, [%0]" : "=r"(var) : "r"(addr))
+#endif
+#ifndef LDU32LEU
+#error "no unaligned 32-bit little-endian load sequence available"
+#endif
+
 #define check(expr, ...) if (unlikely(!(expr))) {info(__VA_ARGS__);return 0;}
+enum {UNIMPLEMENTED = 0};
 
 enum {
 	BFINAL = 1,
@@ -373,9 +383,17 @@ static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8
 	return NUM_DECODE_STATUS + 4 + len;
 }
 
+#define REFILL do {while (num_bits < GUARANTEED_BITS && ptr < end) {\
+		bits |= *ptr++ << num_bits;\
+		num_bits += 8;\
+	}} while (0)
+
 static size_t huff_block(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
-	struct huffman_state huff = {.ptr = in, .bits = st->bits, .num_bits = st->num_bits};
+	const u8 *ptr = in;
+	bits_t bits = st->bits;
+	u8 num_bits = st->num_bits;
+	assert(num_bits < 8);
 	u8 *out = st->st.out, *out_start = out, *out_end = st->st.out_end;
 	const u8 *ptr_save;
 	u32 crc = st->crc, bits_save;
@@ -384,24 +402,57 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	debug("huffman block\n");
 
 	while (1) {
-		ptr_save = huff.ptr; bits_save = huff.bits; num_bits_save = huff.num_bits;
-		huff.val = 265;
-		huff = huff_with_extra(huff, end, st->dectable_lit, lit_extra, st->lit_base, st->lit_oloff, st->lit_overlength, st->lit_codes);
-		if (unlikely(!huff.ptr)) {
+		ptr_save = ptr; bits_save = bits; num_bits_save = num_bits;
+		REFILL;
+		_Static_assert(GUARANTEED_BITS >= 15 + 5, "bits container too small");
+		u16 val = st->dectable_lit[bits & 0x1ff], len = val & 0xf;
+		u32 lit;
+		if (len > 9) {
+			len = 10;
+			while (1) {
+				if (unlikely(len > num_bits)) {
+					res = DECODE_NEED_MORE_DATA;
+					goto interrupted;
+				}
+				bits_t mask = ((bits_t)1 << len) - 1, suffix = bits & mask;
+				for_range(i, st->lit_oloff[len - 10], st->lit_oloff[len - 9]) {
+					lit = st->lit_overlength[i];
+					if (st->lit_codes[lit] == suffix) {
+						goto found;
+					}
+				}
+				if (unlikely(++len == 6)) {return DECODE_ERR;}
+			}found:;
+		} else if (unlikely(len > num_bits)) {
 			res = DECODE_NEED_MORE_DATA;
 			goto interrupted;
+		} else {
+			lit = val >> 4;
 		}
-		if (huff.val < 256) {
-			spew("literal 0x%02x %c\n", huff.val, huff.val >= 0x20 && huff.val < 0x7f ? (char)huff.val : '.');
+		bits >>= len; num_bits -= len;
+		if (lit < 256) {
+			spew("literal 0x%02x %c\n", lit, lit >= 0x20 && lit < 0x7f ? (char)lit : '.');
 			if (unlikely(out >= out_end)) {
 				res = DECODE_NEED_MORE_SPACE;
 				goto interrupted;
 			}
-			*out++ = huff.val;
-			crc = crc >> 8 ^ st->crc_table[(u8)crc ^ huff.val];
-		} else if (huff.val > 256) {
-			u32 length = huff.val - 257 + 3;
+			*out++ = lit;
+			crc = crc >> 8 ^ st->crc_table[(u8)crc ^ lit];
+		} else if (lit > 256) {
+			u32 length = lit - 257 + 3;
+			if (length >= 11) {	/* TODO: fold this into the decoding table */
+				u8 num_extra = lit_extra[length - 11];
+				spew("%"PRIu8" extra bits\n", num_extra);
+				length = st->lit_base[length - 11] + (bits & ((1 << num_extra) - 1));
+				if (unlikely(num_extra > num_bits)) {
+					res = DECODE_NEED_MORE_DATA;
+					goto interrupted;
+				}
+				bits >>= num_extra; num_bits -= num_extra;
+			}
 			spew("match length=%u ", length);
+			REFILL;
+			struct huffman_state huff = {.ptr = ptr, .bits = bits, .num_bits = num_bits};
 			huff.val = 4;
 			huff = huff_with_extra(huff, end, st->dectable_dist, dist_extra, st->dist_base, st->dist_oloff, st->dist_overlength, st->dist_codes);
 			if (unlikely(!huff.ptr)) {
@@ -409,6 +460,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 				goto interrupted;
 			}
 			u32 dist = huff.val + 1;
+			ptr = huff.ptr; bits = huff.bits; num_bits = huff.num_bits;
 			check(dist <= out - st->st.window_start, "match distance of %u beyond start of buffer", dist);
 			if (length >= 258) {
 				check(length != 258, "file used literal/length symbol 284 with 5 1-bits, which is specced invalid (without it being specially noted no less, WTF)\n");
@@ -430,40 +482,48 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			}
 		} else {
 			st->st.decode = !st->last_block ? block_start : trailer;
-			st->num_bits = huff.num_bits;
-			st->bits = huff.bits;
-			res = NUM_DECODE_STATUS + (huff.ptr - in);
+			st->num_bits = num_bits % 8;
+			st->bits = bits;
+			res = NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
 			goto end;
 		}
 	}
 	interrupted:;
-	if (out > out_start) {res = NUM_DECODE_STATUS + (ptr_save - in);}
-	st->num_bits = num_bits_save;
+	if (out > out_start) {res = NUM_DECODE_STATUS + (ptr_save - in - num_bits_save / 8);}
+	st->num_bits = num_bits_save % 8;
 	st->bits = bits_save;
 	end:;
 	st->st.out = out;
 	st->isize += out - out_start;
 	st->crc = crc;
+	assert(st->num_bits < 8);
 	return res;
 }
 
-
-#define REQUIRE_BITS(n) do {huff.val = (n); huff = require_bits(huff, end); if (unlikely(huff.num_bits < (n))) {return DECODE_NEED_MORE_DATA;}} while (0)
 static size_t block_start(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
-	struct huffman_state huff = {.bits = st->bits, .num_bits = st->num_bits, .ptr = in};
+	bits_t bits = st->bits;
+	u8 num_bits = st->num_bits;
+	const u8 *ptr = in;
 
-	debug("block header\n");
-	REQUIRE_BITS(3);
-	u8 block_header = huff.bits & 7;
-	SHIFT(3);
+	assert(num_bits < 8);
+	debug("block header: 0x%"PRIx32"/%"PRIu8"\n", bits & ((1 << num_bits) - 1), num_bits);
+	while (num_bits < GUARANTEED_BITS && ptr < end) {\
+		bits |= *ptr++ << num_bits;\
+		num_bits += 8;\
+	}
+	REFILL;
+	_Static_assert(GUARANTEED_BITS >= 3, "bit container too small");
+	if (unlikely(num_bits < 3)) {return DECODE_NEED_MORE_DATA;}
+	u8 block_header = bits & 7;
+	bits >>= 3; num_bits -= 3;
 	debug("block header %u\n", (unsigned)block_header);
 	st->last_block = block_header & 1;
 	if ((block_header >> 1) == BTYPE_UNCOMPRESSED) {
 		st->st.decode = raw_block;
 		st->bits = 0;
 		st->num_bits = 0;
-		return NUM_DECODE_STATUS + (huff.ptr - in);
+		return NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
 	} else {
 		check((block_header >> 1) <= 2, "reserved block type used\n");
 		u32 hlit, UNUSED hdist;
@@ -471,11 +531,12 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			u8 lengths2[19];
 			u16 length_codes[19];
 			debug("dynamic block\n");
-			REQUIRE_BITS(14);
-			hlit = huff.bits & 31;
-			hdist = huff.bits >> 5 & 31;
-			u32 hclen = huff.bits >> 10 & 15;
-			SHIFT(14);
+			_Static_assert(GUARANTEED_BITS >= 17, "bit container too small");
+			if (unlikely(num_bits < 14)) {return DECODE_NEED_MORE_DATA;}
+			hlit = bits & 31;
+			hdist = bits >> 5 & 31;
+			u32 hclen = bits >> 10 & 15;
+			bits >>= 14; num_bits -= 14;
 			hclen += 4;
 			hlit += 257;
 			hdist += 1;
@@ -486,11 +547,12 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 				16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
 			};
 			for_range(i, 0, hclen) {
-				REQUIRE_BITS(3);
-				u32 code = huff.bits & 7;
+				REFILL;
+				if (unlikely(num_bits < 3)) {return DECODE_NEED_MORE_DATA;}
+				u32 code = bits & 7;
 				debug("length code length %u\n", code);
 				lengths2[hclen_order[i]] = code;
-				SHIFT(3);
+				bits >>= 3; num_bits -= 3;
 			}
 			for_range(i, hclen, 19) {lengths2[hclen_order[i]] = 0;}
 			construct_codes(19, lengths2, length_codes);
@@ -501,6 +563,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			/*for (size_t i = 0; i < 512; i += 4) {
 				debug("%04x %04x %04x %04x\n", dectable_dist[i], dectable_dist[i+1], dectable_dist[i+2], dectable_dist[i+3]);
 			}*/
+			struct huffman_state huff = {.bits = bits, .ptr = ptr, .num_bits = num_bits};
 			huff.val = hlit;
 			huff = decode_lengths(huff, end, st->dectable_dist, st->lit_lengths);
 			if (unlikely(!huff.ptr)) {return DECODE_NEED_MORE_DATA;}
@@ -510,6 +573,9 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			huff = decode_lengths(huff, end, st->dectable_dist, st->dist_lengths);
 			if (unlikely(!huff.ptr)) {return DECODE_NEED_MORE_DATA;}
 			check(huff.val == NO_ERROR, "%s\n", error_msg[huff.val]);
+			ptr = huff.ptr;
+			num_bits = huff.num_bits;
+			bits = huff.bits;
 			for_range(dist, hdist, 30) {st->dist_lengths[dist] = 0;}
 			construct_codes(286, st->lit_lengths, st->lit_codes);
 			construct_dectable(286, st->lit_lengths, st->lit_codes, st->dectable_lit, st->lit_oloff, st->lit_overlength);
@@ -545,9 +611,9 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			for_array(i, st->dist_oloff) {st->dist_oloff[i] = 0;}
 		}
 		st->st.decode = huff_block;
-		st->bits = huff.bits;
-		st->num_bits = huff.num_bits;
-		return NUM_DECODE_STATUS + (huff.ptr - in);
+		st->bits = bits;
+		st->num_bits = num_bits % 8;
+		return NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
 	}
 }
 
@@ -591,7 +657,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 		content += 2;
 	}
 	check(end - content > 8, "gzip input not long enough (%zu (%zx) bytes after header) for compressed stream and trailer\n", end - content, end - content);
-	u16 base = 0;
+	u16 base = 11;
 	debug("lit_base: ");
 	for_array(i, st->lit_base) {
 		debug(" %"PRIu16, base + 11);
