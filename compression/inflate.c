@@ -15,9 +15,10 @@ static u32 crc32_byte(u32 input, u32 poly) {
 typedef u32 bits_t;
 enum {GUARANTEED_BITS = 25};
 #if __aarch64__ && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define LDU32LEU(var, addr) __asm__("ldr %w0, [%0]" : "=r"(var) : "r"(addr))
+#define LDU32LEU(var, addr) __asm__("ldr %w0, [%1]" : "=r"(var) : "r"(addr))
+#define LDU32LEU_END(var, addr) __asm__("ldr %w0, [%1, #-4]" : "=r"(var) : "r"(addr))
 #endif
-#ifndef LDU32LEU
+#ifndef LDU32LEU_END
 #error "no unaligned 32-bit little-endian load sequence available"
 #endif
 
@@ -385,13 +386,33 @@ static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8
 	return NUM_DECODE_STATUS + 4 + len;
 }
 
-#define REFILL do {while (num_bits < GUARANTEED_BITS && ptr < end) {\
+#define REFILL_LOOP do {\
+	spew("0x%"PRIx32"/%"PRIu8" refill\n", bits, num_bits);\
+	while (num_bits < GUARANTEED_BITS && ptr < end) {\
 		bits |= *ptr++ << num_bits;\
 		num_bits += 8;\
-	}} while (0)
+	}\
+	spew("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);\
+} while (0)
+#undef LDU32LEU_END
+#ifdef LDU32LEU_END
+#define REFILL do {\
+	u8 read_bits = 32 - num_bits, read_bytes = read_bits / 8;\
+	read_bytes = end - ptr >= read_bytes ? read_bytes : 0;\
+	spew("0x%"PRIx32"/%"PRIu8" read %"PRIu8" bytes\n", bits, num_bits, read_bytes);\
+	num_bits += 8*read_bytes;\
+	ptr += read_bytes;\
+	LDU32LEU_END(bits, ptr);\
+	bits >>= -num_bits & 7;\
+	spew("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);\
+} while (0)
+#else
+#define REFILL REFILL_LOOP
+#endif
 
 static size_t huff_block(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
+	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
 	const u8 *ptr = in;
 	bits_t bits = st->bits;
 	u8 num_bits = st->num_bits;
@@ -401,11 +422,11 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	u32 crc = st->crc, bits_save;
 	u8 num_bits_save;
 	size_t res;
+	REFILL_LOOP;
 	debug("huffman block\n");
 
 	while (1) {
 		ptr_save = ptr; bits_save = bits; num_bits_save = num_bits;
-		REFILL;
 		_Static_assert(GUARANTEED_BITS >= 15 + 5, "bits container too small");
 		u16 val = st->dectable_lit[bits & 0x1ff], len = val & 0xf;
 		u32 lit;
@@ -521,6 +542,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			res = NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
 			goto end;
 		}
+		REFILL;
 	}
 	interrupted:;
 	if (out > out_start) {res = NUM_DECODE_STATUS + (ptr_save - in - num_bits_save / 8);}
@@ -538,15 +560,12 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 	bits_t bits = st->bits;
 	u8 num_bits = st->num_bits;
+	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
 	const u8 *ptr = in;
 
 	assert(num_bits < 8);
 	debug("block header: 0x%"PRIx32"/%"PRIu8"\n", bits & ((1 << num_bits) - 1), num_bits);
-	while (num_bits < GUARANTEED_BITS && ptr < end) {\
-		bits |= *ptr++ << num_bits;\
-		num_bits += 8;\
-	}
-	REFILL;
+	REFILL_LOOP;
 	_Static_assert(GUARANTEED_BITS >= 3, "bit container too small");
 	if (unlikely(num_bits < 3)) {return DECODE_NEED_MORE_DATA;}
 	u8 block_header = bits & 7;
@@ -565,6 +584,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			u8 lengths2[19];
 			u16 length_codes[19];
 			debug("dynamic block\n");
+			REFILL;
 			_Static_assert(GUARANTEED_BITS >= 17, "bit container too small");
 			if (unlikely(num_bits < 14)) {return DECODE_NEED_MORE_DATA;}
 			hlit = bits & 31;
