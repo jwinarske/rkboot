@@ -64,7 +64,7 @@ void construct_codes(u16 num_symbols, const u8 *lengths, u16 *codes) {
 	assert(active_syms == codes_allocated);
 }
 
-void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u16 *dectable, u16 *overlength_offsets, u16 *overlength_symbols) {
+void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u16 *dectable, u16 *overlength_offsets, u32 *overlength_symbols) {
 	u16 overlength_count[6];
 	for_array(i, overlength_count) {overlength_count[i] = 0;}
 	for_range(i, 0, 512) {dectable[i] = 10;}
@@ -101,7 +101,7 @@ void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u1
 		u16 idx = overlength_count[len - 10]++ + overlength_offsets[len - 10];
 		debug("sym%u len%u idx%u code %x\n", (unsigned)sym, (unsigned)len, (unsigned)idx, (unsigned)codes[sym]);
 		assert(idx < overlength_offsets[len - 9]);
-		overlength_symbols[idx] = sym;
+		overlength_symbols[idx] = sym | codes[sym] << 9;
 	}
 	for_array(len, overlength_count) {
 		assert(overlength_offsets[len] + overlength_count[len] == overlength_offsets[len + 1]);
@@ -180,8 +180,9 @@ static inline struct huffman_state huff_with_extra(struct huffman_state huff, co
 			}
 			u32 suffix = huff.bits & ((1 << len) - 1);
 			for_range(i, overlength_offsets[len - 10], overlength_offsets[len - 9]) {
-				sym = overlength_symbols[i];
-				if (codes[sym] == suffix) {
+				u32 x = overlength_symbols[i];
+				sym = x & 0x1ff;
+				if ((x >> 9) == suffix) {
 					SHIFT(len);
 					goto found;
 				}
@@ -335,7 +336,8 @@ struct gzip_dec_state {
 
 	u16 dectable_dist[512], dectable_lit[512];
 	u8 lit_lengths[286], dist_lengths[30];
-	u16 lit_codes[286], lit_overlength[286], dist_codes[30], dist_overlength[30];
+	u16 lit_codes[286], dist_codes[30];
+	u32 lit_overlength[286], dist_overlength[30];
 	u16 lit_oloff[7], dist_oloff[7];
 	u16 lit_base[21], dist_base[26];
 };
@@ -416,8 +418,9 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 				}
 				bits_t mask = ((bits_t)1 << len) - 1, suffix = bits & mask;
 				for_range(i, st->lit_oloff[len - 10], st->lit_oloff[len - 9]) {
-					lit = st->lit_overlength[i];
-					if (st->lit_codes[lit] == suffix) {
+					u32 x = st->lit_overlength[i];
+					lit = x & 0x1ff;
+					if ((x >> 9) == suffix) {
 						goto found;
 					}
 				}
@@ -465,8 +468,9 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 					}
 					bits_t mask = ((bits_t)1 << len) - 1, suffix = bits & mask;
 					for_range(i, st->dist_oloff[len - 10], st->dist_oloff[len - 9]) {
-						sym = st->dist_overlength[i];
-						if (st->dist_codes[sym] == suffix) {
+						u32 x = st->dist_overlength[i];
+						sym = x & 0x1ff;
+						if ((x >> 9) == suffix) {
 							goto found2;
 						}
 					}
