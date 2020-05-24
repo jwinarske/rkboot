@@ -66,42 +66,42 @@ void construct_codes(u16 num_symbols, const u8 *lengths, u16 *codes) {
 }
 
 void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u16 *dectable, u16 *overlength_offsets, u32 *overlength_symbols) {
-	u16 overlength_count[6];
+	u16 overlength_count[4];
 	for_array(i, overlength_count) {overlength_count[i] = 0;}
-	for_range(i, 0, 512) {dectable[i] = 10;}
+	for_range(i, 0, 2048) {dectable[i] = 10;}
 	for_range(sym, 0, num_symbols) {
 		u8 len = lengths[sym];
 		if (!len) {continue;}
 		u16 code = codes[sym];
-		if (len <= 9) {
-			for_range(i, 0, 512 >> len) {
+		if (len <= 11) {
+			for_range(i, 0, 2048 >> len) {
 				dectable[i << len | code] = len | sym << 4;
 			}
 		} else {
 			assert(len <= 15);
-			overlength_count[len - 10] += 1;
-			dectable[code & 0x1ff] = 10;
+			overlength_count[len - 12] += 1;
+			dectable[code & 0x7ff] = 12;
 		}
 	}
 	u16 off = 0;
 	debug("counts: ");
 	for_array(i, overlength_count) {debug(" %u", (unsigned)overlength_count[i]);}
 	debug("\n");
-	for_range(len, 0, 6) {
+	for_range(len, 0, 4) {
 		overlength_offsets[len] = off;
 		off += overlength_count[len];
 		overlength_count[len] = 0;
 	}
-	overlength_offsets[6] = off;
+	overlength_offsets[4] = off;
 	debug("offsets: ");
-	for_range(i, 0, 7) {debug(" %u", (unsigned)overlength_offsets[i]);}
+	for_range(i, 0, 5) {debug(" %u", (unsigned)overlength_offsets[i]);}
 	debug("\n");
 	for_range(sym, 0, num_symbols) {
 		u8 len = lengths[sym];
-		if (len < 10) {continue;}
-		u16 idx = overlength_count[len - 10]++ + overlength_offsets[len - 10];
+		if (len < 12) {continue;}
+		u16 idx = overlength_count[len - 12]++ + overlength_offsets[len - 12];
 		debug("sym%u len%u idx%u code %x\n", (unsigned)sym, (unsigned)len, (unsigned)idx, (unsigned)codes[sym]);
-		assert(idx < overlength_offsets[len - 9]);
+		assert(idx < overlength_offsets[len - 11]);
 		overlength_symbols[idx] = sym | codes[sym] << 9;
 	}
 	for_array(len, overlength_count) {
@@ -153,7 +153,7 @@ const char *const error_msg[NUM_ERR_CODES] = {
 static inline struct huffman_state huff_with_extra(struct huffman_state huff, const u8 *end, const u16 *dectable, const u8 *extra_bit_table, const u16 *baseline_table, const u16 *overlength_offsets, const u16 *overlength_symbols, const u16 *codes) {
 	REPORT("sym");
 	u16 len, val;
-	while ((len = (val = dectable[huff.bits & 0x1ff]) & 0xf) > huff.num_bits) {
+	while ((len = (val = dectable[huff.bits & 0x7ff]) & 0xf) > huff.num_bits) {
 		if (huff.ptr >= end) {
 			huff.ptr = 0;
 			huff.val = ERR_OUT_OF_DATA;
@@ -164,11 +164,11 @@ static inline struct huffman_state huff_with_extra(struct huffman_state huff, co
 		REPORT("code");
 	}
 	u16 sym;
-	if (len < 10) {
+	if (len < 12) {
 		SHIFT(len);
 		sym = val >> 4;
 	} else {
-		for_range(len, 10, 16) {
+		for_range(len, 12, 16) {
 			if (len > huff.num_bits) {
 				if (huff.ptr >= end) {
 					huff.ptr = 0;
@@ -180,7 +180,7 @@ static inline struct huffman_state huff_with_extra(struct huffman_state huff, co
 				REPORT("overlength code");
 			}
 			u32 suffix = huff.bits & ((1 << len) - 1);
-			for_range(i, overlength_offsets[len - 10], overlength_offsets[len - 9]) {
+			for_range(i, overlength_offsets[len - 12], overlength_offsets[len - 11]) {
 				u32 x = overlength_symbols[i];
 				sym = x & 0x1ff;
 				if ((x >> 9) == suffix) {
@@ -334,13 +334,13 @@ struct gzip_dec_state {
 	u32 bits;
 	u8 num_bits;
 	_Bool last_block;
-
-	u16 dectable_dist[512], dectable_lit[512];
 	u8 lit_lengths[286], dist_lengths[30];
 	u16 lit_codes[286], dist_codes[30];
 	u32 lit_overlength[286], dist_overlength[30];
-	u16 lit_oloff[7], dist_oloff[7];
+	u16 lit_oloff[5], dist_oloff[5];
 	u16 lit_base[21], dist_base[26];
+
+	u16 dectable_dist[2048], dectable_lit[2048];
 };
 
 static size_t trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
@@ -428,24 +428,24 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	while (1) {
 		ptr_save = ptr; bits_save = bits; num_bits_save = num_bits;
 		_Static_assert(GUARANTEED_BITS >= 15 + 5, "bits container too small");
-		u16 val = st->dectable_lit[bits & 0x1ff], len = val & 0xf;
+		u16 val = st->dectable_lit[bits & 0x7ff], len = val & 0xf;
 		u32 lit;
-		if (len > 9) {
-			len = 10;
+		if (len > 11) {
+			len = 12;
 			while (1) {
 				if (unlikely(len > num_bits)) {
 					res = DECODE_NEED_MORE_DATA;
 					goto interrupted;
 				}
 				bits_t mask = ((bits_t)1 << len) - 1, suffix = bits & mask;
-				for_range(i, st->lit_oloff[len - 10], st->lit_oloff[len - 9]) {
+				for_range(i, st->lit_oloff[len - 12], st->lit_oloff[len - 11]) {
 					u32 x = st->lit_overlength[i];
 					lit = x & 0x1ff;
 					if ((x >> 9) == suffix) {
 						goto found;
 					}
 				}
-				if (unlikely(++len == 6)) {return DECODE_ERR;}
+				if (unlikely(++len == 4)) {return DECODE_ERR;}
 			}found:;
 		} else if (unlikely(len > num_bits)) {
 			res = DECODE_NEED_MORE_DATA;
@@ -478,24 +478,24 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			REFILL;
 
 			_Static_assert(GUARANTEED_BITS >= 15, "Bit container is not big enough");
-			u16 val = st->dectable_dist[bits & 0x1ff], len = val & 0xf;
+			u16 val = st->dectable_dist[bits & 0x7ff], len = val & 0xf;
 			u32 sym;
-			if (len > 9) {
-				len = 10;
+			if (len > 11) {
+				len = 12;
 				while (1) {
 					if (unlikely(len > num_bits)) {
 						res = DECODE_NEED_MORE_DATA;
 						goto interrupted;
 					}
 					bits_t mask = ((bits_t)1 << len) - 1, suffix = bits & mask;
-					for_range(i, st->dist_oloff[len - 10], st->dist_oloff[len - 9]) {
+					for_range(i, st->dist_oloff[len - 12], st->dist_oloff[len - 11]) {
 						u32 x = st->dist_overlength[i];
 						sym = x & 0x1ff;
 						if ((x >> 9) == suffix) {
 							goto found2;
 						}
 					}
-					if (unlikely(++len == 6)) {return DECODE_ERR;}
+					if (unlikely(++len == 4)) {return DECODE_ERR;}
 				}found2:;
 			} else if (unlikely(len > num_bits)) {
 				res = DECODE_NEED_MORE_DATA;
