@@ -394,16 +394,17 @@ static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8
 	}\
 	spew("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);\
 } while (0)
-#undef LDU32LEU_END
+//#undef LDU32LEU_END
 #ifdef LDU32LEU_END
 #define REFILL do {\
 	u8 read_bits = 32 - num_bits, read_bytes = read_bits / 8;\
-	read_bytes = end - ptr >= read_bytes ? read_bytes : 0;\
+	if (unlikely(ptr == end)) {break;}\
+	read_bytes = end - ptr >= read_bytes ? read_bytes : end - ptr;\
 	spew("0x%"PRIx32"/%"PRIu8" read %"PRIu8" bytes\n", bits, num_bits, read_bytes);\
 	num_bits += 8*read_bytes;\
 	ptr += read_bytes;\
 	LDU32LEU_END(bits, ptr);\
-	bits >>= -num_bits & 7;\
+	bits >>= 32 - num_bits;\
 	spew("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);\
 } while (0)
 #else
