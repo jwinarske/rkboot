@@ -527,9 +527,10 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 				res = DECODE_NEED_MORE_SPACE;
 				goto interrupted;
 			}
-			lzcommon_match_copy(out, dist, length);
 			do {
-				crc = crc >> 8 ^ st->crc_table[(u8)crc ^ *out++];
+				u8 c = *out = *(out - dist);
+				out += 1;
+				crc = crc >> 8 ^ st->crc_table[(u8)crc ^ c];
 			} while (--length);
 			if (out - st->st.window_start > 100) {
 				spew("%.100s\n", out - 100);
