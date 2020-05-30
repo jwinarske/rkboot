@@ -327,8 +327,20 @@ _Noreturn u32 ENTRY main() {
 	u32 val;
 	while (!((val = i2c4->int_pending) & RKI2C_INTMASK_XACT_END)) {}
 	printf("RKI2C4_CON: %"PRIx32", _IPD: %"PRIx32"\n", i2c4->control, i2c4->int_pending);
+	_Bool is_pbp = !(val & 1 << RKI2C_INT_NAK);
 	printf("%"PRIx32"\n", i2c4->rx_data[0]);
 	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_STOP;
+
+	if (is_pbp) {
+		info("ACK from i2c4-62, this seems to be a Pinebook Pro\n");
+		/* set up PWM2 without muxing it out, just so the kernel will find a value */
+		*(volatile u32*)0xff420024 = 1240;
+		*(volatile u32*)0xff420028 = 310;
+		*(volatile u32*)0xff42002c = 0x13;
+		pmucru[0x104/4] = SET_BITS16(1, 1) << 10;
+	} else {
+		info("not running on a Pinebook Pro ⇒ not setting up regulators or LEDs\n");
+	}
 
 	setup_pll(cru + CRU_CPLL_CON, 800);
 	/* aclk_gic = 200 MHz */
