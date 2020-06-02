@@ -42,7 +42,7 @@ in
     version = "0.0.1";
     buildInputs = [host.libusb1];
     nativeBuildInputs = [host.pkg-config host.ninja];
-    installPhase = "mkdir -p $out/bin; cp usbtool idbtool regtool $out/bin";
+    installPhase = "mkdir -p $out/bin; cp usbtool idbtool regtool unpacktool $out/bin";
     src = ./tools;
   };
 }

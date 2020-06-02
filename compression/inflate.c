@@ -555,6 +555,9 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	st->isize += out - out_start;
 	st->crc = crc;
 	assert(st->num_bits < 8);
+	if (out - st->st.window_start > 32768) {
+		st->st.window_start = out - 32768;
+	}
 	return res;
 }
 

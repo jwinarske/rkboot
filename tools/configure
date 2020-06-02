@@ -19,6 +19,8 @@ build usbtool: cc $src/usbtool.c
     flags =  `pkg-config --libs --cflags libusb-1.0`
 build idbtool: cc $src/idbtool.c
 build regtool: cc $src/regtool.c $src/regtool_rpn.c
+build unpacktool: cc $src/unpacktool.c $src/../compression/lz4.c $src/../compression/inflate.c $src/../compression/zstd.c $src/../compression/zstd_sequences.c $src/../compression/zstd_literals.c $src/../compression/zstd_fse.c $src/../compression/lzcommon.c
+    flags = -DHAVE_LZ4 -DHAVE_GZIP -DHAVE_ZSTD
 
-default usbtool idbtool regtool
+default usbtool idbtool regtool unpacktool
 END
