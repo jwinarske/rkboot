@@ -302,11 +302,11 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 		debug("%"PRIu32"-byte RLE_Block\n", block_size);
 		if (st->st.out_end - st->st.out < block_size) {return DECODE_NEED_MORE_SPACE;}
 		if (unlikely(end - in < 1)) {return DECODE_NEED_MORE_DATA;}
-		u8 *out = st->st.out;
 		if (block_size) {
-			*out++ += *in++;
-			lzcommon_match_copy(out, 1, block_size - 1);
-			*out += block_size - 1;
+			u8 *out = st->st.out;
+			*out += *in++;
+			lzcommon_match_copy(out + 1, 1, block_size - 1);
+			st->st.out = out + block_size;
 		}
 		total_size = 4;
 		break;
@@ -338,7 +338,8 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 
 	st->window_size = 0;
 	if (~frame_header_desc & Single_Segment_Flag) {
-		st->window_size = (8 | (in[0] & 7)) << 7 << (in[0] >> 3);
+		st->window_size = (u64)(8 | (in[0] & 7)) << 7 << (in[0] >> 3);
+		info("window size: 0x%"PRIx64"\n", st->window_size);
 		in += 1;
 	} else switch (fcs_field_size) {
 	case 8:
