@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include "zstd_internal.h"
+#include "arch_mem_access.h"
 
 #define X(a, b) a | b << 24
 	static const u32 ctable_copy[36] = {
@@ -23,9 +24,6 @@
 		X(65536, 16)
 	};
 #undef X
-#ifdef __AARCH64EL__
-#define LDLE64U(ptr, bits) __asm__("ldr %0, [%1]" : "=r"(bits) : "r"(ptr))
-#endif
 #ifdef LDLE64U
 #define REFILL(total_bits) do {\
 	u32 read_bytes = 8 - (num_bits + 7) / 8;\

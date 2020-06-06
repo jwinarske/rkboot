@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "compression.h"
+#include "arch_mem_access.h"
 
 /*
 short decoding table format:
@@ -267,16 +268,102 @@ struct zstd_dec_state {
 	struct decompressor_state st;
 	struct dectables tables;
 	u64 window_size;
+	_Alignas(8) u8 xxh_buf[32];
+	u64 xxh_state[4];
+	u64 xxh_len;
+	u8 xxh_offset;
 	_Bool have_content_checksum;
+	_Bool long_hash;
 };
+
+#define XXH64_SEED 0
+
+#define U64(x) x##ull
+static const u64 xxh64_primes[5] = {
+	U64(11400714785074694791),
+	U64(14029467366897019727),
+	U64(1609587929392839161),
+	U64(9650029242287828579),
+	U64(2870177450012600261)
+};
+
+u64 xxh64_step(u64 state) {
+	return (state << 31 | state >> 33) * xxh64_primes[0];
+}
+
+u64 xxh64_shuffle(u64 val) {
+	return xxh64_step(val * xxh64_primes[1]);
+}
+
+u64 xxh64_round(u64 state, u64 val) {
+	return xxh64_step(state + (val * xxh64_primes[1]));
+}
+
+u64 xxh64_mergestep(u64 state) {
+	return state * xxh64_primes[0] + xxh64_primes[3];
+}
+
+u64 xxh64_merge(u64 state, u64 val) {
+	return xxh64_mergestep(state ^ xxh64_shuffle(val));
+}
 
 static size_t decode_trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct zstd_dec_state *st = (struct zstd_dec_state *)state;
 	st->st.decode = 0;
 	if (st->have_content_checksum) {
 		if (end - in < 4) {return DECODE_NEED_MORE_DATA;}
-		/* FIXME: implement checksum */
+		u64 xxh64 = XXH64_SEED + xxh64_primes[4];
+		if (st->long_hash) {
+			debug("xxh64 merge\n");
+			u64 a, b, c, d;
+			a = st->xxh_state[0];
+			b = st->xxh_state[1];
+			c = st->xxh_state[2];
+			d = st->xxh_state[3];
+			xxh64 = (a << 1 | a >> 63) + (b << 7 | b >> 57) + (c << 12 | c >> 52) + (d << 18 | d >> 46);
+			xxh64 = xxh64_merge(xxh64, a);
+			xxh64 = xxh64_merge(xxh64, b);
+			xxh64 = xxh64_merge(xxh64, c);
+			xxh64 = xxh64_merge(xxh64, d);
+		}
+		xxh64 += st->xxh_len;
+		u8 single_rounds = st->xxh_offset >> 3;
+		assert(single_rounds < 4);
+		const u8 *ptr = st->xxh_buf;
+		while (single_rounds--) {
+			u64 dw = ldle64a((const u64 *)ptr);
+			debug("xxh64 8byte: 0x%"PRIx64"\n", dw);
+			xxh64 ^= xxh64_shuffle(dw);
+			ptr += 8;
+			xxh64 = xxh64_mergestep(xxh64 << 27 | xxh64 >> 37);
+		}
+		if (st->xxh_offset & 4) {
+			u32 w = ldle32a((const u32 *)ptr);
+			debug("xxh64 4byte: 0x%"PRIx32"\n", w);
+			xxh64 ^= w * xxh64_primes[0];
+			ptr += 4;
+			xxh64 = (xxh64 << 23 | xxh64 >> 41) * xxh64_primes[1] + xxh64_primes[2];
+		}
+		u8 byte_rounds = st->xxh_offset & 3;
+		while (byte_rounds--) {
+			debug("xxh64 one byte: 0x%"PRIx8"\n", *ptr);
+			xxh64 ^= *ptr++ * xxh64_primes[4];
+			xxh64 = (xxh64 << 11 | xxh64 >> 53) * xxh64_primes[0];
+		}
+		xxh64 ^= xxh64 >> 33;
+		xxh64 *= xxh64_primes[1];
+		xxh64 ^= xxh64 >> 29;
+		xxh64 *= xxh64_primes[2];
+		xxh64 ^= xxh64 >> 32;
+		u32 csum = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
+		if (unlikely((xxh64 & 0xffffffff) != csum)) {
+			info("checksum mismatch: read %"PRIx32", computed %"PRIx64"\n", csum, xxh64);
+			return DECODE_ERR;
+		}
+		info("XXH64: %"PRIx64"\n", xxh64);
 		return NUM_DECODE_STATUS + 4;
+	} else {
+		info("no checksum\n");
 	}
 	return NUM_DECODE_STATUS;
 }
@@ -288,34 +375,74 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 	_Bool last_block = block_header0 & 1;
 	u32 block_size = block_header0 >> 3 | (u32)in[1] << 5 | (u32)in[2] << 13;
 	in += 3;
-	size_t total_size = block_size + 3;
+	size_t total_size = block_size + 3, decomp_size;
+	u8 *out = st->st.out;
 	switch (block_header0 >> 1 & 3) {
 	case Raw_Block:
 		debug("%"PRIu32"-byte Raw_Block\n", block_size);
-		if (st->st.out_end - st->st.out < block_size) {return DECODE_NEED_MORE_SPACE;}
+		if (st->st.out_end - out < block_size) {return DECODE_NEED_MORE_SPACE;}
 		if (end - in < block_size) {return DECODE_NEED_MORE_DATA;}
-		lzcommon_literal_copy(st->st.out, in, block_size);
-		st->st.out += block_size;
+		lzcommon_literal_copy(out, in, block_size);
+		decomp_size = block_size;
 		in += block_size;
 		break;
 	case RLE_Block:
 		debug("%"PRIu32"-byte RLE_Block\n", block_size);
-		if (st->st.out_end - st->st.out < block_size) {return DECODE_NEED_MORE_SPACE;}
+		if (st->st.out_end - out < block_size) {return DECODE_NEED_MORE_SPACE;}
 		if (unlikely(end - in < 1)) {return DECODE_NEED_MORE_DATA;}
 		if (block_size) {
-			u8 *out = st->st.out;
-			*out += *in++;
+			*out = *in++;
 			lzcommon_match_copy(out + 1, 1, block_size - 1);
-			st->st.out = out + block_size;
 		}
+		decomp_size = block_size;
 		total_size = 4;
 		break;
 	case Compressed_Block:
 		debug("%"PRIu32"-byte compressed block\n", block_size);
 		if (end - in < block_size) {return DECODE_NEED_MORE_DATA;}
-		size_t res = decompress_block(in, in + block_size, st->st.out, st->st.out_end, &st->tables, st->st.window_start);
+		size_t res = decompress_block(in, in + block_size, out, st->st.out_end, &st->tables, st->st.window_start);
 		if (res < NUM_DECODE_STATUS) {return res;}
-		st->st.out += res - NUM_DECODE_STATUS;
+		decomp_size = res - NUM_DECODE_STATUS;
+		break;
+	default:
+		info("reserved block type used\n");
+		return DECODE_ERR;
+	}
+	st->xxh_len += decomp_size;
+	u8 xxh_offset = st->xxh_offset;
+	if (decomp_size <= 32 && xxh_offset + decomp_size < 32) {
+		lzcommon_literal_copy(st->xxh_buf + xxh_offset, out, decomp_size);
+		st->xxh_offset = xxh_offset + decomp_size;
+		st->st.out = out + decomp_size;
+	} else {
+		u8 fillup = 32 - xxh_offset;
+		assert(decomp_size >= fillup);
+		lzcommon_literal_copy(st->xxh_buf + xxh_offset, out, 32 - xxh_offset);
+		decomp_size -= fillup;
+		out += fillup;
+		st->xxh_state[0] = xxh64_round(st->xxh_state[0], ldle64a((u64 *)st->xxh_buf));
+		st->xxh_state[1] = xxh64_round(st->xxh_state[1], ldle64a((u64 *)(st->xxh_buf + 8)));
+		st->xxh_state[2] = xxh64_round(st->xxh_state[2], ldle64a((u64 *)(st->xxh_buf + 16)));
+		st->xxh_state[3] = xxh64_round(st->xxh_state[3], ldle64a((u64 *)(st->xxh_buf + 24)));
+		st->long_hash = 1;
+		while (decomp_size >= 32) {
+			u64 a, b, c, d;
+			LDLE64U(out, a); out += 8;
+			LDLE64U(out, b); out += 8;
+			LDLE64U(out, c); out += 8;
+			LDLE64U(out, d); out += 8;
+			decomp_size -= 32;
+			st->xxh_state[0] = xxh64_round(st->xxh_state[0], a);
+			st->xxh_state[1] = xxh64_round(st->xxh_state[1], b);
+			st->xxh_state[2] = xxh64_round(st->xxh_state[2], c);
+			st->xxh_state[3] = xxh64_round(st->xxh_state[3], d);
+		}
+		u8 offset = 0;
+		while (decomp_size--) {
+			st->xxh_buf[offset++] = *out++;
+		}
+		st->xxh_offset = offset;
+		st->st.out = out;
 	}
 	if (last_block) {st->st.decode = decode_trailer;}
 	return NUM_DECODE_STATUS + total_size;
@@ -363,6 +490,14 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 	st->tables.huff_depth = 0;
 	st->tables.dist1 = 1; st->tables.dist2 = 4; st->tables.dist3 = 8;
 	st->st.decode = decode_block;
+	st->have_content_checksum = !!(frame_header_desc & Content_Checksum_Flag);
+	st->xxh_offset = 0;
+	st->xxh_len = 0;
+	st->long_hash = 0;
+	st->xxh_state[0] = XXH64_SEED + xxh64_primes[0] + xxh64_primes[1];
+	st->xxh_state[1] = XXH64_SEED + xxh64_primes[1];
+	st->xxh_state[2] = XXH64_SEED;
+	st->xxh_state[3] = XXH64_SEED - xxh64_primes[0];
 	return in;
 }
 
