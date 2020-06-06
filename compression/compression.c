@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
 		enum compr_probe_status status = (*decomp)->probe(buf, buf + buf_size, &size);
 		switch (status) {
 		case COMPR_PROBE_SIZE_UNKNOWN:
-			size = (16 << 20) - LZCOMMON_BLOCK;
+			size = (64 << 20) - LZCOMMON_BLOCK;
 			FALLTHROUGH;
 		case COMPR_PROBE_SIZE_KNOWN:;
 			debug("allocating %zu bytes of decompressor state\n", (*decomp)->state_size);
