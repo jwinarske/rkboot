@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 #include "compression.h"
 #include "arch_mem_access.h"
 
@@ -264,16 +265,20 @@ static enum compr_probe_status probe(const u8 *in, const u8 *end, u64 *size) {
 	}
 }
 
+struct xxh64_state {
+	_Alignas(8) u8 buf[32];
+	u64 state[4];
+	u64 len;
+	u8 offset;
+	_Bool long_hash;
+};
+
 struct zstd_dec_state {
 	struct decompressor_state st;
 	struct dectables tables;
+	struct xxh64_state xxh64;
 	u64 window_size;
-	_Alignas(8) u8 xxh_buf[32];
-	u64 xxh_state[4];
-	u64 xxh_len;
-	u8 xxh_offset;
 	_Bool have_content_checksum;
-	_Bool long_hash;
 };
 
 #define XXH64_SEED 0
@@ -307,54 +312,59 @@ u64 xxh64_merge(u64 state, u64 val) {
 	return xxh64_mergestep(state ^ xxh64_shuffle(val));
 }
 
+static u64 xxh64_finalize(const struct xxh64_state *state) {
+	u64 xxh64 = XXH64_SEED + xxh64_primes[4];
+	if (state->long_hash) {
+		debug("xxh64 merge\n");
+		u64 a, b, c, d;
+		a = state->state[0];
+		b = state->state[1];
+		c = state->state[2];
+		d = state->state[3];
+		xxh64 = (a << 1 | a >> 63) + (b << 7 | b >> 57) + (c << 12 | c >> 52) + (d << 18 | d >> 46);
+		xxh64 = xxh64_merge(xxh64, a);
+		xxh64 = xxh64_merge(xxh64, b);
+		xxh64 = xxh64_merge(xxh64, c);
+		xxh64 = xxh64_merge(xxh64, d);
+	}
+	xxh64 += state->len;
+	u8 single_rounds = state->offset >> 3;
+	assert(single_rounds < 4);
+	const u8 *ptr = state->buf;
+	while (single_rounds--) {
+		u64 dw = ldle64a((const u64 *)ptr);
+		debug("xxh64 8byte: 0x%"PRIx64"\n", dw);
+		xxh64 ^= xxh64_shuffle(dw);
+		ptr += 8;
+		xxh64 = xxh64_mergestep(xxh64 << 27 | xxh64 >> 37);
+	}
+	if (state->offset & 4) {
+		u32 w = ldle32a((const u32 *)ptr);
+		debug("xxh64 4byte: 0x%"PRIx32"\n", w);
+		xxh64 ^= w * xxh64_primes[0];
+		ptr += 4;
+		xxh64 = (xxh64 << 23 | xxh64 >> 41) * xxh64_primes[1] + xxh64_primes[2];
+	}
+	u8 byte_rounds = state->offset & 3;
+	while (byte_rounds--) {
+		debug("xxh64 one byte: 0x%"PRIx8"\n", *ptr);
+		xxh64 ^= *ptr++ * xxh64_primes[4];
+		xxh64 = (xxh64 << 11 | xxh64 >> 53) * xxh64_primes[0];
+	}
+	xxh64 ^= xxh64 >> 33;
+	xxh64 *= xxh64_primes[1];
+	xxh64 ^= xxh64 >> 29;
+	xxh64 *= xxh64_primes[2];
+	xxh64 ^= xxh64 >> 32;
+	return xxh64;
+}
+
 static size_t decode_trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct zstd_dec_state *st = (struct zstd_dec_state *)state;
 	st->st.decode = 0;
 	if (st->have_content_checksum) {
 		if (end - in < 4) {return DECODE_NEED_MORE_DATA;}
-		u64 xxh64 = XXH64_SEED + xxh64_primes[4];
-		if (st->long_hash) {
-			debug("xxh64 merge\n");
-			u64 a, b, c, d;
-			a = st->xxh_state[0];
-			b = st->xxh_state[1];
-			c = st->xxh_state[2];
-			d = st->xxh_state[3];
-			xxh64 = (a << 1 | a >> 63) + (b << 7 | b >> 57) + (c << 12 | c >> 52) + (d << 18 | d >> 46);
-			xxh64 = xxh64_merge(xxh64, a);
-			xxh64 = xxh64_merge(xxh64, b);
-			xxh64 = xxh64_merge(xxh64, c);
-			xxh64 = xxh64_merge(xxh64, d);
-		}
-		xxh64 += st->xxh_len;
-		u8 single_rounds = st->xxh_offset >> 3;
-		assert(single_rounds < 4);
-		const u8 *ptr = st->xxh_buf;
-		while (single_rounds--) {
-			u64 dw = ldle64a((const u64 *)ptr);
-			debug("xxh64 8byte: 0x%"PRIx64"\n", dw);
-			xxh64 ^= xxh64_shuffle(dw);
-			ptr += 8;
-			xxh64 = xxh64_mergestep(xxh64 << 27 | xxh64 >> 37);
-		}
-		if (st->xxh_offset & 4) {
-			u32 w = ldle32a((const u32 *)ptr);
-			debug("xxh64 4byte: 0x%"PRIx32"\n", w);
-			xxh64 ^= w * xxh64_primes[0];
-			ptr += 4;
-			xxh64 = (xxh64 << 23 | xxh64 >> 41) * xxh64_primes[1] + xxh64_primes[2];
-		}
-		u8 byte_rounds = st->xxh_offset & 3;
-		while (byte_rounds--) {
-			debug("xxh64 one byte: 0x%"PRIx8"\n", *ptr);
-			xxh64 ^= *ptr++ * xxh64_primes[4];
-			xxh64 = (xxh64 << 11 | xxh64 >> 53) * xxh64_primes[0];
-		}
-		xxh64 ^= xxh64 >> 33;
-		xxh64 *= xxh64_primes[1];
-		xxh64 ^= xxh64 >> 29;
-		xxh64 *= xxh64_primes[2];
-		xxh64 ^= xxh64 >> 32;
+		u64 xxh64 = xxh64_finalize(&st->xxh64);
 		u32 csum = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
 		if (unlikely((xxh64 & 0xffffffff) != csum)) {
 			info("checksum mismatch: read %"PRIx32", computed %"PRIx64"\n", csum, xxh64);
@@ -366,6 +376,52 @@ static size_t decode_trailer(struct decompressor_state *state, const u8 *in, con
 		info("no checksum\n");
 	}
 	return NUM_DECODE_STATUS;
+}
+
+static void xxh64_update(struct xxh64_state *state, const u8 *buf, size_t size) {
+	state->len += size;
+	u8 xxh_offset = state->offset;
+	if (size <= 32 && xxh_offset + size < 32) {
+		lzcommon_literal_copy(state->buf + xxh_offset, buf, size);
+		state->offset = xxh_offset + size;
+	} else {
+		u8 fillup = 32 - xxh_offset;
+		assert(size >= fillup);
+		lzcommon_literal_copy(state->buf + xxh_offset, buf, 32 - xxh_offset);
+		size -= fillup;
+		buf += fillup;
+		state->state[0] = xxh64_round(state->state[0], ldle64a((u64 *)state->buf));
+		state->state[1] = xxh64_round(state->state[1], ldle64a((u64 *)(state->buf + 8)));
+		state->state[2] = xxh64_round(state->state[2], ldle64a((u64 *)(state->buf + 16)));
+		state->state[3] = xxh64_round(state->state[3], ldle64a((u64 *)(state->buf + 24)));
+		state->long_hash = 1;
+		while (size >= 32) {
+			u64 a, b, c, d;
+#ifdef LDLE64U
+			LDLE64U(buf, a); buf += 8;
+			LDLE64U(buf, b); buf += 8;
+			LDLE64U(buf, c); buf += 8;
+			LDLE64U(buf, d); buf += 8;
+#else
+			memcpy(state->buf, buf, 32);
+			buf += 32;
+			a = ldle64a((const u64 *)state->buf);
+			b = ldle64a((const u64 *)(state->buf+8));
+			c = ldle64a((const u64 *)(state->buf+16));
+			d = ldle64a((const u64 *)(state->buf+24));
+#endif
+			size -= 32;
+			state->state[0] = xxh64_round(state->state[0], a);
+			state->state[1] = xxh64_round(state->state[1], b);
+			state->state[2] = xxh64_round(state->state[2], c);
+			state->state[3] = xxh64_round(state->state[3], d);
+		}
+		u8 offset = 0;
+		while (size--) {
+			state->buf[offset++] = *buf++;
+		}
+		state->offset = offset;
+	}
 }
 
 static size_t decode_block(struct decompressor_state *state, const u8 *in, const u8 *end) {
@@ -408,44 +464,22 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 		info("reserved block type used\n");
 		return DECODE_ERR;
 	}
-	st->xxh_len += decomp_size;
-	u8 xxh_offset = st->xxh_offset;
-	if (decomp_size <= 32 && xxh_offset + decomp_size < 32) {
-		lzcommon_literal_copy(st->xxh_buf + xxh_offset, out, decomp_size);
-		st->xxh_offset = xxh_offset + decomp_size;
-		st->st.out = out + decomp_size;
-	} else {
-		u8 fillup = 32 - xxh_offset;
-		assert(decomp_size >= fillup);
-		lzcommon_literal_copy(st->xxh_buf + xxh_offset, out, 32 - xxh_offset);
-		decomp_size -= fillup;
-		out += fillup;
-		st->xxh_state[0] = xxh64_round(st->xxh_state[0], ldle64a((u64 *)st->xxh_buf));
-		st->xxh_state[1] = xxh64_round(st->xxh_state[1], ldle64a((u64 *)(st->xxh_buf + 8)));
-		st->xxh_state[2] = xxh64_round(st->xxh_state[2], ldle64a((u64 *)(st->xxh_buf + 16)));
-		st->xxh_state[3] = xxh64_round(st->xxh_state[3], ldle64a((u64 *)(st->xxh_buf + 24)));
-		st->long_hash = 1;
-		while (decomp_size >= 32) {
-			u64 a, b, c, d;
-			LDLE64U(out, a); out += 8;
-			LDLE64U(out, b); out += 8;
-			LDLE64U(out, c); out += 8;
-			LDLE64U(out, d); out += 8;
-			decomp_size -= 32;
-			st->xxh_state[0] = xxh64_round(st->xxh_state[0], a);
-			st->xxh_state[1] = xxh64_round(st->xxh_state[1], b);
-			st->xxh_state[2] = xxh64_round(st->xxh_state[2], c);
-			st->xxh_state[3] = xxh64_round(st->xxh_state[3], d);
-		}
-		u8 offset = 0;
-		while (decomp_size--) {
-			st->xxh_buf[offset++] = *out++;
-		}
-		st->xxh_offset = offset;
-		st->st.out = out;
+	if (st->have_content_checksum) {
+		xxh64_update(&st->xxh64, out, decomp_size);
 	}
+	st->st.out = out + decomp_size;
 	if (last_block) {st->st.decode = decode_trailer;}
 	return NUM_DECODE_STATUS + total_size;
+}
+
+void xxh64_init(struct xxh64_state *state) {
+	state->offset = 0;
+	state->len = 0;
+	state->long_hash = 0;
+	state->state[0] = XXH64_SEED + xxh64_primes[0] + xxh64_primes[1];
+	state->state[1] = XXH64_SEED + xxh64_primes[1];
+	state->state[2] = XXH64_SEED;
+	state->state[3] = XXH64_SEED - xxh64_primes[0];
 }
 
 static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *end) {
@@ -491,13 +525,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 	st->tables.dist1 = 1; st->tables.dist2 = 4; st->tables.dist3 = 8;
 	st->st.decode = decode_block;
 	st->have_content_checksum = !!(frame_header_desc & Content_Checksum_Flag);
-	st->xxh_offset = 0;
-	st->xxh_len = 0;
-	st->long_hash = 0;
-	st->xxh_state[0] = XXH64_SEED + xxh64_primes[0] + xxh64_primes[1];
-	st->xxh_state[1] = XXH64_SEED + xxh64_primes[1];
-	st->xxh_state[2] = XXH64_SEED;
-	st->xxh_state[3] = XXH64_SEED - xxh64_primes[0];
+	xxh64_init(&st->xxh64);
 	return in;
 }
 

@@ -2,8 +2,10 @@
 #pragma once
 #include <stdint.h>
 
+#if !CONFIG_NO_UNALIGNED
 #if __aarch64__ && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define LDLE64U(ptr, bits) __asm__("ldr %0, [%1]" : "=r"(bits) : "r"(ptr))
+#endif
 #endif
 
 static inline uint64_t ldle64a(const uint64_t *ptr) {
