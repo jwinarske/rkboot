@@ -150,7 +150,7 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 		check(probe.decode(literal_start, probe.end, ptr, ptr + probe.size, tables), "failed to decode literals\n");
 		literal_ptr = ptr;
 	}
-	debug("%.*s", (int)probe.size, literal_ptr);
+	spew("%.*s", (int)probe.size, literal_ptr);
 	debug("%"PRIu32" sequences\n", num_seq);
 	if (num_seq >= 128) {
 		if (num_seq == 255) {
@@ -185,26 +185,27 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 			u64 sequence = sequence_buffer[i];
 			u32 copy = sequence & 0x1ffff, length = (u32)(sequence >> 17 & 0x1ffff) + 3;
 			u32 dist = sequence >> 34;
-			debug("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32" %.*s\n", copy, length, dist, (int)copy, literal_ptr);
+			spew("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32" %.*s\n", copy, length, dist, (int)copy, literal_ptr);
 
 			check(copy <= probe.size, "sequence specifies to copy more literals than available\n");
 			if (unlikely(out_end - out < length + probe.size)) {return DECODE_NEED_MORE_SPACE;}
 			lzcommon_literal_copy(out, literal_ptr, copy);
 			out += copy; literal_ptr += copy; probe.size -= copy;
 
-			check(dist <= out - window_start, "match copy distance too far\n");
+			spew("available window: %zu\n", (size_t)(out - window_start));
+			check(dist <= out - window_start, "match copy distance too far: %"PRIu32" > %zu\n", dist, (size_t)(out - window_start));
 			if (dist <= length) {
-				debug("match copy: %.*s…\n",(int)dist, out - dist);
+				spew("match copy: %.*s…\n",(int)dist, out - dist);
 			} else {
-				debug("match copy: %.*s←\n", (int)length, out - dist);
+				spew("match copy: %.*s←\n", (int)length, out - dist);
 			}
 			lzcommon_match_copy(out, dist, length);
 			out += length;
 
 			if (out - window_start < 100) {
-				debug("last output: %.*s\n", (int)(out - window_start), window_start);
+				spew("last output: %.*s\n", (int)(out - window_start), window_start);
 			} else {
-				debug("last output: %.100s\n", out - 100);
+				spew("last output: %.100s\n", out - 100);
 			}
 		}
 		num_seq -= seq_this_round;
