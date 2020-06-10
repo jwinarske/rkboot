@@ -405,14 +405,14 @@ _Noreturn u32 ENTRY main() {
 	}
 #endif
 
-	u8 *end = (u8 *)blob_addr;
+	u8 *end = (u8 *)blob_addr - LZCOMMON_BLOCK;
 	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);
-	end = (u8 *)fdt_out_addr;
+	end = (u8 *)fdt_out_addr - LZCOMMON_BLOCK;
 	offset = decompress(async, offset, (u8 *)fdt_addr, &end);
-	end = __start__;
+	end = __start__ - LZCOMMON_BLOCK;
 	offset = decompress(async, offset, (u8 *)payload_addr, &end);
 #ifdef CONFIG_ELFLOADER_INITCPIO
-	u8 *initcpio_end = (u8 *)(u64)(DRAM_START + dram_size());
+	u8 *initcpio_end = (u8 *)(u64)(DRAM_START + dram_size() - LZCOMMON_BLOCK);
 	offset = decompress(async, offset, (u8 *)initcpio_addr, &initcpio_end);
 #endif
 

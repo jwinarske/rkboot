@@ -42,7 +42,7 @@ struct decompressor_state {
 	decompress_func *decode;
 
 	/* these are initialized by the client after `decompressor::init`
-	client code may move things around between `decompressor_state::decode` calls, but must preserve at least the bytes between window_start and out. */
+	client code may move things around between `decompressor_state::decode` calls, but must preserve at least the bytes between window_start and out. `out_end` must have at least LZCOMMON_BLOCK bytes of scratch space after it. */
 	u8 *window_start;
 	u8 *out;
 	u8 *out_end;
