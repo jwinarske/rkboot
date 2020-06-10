@@ -61,7 +61,7 @@ static u8 *read_file(int fd, size_t *size) {
 	return buf;
 }
 
-u8 outbuf[1 << 20];
+u8 outbuf[16 << 20];
 
 int main(int argc, char **argv) {
 	fprintf(stderr, "reading input …");
