@@ -467,7 +467,11 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 	if (st->have_content_checksum) {
 		xxh64_update(&st->xxh64, out, decomp_size);
 	}
-	st->st.out = out + decomp_size;
+	out += decomp_size;
+	st->st.out = out;
+	if (out - st->st.window_start > st->window_size) {
+		st->st.window_start = out - st->window_size;
+	}
 	if (last_block) {st->st.decode = decode_trailer;}
 	return NUM_DECODE_STATUS + total_size;
 }
