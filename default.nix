@@ -42,7 +42,8 @@ in
     version = "0.0.1";
     buildInputs = [host.libusb1];
     nativeBuildInputs = [host.pkg-config host.ninja];
+    preConfigure = "cd tools";
     installPhase = "mkdir -p $out/bin; cp usbtool idbtool regtool unpacktool $out/bin";
-    src = ./tools;
+    src = builtins.filterSource (path: type: type != "directory" || {compression=null;tools=null;include=null;} ? ${builtins.baseNameOf path}) ./.;
   };
 }
