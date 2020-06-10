@@ -184,15 +184,15 @@ _Bool decode_huff_4streams(const u8 *in, const u8 *end, u8 *out, u8 *out_end, co
 	if (!decompress_literal_stream(in, in + size1, out, out + decomp_size123, table)) {return 0;}
 	out += decomp_size123;
 	in += size1;
-	debug("stream 2");
+	debug("stream 2\n");
 	if (!decompress_literal_stream(in, in + size2, out, out + decomp_size123, table)) {return 0;}
 	out += decomp_size123;
 	in += size2;
-	debug("stream 3");
+	debug("stream 3\n");
 	if (!decompress_literal_stream(in, in + size3, out, out + decomp_size123, table)) {return 0;}
 	out += decomp_size123;
 	in += size3;
-	debug("stream 4");
+	debug("stream 4\n");
 	return decompress_literal_stream(in, end, out, out_end, table);
 }
 
