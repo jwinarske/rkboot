@@ -98,7 +98,7 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 			dwmmc_check_ok_status(dwmmc, st, "ACMD41 (OP_COND)");
 			resp = dwmmc->resp[0];
 			if (resp & SD_RESP_BUSY) {break;}
-			if (get_timestamp() - start > 100000 * CYCLES_PER_MICROSECOND) {
+			if (get_timestamp() - start > 1000000 * CYCLES_PER_MICROSECOND) {
 				die("timeout in initialization\n");
 			}
 			udelay(100);
