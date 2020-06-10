@@ -286,7 +286,7 @@ def binary(name, modules, base_address):
     print(build(
         name + '.elf',
         'ld',
-        tuple(x.rpartition("/")[2] + '.o' for x in modules),
+        tuple(x.rpartition("/")[2] + '.o' for x in set(modules)),
         deps=base_address + '.ld',
         flags='-T {}.ld'.format(base_address)
     ))
