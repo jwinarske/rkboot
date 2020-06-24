@@ -14,6 +14,8 @@ enum {
 enum {
 	PMUGRF_GPIO0A_IOMUX = 0,
 	PMUGRF_GPIO0B_IOMUX = 0x004 >> 2,
+	PMUGRF_GPIO1A_IOMUX = 0x010 >> 2,
+	PMUGRF_GPIO1B_IOMUX = 0x014 >> 2,
 	PMUGRF_GPIO0B_P = 0x044 >> 2,
 	PMUGRF_OS_REG2 = 0x308 >> 2,
 	PMUGRF_OS_REG3 = 0x30c >> 2,
@@ -41,6 +43,16 @@ enum {
 };
 
 enum {
+	PMUCRU_PPLL_CON = 0,
+	PMUCRU_CLKSEL_CON = 0x80 >> 2,
+	PMUCRU_CLKFRAC_CON = 0x98 >> 2,
+	PMUCRU_CLKGATE_CON = 0x100 >> 2,
+	PMUCRU_SOFTRST_CON = 0x110 >> 2,
+	PMUCRU_RSTNHOLD_CON = 0x120 >> 2,
+	PMUCRU_GATEDIS_CON = 0x130 >> 2
+};
+
+enum {
 	CIC_STATUS = 4
 };
 
@@ -63,6 +75,9 @@ static volatile u32 *const grf = (volatile u32 *)0xff770000;
 
 struct rkspi;
 static volatile struct rkspi *const spi1 = (volatile struct rkspi*)0xff1d0000;
+
+struct rki2c_regs;
+static volatile struct rki2c_regs *const i2c4 = (volatile struct rki2c_regs *)0xff3d0000;
 
 enum {SPI_MAX_RECV = 0xfffe};
 void spi_read_flash(u8 *buf, u32 size);

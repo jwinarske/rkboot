@@ -204,7 +204,7 @@ lib = ('timer', 'error', 'uart', 'mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 if args.embed_elfloader:
     levinboot += ('compression/lzcommon', 'compression/lz4')
-elfloader = ('elfloader', 'transform_fdt', 'pll')
+elfloader = ('elfloader', 'transform_fdt', 'rki2c', 'pll')
 if elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
     elfloader += ('compression/lzcommon', 'string')

@@ -6,6 +6,8 @@
 #include <stage.h>
 #include <compression.h>
 #include <async.h>
+#include <rki2c.h>
+#include <rki2c_regs.h>
 #if CONFIG_ELFLOADER_SPI
 #include <rkspi.h>
 #endif
@@ -309,6 +311,25 @@ _Noreturn u32 ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
+
+	/* clk_i2c4 = PPLL (= 24 MHz) */
+	pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
+	printf("RKI2C4_CON: %"PRIx32"\n", i2c4->control);
+	struct rki2c_config i2c_cfg = rki2c_calc_config_v1(24, 1000000, 600, 20);
+	printf("setup %"PRIx32" %"PRIx32"\n", i2c_cfg.control, i2c_cfg.clkdiv);
+	i2c4->clkdiv = i2c_cfg.clkdiv;
+	i2c4->control = i2c_cfg.control;
+	pmugrf[PMUGRF_GPIO1B_IOMUX] = SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8;
+	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_START | RKI2C_CON_MODE_REGISTER_READ;
+	i2c4->slave_addr = 1 << 24 | 0x62 << 1;
+	i2c4->reg_addr = 1 << 24 | 0;
+	i2c4->rx_count = 1;
+	u32 val;
+	while (!((val = i2c4->int_pending) & RKI2C_INTMASK_XACT_END)) {}
+	printf("RKI2C4_CON: %"PRIx32", _IPD: %"PRIx32"\n", i2c4->control, i2c4->int_pending);
+	printf("%"PRIx32"\n", i2c4->rx_data[0]);
+	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_STOP;
+
 	setup_pll(cru + CRU_CPLL_CON, 800);
 	/* aclk_gic = 200 MHz */
 	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 3) << 8;
