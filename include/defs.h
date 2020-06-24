@@ -28,3 +28,7 @@ typedef u64 timestamp_t;
 #define for_array(i, arr) for (u32 i = 0; i < ARRAY_SIZE(arr); ++i)
 
 enum {UNREACHABLE = 0};
+
+static inline UNUSED u32 div_round_up_u32(u32 a, u32 b) {
+	return (b - 1 + a) / b;
+}
