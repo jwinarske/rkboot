@@ -63,7 +63,7 @@ Important command-line arguments for :src:`configure.py` are:
 
 --with-atf-headers PATH  tells :src:`configure.py` where the ATF export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
 
---elfloader-lz4, --elfloader-gzip, --elfloader-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. NOTE: gzip is currently recommended; LZ4 and zstd decompressors don't compute check hashes yet and there is at least one known zstd file that the zstd compressor in levinboot cannot decompress at this point.
+--elfloader-lz4, --elfloader-gzip, --elfloader-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
 
 --elfloader-spi, --elfloader-sd  configures :output:`elfloader.bin` to load payload images from SPI flash or SD cards (respectively) instead of expecting them preloaded at specific addresses.
   This process requires decompression support to be enabled.
