@@ -19,12 +19,6 @@
 0:	/* cannot handle (no stack or routine set up) */
 	adr x0, 1f
 	b unhandled_exception
-.align 3
-.global \name
-.type \name, %object
-.size \name, 8
-\name:
-	.space 8, 0 /* handler address, used if non-zero */
 1:
 .endm
 
@@ -103,3 +97,23 @@ hang:
 	wfi
 	b hang
 ENDFUNC(unhandled_exception)
+
+.section .bss, "wa", %nobits
+.macro vector name
+.align 3
+.global \name
+.type \name, %object
+.size \name, 8
+\name:
+	.space 8, 0 /* handler address, used if non-zero */
+.endm
+.macro vectors suffix
+	vector sync_exc_handler_\suffix
+	vector irq_handler_\suffix
+	vector fiq_handler_\suffix
+	vector serror_handler_\suffix
+.endm
+vectors sp0
+vectors spx
+vectors aarch64
+vectors aarch32
