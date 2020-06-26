@@ -5,6 +5,7 @@
 #include <uart.h>
 #include <inttypes.h>
 #include <die.h>
+#include <exc_handler.h>
 
 static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_NORMAL},
@@ -52,12 +53,6 @@ static void UNUSED dump_mem(void *mem, size_t size) {
 
 struct stage_store store;
 
-struct exc_state_save {
-	u64 fp, lr;
-	u64 pad1, pad2;
-	u64 locals[19];
-};
-
 void exc_handler(struct exc_state_save *save) {
 	u64 elr, esr;
 	__asm__("mrs %0, esr_el3;mrs %1, elr_el3" : "=r"(esr), "=r"(elr));
@@ -99,8 +94,6 @@ void exc_handler(struct exc_state_save *save) {
 	dump_mem((void*)elr, 64);
 	die("unhandled\n");
 }
-
-extern void (*sync_exc_handler_spx)(struct exc_state_save *);
 
 void ENTRY main() {
 	puts("brompatch\n");

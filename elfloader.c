@@ -8,6 +8,7 @@
 #include <async.h>
 #include <rki2c.h>
 #include <rki2c_regs.h>
+#include <exc_handler.h>
 #if CONFIG_ELFLOADER_SPI
 #include <rkspi.h>
 #endif
@@ -277,9 +278,6 @@ static void irq_handler() {
 	}
 	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
 }
-
-extern void (*volatile fiq_handler_spx)();
-extern void (*volatile irq_handler_spx)();
 
 void dwmmc_start_irq_read(volatile struct dwmmc_regs *dwmmc, u32 sector) {
 	fiq_handler_spx = irq_handler_spx = irq_handler;

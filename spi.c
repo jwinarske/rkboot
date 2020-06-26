@@ -6,11 +6,9 @@
 #include <inttypes.h>
 #include <gic.h>
 #include <gic_regs.h>
+#include <exc_handler.h>
 
 static const u32 spi_mode_base = SPI_MASTER | SPI_CSM_KEEP_LOW | SPI_SSD_FULL_CYCLE | SPI_LITTLE_ENDIAN | SPI_MSB_FIRST | SPI_POLARITY(1) | SPI_PHASE(1) | SPI_DFS_8BIT;
-
-extern void (*volatile fiq_handler_spx)();
-extern void (*volatile irq_handler_spx)();
 
 static void spi_recv_fast(volatile struct rkspi *spi, u8 *buf, u32 buf_size) {
 	assert((spi_mode_base | SPI_BHT_APB_8BIT) == 0x24c1);
