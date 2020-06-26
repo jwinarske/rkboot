@@ -175,23 +175,25 @@ _Bool memtest(u64 salt) {
 
 static const struct mapping initial_mappings[] = {
 #ifdef UNCACHED_MEMTEST
-	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_DEV_GRE},
+	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_DEV_GRE},
 #else
-	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_NORMAL},
+	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
 #endif
-	{.first = 0xf8000000, .last = 0xff8bffff, .type = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
-	{.first = 0xff8f0000, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0, .last = 0, .type = 0}
+	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
+	MAPPING_BINARY,
+	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL}, /* stack */
+	{.first = 0xff760000, .last = 0xff77ffff, .flags = MEM_TYPE_DEV_nGnRnE}, /* CRU, GRF */
+	{.first = 0, .last = 0, .flags = 0}
 };
 
 static const struct address_range critical_ranges[] = {
-	{.first = __start__, .last = __end__},
+	{.first = __start__, .last = __end__ - 1},
 	{.first = uart, .last = uart},
 	ADDRESS_RANGE_INVALID
 };
 
 _Noreturn void ENTRY main() {
+	puts("memtest\n");
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);

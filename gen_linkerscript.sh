@@ -26,8 +26,8 @@ SECTIONS {
 	.eh_frame : {
 		*(.eh_frame)
 	} >${memory}
-	__ro_end__ = .;
 	.data : ALIGN(0x1000){
+		__ro_end__ = .;
 		*(.data)
 		__data_end__ = .;
 	} >${memory}
@@ -36,8 +36,8 @@ SECTIONS {
 		*(.bss)
 		__bss_noinit__ = ALIGN(16);
 		*(.bss.noinit)
-		__bss_end__ = .;
+		__bss_end__ = ALIGN(0x1000);
 	} >${memory}
-	__end__ = ALIGN(0x1000);
 }
+__end__ = __bss_end__;
 END

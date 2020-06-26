@@ -8,14 +8,14 @@
 #include <exc_handler.h>
 
 static const struct mapping initial_mappings[] = {
-	{.first = 0, .last = 0xff8bffff, .type = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
-	{.first = 0xff8f0000, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0, .last = 0, .type = 0}
+	MAPPING_BINARY,
+	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
+	{.first = 0xff8c0000, .last = (u64)__start__ - 1, .flags = MEM_TYPE_NORMAL},
+	{.first = 0, .last = 0, .flags = 0}
 };
 
 static const struct address_range critical_ranges[] = {
-	{.first = __start__, .last = __end__},
+	{.first = __start__, .last = __end__ - 1},
 	{.first = uart, .last = uart},
 	ADDRESS_RANGE_INVALID
 };
@@ -57,12 +57,15 @@ int32_t ENTRY NO_ASAN main() {
 	sync_exc_handler_spx = sync_exc_handler;
 #endif
 	mmu_setup(initial_mappings, critical_ranges);
+	/* map {PMU,}CRU, GRF */
+	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
+	/* map PMU{,SGRF,GRF} */
+	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();
 	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 1) << 15 | SET_BITS16(7, 3) << 8;
 #ifdef CONFIG_EMBED_ELFLOADER
 	void *loadaddr = (void *)0x4000000;
-	mmu_unmap_range(0, 0xf7ffffff);
 	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_NORMAL);
 	__asm__ volatile("dsb sy");
 	size_t size;

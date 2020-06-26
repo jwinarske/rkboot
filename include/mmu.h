@@ -17,7 +17,12 @@ enum {
 	MEM_ACCESS_RO_PRIV = 2 << 3,
 	MEM_ACCESS_RO_UNPRIV = 3 << 3,
 };
-struct mapping {u64 first, last; u8 type;};
+struct mapping {u64 first, last; u64 flags;};
+extern u8 __start__[], __ro_end__[], __end__[];
+#define MAPPING_BINARY \
+	{.first = (u64)&__start__, .last = (u64)&__ro_end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RO_PRIV}, \
+	{.first = (u64)&__ro_end__, .last = (u64)&__end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RW_PRIV}
+
 void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
 void flush_dcache();

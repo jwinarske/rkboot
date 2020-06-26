@@ -52,11 +52,11 @@ static bl_params_t bl_params = {
 };
 
 static const struct mapping initial_mappings[] = {
-	{.first = 0, .last = 0xf7ffffff, .type = MEM_TYPE_NORMAL},
-	{.first = 0xf8000000, .last = 0xff8bffff, .type = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8effff, .type = MEM_TYPE_NORMAL},
-	{.first = 0xff8f0000, .last = 0xffffffff, .type = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0, .last = 0, .type = 0}
+	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
+	{.first = 0xf8000000, .last = 0xff8bffff, .flags = MEM_TYPE_DEV_nGnRnE},
+	{.first = 0xff8c0000, .last = 0xff8effff, .flags = MEM_TYPE_NORMAL},
+	{.first = 0xff8f0000, .last = 0xffffffff, .flags = MEM_TYPE_DEV_nGnRnE},
+	{.first = 0, .last = 0, .flags = 0}
 };
 
 static const struct address_range critical_ranges[] = {

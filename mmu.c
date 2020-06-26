@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <inttypes.h>
 
-static u64 __attribute__((aligned(4096))) pagetables[5][512];
+static u64 __attribute__((aligned(4096))) __attribute__((section(".bss.noinit"))) pagetables[8][512];
 static u32 next_pagetable = 1;
 
 enum {
@@ -68,7 +68,7 @@ static u64 UNUSED map_address(u64 addr) {
 	u64 pt_l3 = (pte_l2 >> 12 & MASK64(36)) - ((u64)&pagetables >> 12);
 	assert(pt_l3 < ARRAY_SIZE(pagetables));
 	u64 pte_l3 = pagetables[pt_l3][addr >> 12 & 0x1ff];
-	assert((pte_l3 & 3) == 3);
+	assert_msg((pte_l3 & 3) == 3, "0x%"PRIx64" not mapped correctly (L3 translation)\n", addr);
 	return (pte_l3 & MASK64(36) << 12) | (addr & MASK64(12));
 }
 
@@ -150,7 +150,7 @@ void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags) {
 }
 
 static u64 unmap_one(u64 *pt, u64 first, u64 last) {
-	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
+	debug("unmap_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
 	for_array(lvl, pte_lvls) {
 		u32 shift = pte_lvls[lvl].shift;
 		u64 mask = MASK64(shift);
@@ -193,7 +193,7 @@ void mmu_unmap_range(u64 first, u64 last) {
 void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges) {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
-		map_range(pagetables[0], map->first, map->last, map->first, map->type);
+		map_range(pagetables[0], map->first, map->last, map->first, map->flags);
 	}
 #ifdef DEBUG_MSG
 	dump_page_tables();

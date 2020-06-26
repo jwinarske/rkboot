@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <main.h>
 #include <rk3399.h>
+#include <mmu.h>
 #include "rk3399-dmc.h"
 
 const struct phy_layout cfg_layout = {
@@ -304,9 +305,13 @@ void ddrinit() {
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
 	/* not doing this will make the CPU hang */
 	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
+	/* map memory controller ranges */
+	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
 	if (!try_init(3, &init_cfg, 50)) {halt_and_catch_fire();}
 
 	dump_mrs();
+	/* map DRAM region as MMIO; needed for geometry detection */
+	mmu_map_mmio_identity(0, 0xf7ffffff);
 	struct sdram_geometry geo[2];
 	for_channel(ch) {
 		geo[ch].csmask = 0;
@@ -326,9 +331,12 @@ void ddrinit() {
 		channel_post_init(pctl, pi, msch, &init_cfg.msch, &geo[ch]);
 	}
 	u32 csmask = geo[0].csmask | geo[1].csmask << 2;
+	/* map CIC range, needed for frequency switch */
+	mmu_map_mmio_identity(0xff620000, 0xff62ffff);
 	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
 	logs("finished.\n");
+	mmu_unmap_range(0xff620000, 0xff62ffff);
 	encode_dram_size(&geo[0]);
 	/* 256B interleaving */
 	set_channel_stride(0xd);
@@ -336,4 +344,6 @@ void ddrinit() {
 	for_range(bit, 10, 32) {
 		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
 	}
+	mmu_unmap_range(0, 0xf7ffffff);
+	mmu_unmap_range(0xffa80000, 0xffa8ffff);
 }
