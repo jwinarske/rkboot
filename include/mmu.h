@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include "defs.h"
 
@@ -11,6 +12,10 @@ enum {
 	MEM_TYPE_DEV_GRE = 3,
 	MEM_TYPE_NORMAL = 4,
 	MEM_TYPE_UNCACHED = 5,
+	MEM_ACCESS_RW_PRIV = 0 << 3,
+	MEM_ACCESS_RW_UNPRIV = 1 << 3,
+	MEM_ACCESS_RO_PRIV = 2 << 3,
+	MEM_ACCESS_RO_UNPRIV = 3 << 3,
 };
 struct mapping {u64 first, last; u8 type;};
 void invalidate_dcache_set_sctlr(u64);
@@ -18,4 +23,8 @@ void set_sctlr_flush_dcache(u64);
 void flush_dcache();
 void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges);
 void mmu_unmap_range(u64 first, u64 last);
-void mmu_map_range(u64 first, u64 last, u64 paddr, u8 attridx);
+void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags);
+
+static inline void UNUSED mmu_map_mmio_identity(u64 first, u64 last) {
+	mmu_map_range(first, last, first, MEM_TYPE_DEV_nGnRnE);
+}

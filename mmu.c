@@ -92,7 +92,7 @@ static inline u64 *entry2subtable(u64 entry) {
 	return (u64 *)(entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT);
 }
 
-static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u8 attridx) {
+static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
 	for_array(lvl, pte_lvls) {
 		u32 shift = pte_lvls[lvl].shift;
@@ -105,7 +105,9 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u8 attridx) {
 				last = (last - ((u64)1 << shift)) | mask;
 			}
 			u32 last_entry = last >> shift & MASK64(MAPPING_LEVEL_SHIFT);
+			u64 attridx = flags & 7;
 			u64 template = pte_lvls[lvl].last_level ? PGTAB_PAGE(attridx) : PGTAB_BLOCK(attridx);
+			template |= (flags >> 3 & 3) << 8;	/* Data access permissions */
 			for_range(i, first_entry, last_entry + 1) {
 				assert(!(pt[i] & 1));
 				u64 addr = paddr + ((i - first_entry) << shift);
@@ -131,17 +133,17 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u8 attridx) {
 	assert(UNREACHABLE);
 }
 
-static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u8 attridx) {
+static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 	assert(last > first);
 	u64 tmp;
-	while ((tmp = map_one(pt, first, last, paddr, attridx)) < last) {
+	while ((tmp = map_one(pt, first, last, paddr, flags)) < last) {
 		paddr += tmp - first + 1;
 		first = tmp +  1;
 	}
 }
 
-void mmu_map_range(u64 first, u64 last, u64 paddr, u8 attridx) {
-	map_range(pagetables[0], first, last, paddr, attridx);
+void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags) {
+	map_range(pagetables[0], first, last, paddr, flags);
 #ifdef DEBUG_MSG
 	dump_page_tables();
 #endif
