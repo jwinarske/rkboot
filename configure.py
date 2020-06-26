@@ -125,7 +125,7 @@ if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
 if args.excvec:
     for x in ('main', 'memtest'):
-        flags[x].append('-DCONFIG_EXC_VEC')
+        flags[x].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
 if args.crc:
     flags['main'].append('-DCONFIG_CRC')
 flags['memtest'].append(memtest_prngs[args.memtest_prng])

@@ -4,6 +4,8 @@
 #include <rk3399.h>
 #include <stage.h>
 #include <compression.h>
+#include <inttypes.h>
+#include <exc_handler.h>
 
 static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xff8bffff, .type = MEM_TYPE_DEV_nGnRnE},
@@ -38,11 +40,22 @@ __asm__("jump: add sp, x5, #0; br x4");
 _Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
 #endif
 
+#ifdef CONFIG_EXC_VEC
+void sync_exc_handler() {
+	u64 esr, far;
+	__asm__("mrs %0, esr_el3; mrs %1, far_el3" : "=r"(esr), "=r"(far));
+	die("sync exc: ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", esr, far);
+}
+#endif
+
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
 	struct stage_store store;
 	stage_setup(&store);
+#ifdef CONFIG_EXC_VEC
+	sync_exc_handler_spx = sync_exc_handler;
+#endif
 	mmu_setup(initial_mappings, critical_ranges);
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 	ddrinit();
