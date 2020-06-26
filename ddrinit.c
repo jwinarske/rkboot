@@ -302,8 +302,8 @@ void ddrinit() {
 	logs("initializing DRAM\n");
 
 	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
-	/* not doing this will make the CPU hang during the DLL bypass step */
-	*(volatile u32*)0xff330040 = 0xc000c000;
+	/* not doing this will make the CPU hang */
+	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
 	if (!try_init(3, &init_cfg, 50)) {halt_and_catch_fire();}
 
 	dump_mrs();

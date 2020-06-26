@@ -21,7 +21,10 @@ enum {
 	PMUGRF_OS_REG3 = 0x30c >> 2,
 };
 
-enum {PMUSGRF_SOC_CON4 = 0xe010 >> 2};
+enum {
+	PMUSGRF_DDR_RGN_CON = 0,
+	PMUSGRF_SOC_CON4 = 0xe010 >> 2,
+};
 
 enum {
 	CRU_LPLL_CON = 0,
