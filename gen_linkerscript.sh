@@ -31,11 +31,13 @@ SECTIONS {
 		*(.data)
 		__data_end__ = .;
 	} >${memory}
-	.bss : {
+	.bss : ALIGN(16) {
 		__bss_start__ = .;
-		*(.bss*)
+		*(.bss)
+		__bss_noinit__ = ALIGN(16);
+		*(.bss.noinit)
 		__bss_end__ = .;
 	} >${memory}
-	__end__ = .;
+	__end__ = ALIGN(0x1000);
 }
 END

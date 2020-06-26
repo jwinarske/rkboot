@@ -4,7 +4,7 @@
 #include <aarch64.h>
 #include <lib.h>
 
-extern u8 __bss_start__[], __bss_end__[], __exc_base__[];
+extern u8 __bss_start__[], __bss_end__[], __bss_noinit__[], __exc_base__[];
 extern u8 __start__[], __end__[], __ro_end__[], __data_end__[];
 static inline u32 compute_crc32c(u64 *start, u64 *end, u32 seed) {
     while (start < end) {
@@ -33,7 +33,7 @@ static inline void UNUSED stage_setup(struct stage_store *store) {
 	debug("SCTLR_EL3: %016zx\n", sctlr);
 	__asm__ volatile("msr sctlr_el3, %0" : : "r"(sctlr | SCTLR_I));
 	store->sctlr = sctlr;
-	u8 *bss = __bss_start__, *bss_end_ptr =  __bss_end__;
+	u8 *bss = __bss_start__, *bss_end_ptr =  __bss_noinit__;
 	do {*bss++ = 0;} while(bss < bss_end_ptr);
 #ifdef CONFIG_EXC_VEC
 	u64 vbar,  scr;
