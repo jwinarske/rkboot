@@ -180,7 +180,7 @@ static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
 #endif
 	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
-	MAPPING_BINARY,
+	MAPPING_BINARY_SRAM,
 	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL}, /* stack */
 	{.first = 0xff760000, .last = 0xff77ffff, .flags = MEM_TYPE_DEV_nGnRnE}, /* CRU, GRF */
 	{.first = 0, .last = 0, .flags = 0}

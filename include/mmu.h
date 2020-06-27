@@ -19,9 +19,11 @@ enum {
 };
 struct mapping {u64 first, last; u64 flags;};
 extern u8 __start__[], __ro_end__[], __end__[];
-#define MAPPING_BINARY \
-	{.first = (u64)&__start__, .last = (u64)&__ro_end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RO_PRIV}, \
+#define MAPPING_BINARY_EXPLICIT(start) \
+	{.first = start, .last = (u64)&__ro_end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RO_PRIV}, \
 	{.first = (u64)&__ro_end__, .last = (u64)&__end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RW_PRIV}
+#define MAPPING_BINARY_SRAM MAPPING_BINARY_EXPLICIT(0xff8c2000)
+#define MAPPING_BINARY MAPPING_BINARY_EXPLICIT((u64)&__start__)
 
 void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);

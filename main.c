@@ -8,9 +8,9 @@
 #include <exc_handler.h>
 
 static const struct mapping initial_mappings[] = {
-	MAPPING_BINARY,
+	MAPPING_BINARY_SRAM,
 	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = (u64)__start__ - 1, .flags = MEM_TYPE_NORMAL},
+	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL},
 	{.first = 0, .last = 0, .flags = 0}
 };
 
@@ -56,6 +56,7 @@ int32_t ENTRY NO_ASAN main() {
 #ifdef CONFIG_EXC_VEC
 	sync_exc_handler_spx = sync_exc_handler;
 #endif
+	printf("__ro_end__: 0x%"PRIx64"\n", (u64)&__ro_end__);
 	mmu_setup(initial_mappings, critical_ranges);
 	/* map {PMU,}CRU, GRF */
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
