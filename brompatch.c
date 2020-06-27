@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <die.h>
 #include <exc_handler.h>
+#include <dump_mem.h>
 
 static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
@@ -34,21 +35,6 @@ uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
 		} while(bit >>= 1);
 	}
 	return crc;
-}
-
-static void UNUSED dump_mem(void *mem, size_t size) {
-	for_range(i, 0, size / 8) {
-		const u8 *start = (const u8 *)(mem + 8*i);
-		printf("%08"PRIx64":", (u64)start);
-		for_range(j, 0, 8) {
-			printf(" %02"PRIx8, start[j]);
-		}
-		puts("  ");
-		for_range(j, 0, 8) {
-			printf("%c", start[j] < 0x7f && start[j] >= 32 ? start[j] : '.');
-		}
-		puts("\n");
-	}
 }
 
 static struct stage_store store;
