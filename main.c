@@ -40,7 +40,7 @@ __asm__("jump: add sp, x5, #0; br x4");
 _Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
 #endif
 
-#ifdef CONFIG_EXC_VEC
+#if CONFIG_EXC_STACK
 void sync_exc_handler() {
 	u64 esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3" : "=r"(esr), "=r"(far));
@@ -53,7 +53,7 @@ int32_t ENTRY NO_ASAN main() {
 	setup_timer();
 	struct stage_store store;
 	stage_setup(&store);
-#ifdef CONFIG_EXC_VEC
+#ifdef CONFIG_EXC_STACK
 	sync_exc_handler_spx = sync_exc_handler;
 #endif
 	printf("__ro_end__: 0x%"PRIx64"\n", (u64)&__ro_end__);

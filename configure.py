@@ -124,8 +124,8 @@ args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
 if args.excvec:
-    for x in ('main', 'memtest'):
-        flags[x].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
+    for x in ('main', 'memtest', 'elfloader'):
+        flags[x].extend(('-DCONFIG_EXC_VEC=1', '-DCONFIG_EXC_STACK=1'))
 if args.crc:
     flags['main'].append('-DCONFIG_CRC')
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
@@ -218,10 +218,10 @@ if elfloader_decompression:
         flags['elfloader'].append('-DHAVE_ZSTD')
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
-    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1'))
+    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
     elfloader = elfloader + ('spi', 'gicv2')
 if args.elfloader_sd:
-    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1'))
+    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
     elfloader += ('dwmmc', 'gicv2')
 modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
 if not args.embed_elfloader:

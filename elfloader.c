@@ -304,11 +304,22 @@ void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
 	info("product name: %s\n", prod_name);
 }
 
+#if CONFIG_EXC_STACK
+void sync_exc_handler(struct exc_state_save *save) {
+	u64 elr, esr, far;
+	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
+	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
+}
+#endif
+
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
+#ifdef CONFIG_EXC_STACK
+	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
+#endif
 
 	/* clk_i2c4 = PPLL (= 24 MHz) */
 	pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
@@ -398,7 +409,7 @@ _Noreturn u32 ENTRY main() {
 	async->pos = 0;
 #endif
 
-#if CONFIG_EXC_STACK
+#if CONFIG_ELFLOADER_IRQ
 	gicv2_global_setup(gic500d);
 	gicv3_per_cpu_setup(gic500r);
 	u64 xfer_start = get_timestamp();
@@ -463,7 +474,7 @@ _Noreturn u32 ENTRY main() {
 #endif
 #endif
 
-#if CONFIG_EXC_STACK
+#if CONFIG_ELFLOADER_IRQ
 	u64 xfer_end = get_timestamp();
 	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	gicv3_per_cpu_teardown(gic500r);
