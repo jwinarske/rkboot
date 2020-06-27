@@ -33,14 +33,18 @@ enum {
 	CRU_CPLL_CON = 0x060 >> 2,
 	CRU_GPLL_CON = 0x080 >> 2,
 	CRU_CLKSEL_CON = 0x100 >> 2,
+	CRU_CLKGATE_CON = 0x300 >> 2,
 	CRU_SOFTRST_CON = 0x400 >> 2,
 	CRU_SDMMC_CON = 0x580 >> 2,
 };
 
 enum {
+	PMU_PWRDN_CON = 0x14 >> 2,
+	PMU_PWRDN_ST = 0x18 >> 2,
 	PMU_SFT_CON = 0x24 >> 2,
 	PMU_BUS_IDLE_REQ = 0x60 >> 2,
 	PMU_BUS_IDLE_ST = 0x64 >> 2,
+	PMU_BUS_IDLE_ACK = 0x64 >> 2,
 	PMU_DDR_SREF_ST = 0x98 >> 2,
 	PMU_NOC_AUTO_ENA = 0xd8 >> 2,
 };

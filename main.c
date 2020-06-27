@@ -62,7 +62,37 @@ int32_t ENTRY NO_ASAN main() {
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
 	/* map PMU{,SGRF,GRF} */
 	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
+
 	setup_pll(cru + CRU_LPLL_CON, 1200);
+
+	const u32 pd_busses = 0x20c20ff9, pd_domains = 0x93dfc33e;
+	pmu[PMU_BUS_IDLE_REQ] = pd_busses;
+	while (pmu[PMU_BUS_IDLE_ACK] != pd_busses) {__asm__("yield");}
+	debugs("bus idle ack\n");
+	while (pmu[PMU_BUS_IDLE_ST] != pd_busses) {__asm__("yield");}
+	debug("PMU_BUS_IDLE_ACK: %"PRIx32" _ST: %"PRIx32"\n", pmu[PMU_BUS_IDLE_ACK], pmu[PMU_BUS_IDLE_ST]);
+	pmu[PMU_PWRDN_CON] = pd_domains;
+	while(pmu[PMU_PWRDN_ST] != pd_domains) {__asm__("yield");}
+	debug("domains powered down\n");
+
+	pmucru[PMUCRU_CLKGATE_CON+0] = 0x0b630b63;
+	pmucru[PMUCRU_CLKGATE_CON+1] = 0x0a800a80;
+	static const u16 clk_gates[] = {
+		0, 0, 0, 0xb,
+		0x7ff, 0x3e0, 0xf0d, 0x180,
+		0xfff8, 0xd8cf, 0xffff, 0xcdfa,
+		0xf40, 0xeaf3, 0x6, 0,
+		0x505, 0x505, 0, 0,
+		0xce4, 0x24f, 0xd7eb, 0x3700,
+		0x8060, 0x60, 0, 0x1f0,
+		0xcc, 0xfc6, 0x500, 0,
+		0x215, 0, 0x3f
+	};
+	for_array(i, clk_gates) {
+		u32 gates = clk_gates[i];
+		cru[CRU_CLKGATE_CON+i] = gates << 16 | gates;
+	}
+
 	ddrinit();
 	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 1) << 15 | SET_BITS16(7, 3) << 8;
 #ifdef CONFIG_EMBED_ELFLOADER
