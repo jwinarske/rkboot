@@ -52,15 +52,15 @@ static bl_params_t bl_params = {
 };
 
 static const struct mapping initial_mappings[] = {
-	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
-	{.first = 0xf8000000, .last = 0xff8bffff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8effff, .flags = MEM_TYPE_NORMAL},
-	{.first = 0xff8f0000, .last = 0xffffffff, .flags = MEM_TYPE_DEV_nGnRnE},
+	MAPPING_BINARY,
+	{.first = 0, .last = (u64)&__start__ - 1, .flags = MEM_TYPE_NORMAL},
+	{.first = 0x4100000, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
+	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0, .last = 0, .flags = 0}
 };
 
 static const struct address_range critical_ranges[] = {
-	{.first = __start__, .last = __end__},
+	{.first = __start__, .last = __end__ - 1},
 	{.first = uart, .last = uart},
 	ADDRESS_RANGE_INVALID
 };
@@ -320,6 +320,11 @@ _Noreturn u32 ENTRY main() {
 #ifdef CONFIG_EXC_STACK
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 #endif
+	mmu_map_mmio_identity(0xff750000, 0xff77ffff);	/* {PMU,}CRU, GRF */
+	mmu_map_mmio_identity(0xff310000, 0xff33ffff);	/* PMU{,SGRF,GRF} */
+	mmu_map_range(0xff8c0000, 0xff8dffff, 0xff8c0000, MEM_TYPE_NORMAL);	/* SRAM */
+	mmu_map_range(0xff3b0000, 0xff3b1fff, 0xff3b0000, MEM_TYPE_NORMAL);	/* PMUSRAM */
+	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
 
 	/* clk_i2c4 = PPLL (= 24 MHz) */
 	pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
