@@ -120,9 +120,16 @@ static void load_elf(const struct elf_header *header) {
 		assert(ph->vaddr % ph->alignment == 0);
 		u64 alignment = ph->alignment;
 		assert(alignment % 16 == 0);
-		const u64 *src = (const u64 *)((u64)header + ph->offset), *end = src + ((ph->file_size + alignment - 1) / alignment * (alignment / 8));
+		const u64 words_copied = (ph->file_size + 7) >> 3;
+		const u64 words_clear = ((ph->mem_size + 7) >> 3) - words_copied;
+		const u64 *src = (const u64 *)((u64)header + ph->offset);
+		const u64 *end = (const u64 *)ph->vaddr + words_copied;
 		u64 *dest = (u64*)ph->vaddr;
-		while (src < end) {*dest++ = *src++;}
+		debug("copying to %"PRIx64"–%"PRIx64"\n", dest, (u64)end);
+		while (dest < end) {*dest++ = *src++;}
+		end += words_clear;
+		debug("clearing to %"PRIx64"\n", (u64)end);
+		while (dest < end) {*dest++ = 0;}
 	}
 }
 
