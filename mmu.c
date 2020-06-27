@@ -7,6 +7,10 @@
 #include <assert.h>
 #include <inttypes.h>
 
+#ifdef DEBUG_MSG
+#define PRINT_MAPPINGS 1
+#endif
+
 static u64 __attribute__((aligned(4096))) __attribute__((section(".bss.noinit"))) pagetables[8][512];
 static u32 next_pagetable = 1;
 
@@ -135,6 +139,9 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 
 static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 	assert(last > first);
+#if PRINT_MAPPINGS
+	printf("mapping 0x%"PRIx64"–0x%"PRIx64" to paddr 0x%"PRIx64" as %"PRIx64"\n", first, last, paddr, flags);
+#endif
 	u64 tmp;
 	while ((tmp = map_one(pt, first, last, paddr, flags)) < last) {
 		paddr += tmp - first + 1;
