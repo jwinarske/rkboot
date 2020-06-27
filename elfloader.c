@@ -135,7 +135,7 @@ void transform_fdt(const struct fdt_header *header, void *dest, void *initcpio_s
 static const u64 elf_addr = 0x04200000, fdt_addr = 0x00100000, fdt_out_addr = 0x00180000, payload_addr = 0x00280000;
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
 static const u64 blob_addr = 0x04400000;
-_Alignas(16) u8 decomp_state[1 << 14];
+static _Alignas(16) u8 decomp_state[1 << 14];
 #ifdef CONFIG_ELFLOADER_INITCPIO
 static const u64 initcpio_addr = 0x08000000;
 #endif

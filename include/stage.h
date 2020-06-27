@@ -23,7 +23,7 @@ struct stage_store {
 
 #ifdef CONFIG_EXC_VEC
 #ifdef CONFIG_EXC_STACK
-_Alignas(16) u8 exc_stack[4096];
+static _Alignas(16) u8 exc_stack[4096];
 #endif
 #endif
 

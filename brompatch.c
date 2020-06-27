@@ -22,7 +22,7 @@ static const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
-_Alignas(4096) u32 brom_patch_page[1024];
+static _Alignas(4096) u32 brom_patch_page[1024];
 
 uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
 	const uint16_t poly = 0x1021;
@@ -51,7 +51,7 @@ static void UNUSED dump_mem(void *mem, size_t size) {
 	}
 }
 
-struct stage_store store;
+static struct stage_store store;
 
 void exc_handler(struct exc_state_save *save) {
 	u64 elr, esr;
