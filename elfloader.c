@@ -353,6 +353,7 @@ _Noreturn u32 ENTRY main() {
 	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_STOP;
 
 	if (is_pbp) {
+		mmu_map_mmio_identity(0xff420000, 0xff420fff);
 		info("ACK from i2c4-62, this seems to be a Pinebook Pro\n");
 		/* set up PWM2 without muxing it out, just so the kernel will find a value */
 		*(volatile u32*)0xff420024 = 1240;

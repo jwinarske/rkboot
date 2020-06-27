@@ -11,7 +11,7 @@
 #define PRINT_MAPPINGS 1
 #endif
 
-static u64 __attribute__((aligned(4096))) __attribute__((section(".bss.noinit"))) pagetables[9][512];
+static u64 __attribute__((aligned(4096))) __attribute__((section(".bss.noinit"))) pagetables[10][512];
 static u32 next_pagetable = 1;
 
 enum {
@@ -122,7 +122,7 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 		assert_msg(!pte_lvls[lvl].last_level, "mapping 0x%016"PRIx64"–0x%016"PRIx64" is more fine-grained than the granule\n", first, last);
 		u64 entry = pt[first_entry];
 		if ((entry & 3) != 3) {
-			assert(!(entry & 1));
+			assert_msg(!(entry & 1), "ERROR: trying to map over a block mapping; current descriptor: %"PRIx64"\n", entry);
 			u64 *next_pt = alloc_page_table();
 			for_range(i, 0, 1 << MAPPING_LEVEL_SHIFT) {next_pt[i] = 0;}
 			__asm__ volatile("dsb sy");
