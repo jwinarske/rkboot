@@ -11,7 +11,7 @@
 #define PRINT_MAPPINGS 1
 #endif
 
-static u64 __attribute__((aligned(4096))) __attribute__((section(".bss.noinit"))) pagetables[10][512];
+static u64 __attribute__((aligned(4096))) __attribute__((section(".bss.noinit"))) pagetables[11][512];
 static u32 next_pagetable = 1;
 
 enum {
