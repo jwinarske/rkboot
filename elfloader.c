@@ -345,7 +345,7 @@ _Noreturn u32 ENTRY main() {
 	i2c4->clkdiv = i2c_cfg.clkdiv;
 	i2c4->control = i2c_cfg.control;
 	pmugrf[PMUGRF_GPIO1B_IOMUX] = SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8;
-	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_START | RKI2C_CON_MODE_REGISTER_READ;
+	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_START | RKI2C_CON_MODE_REGISTER_READ | RKI2C_CON_ACK;
 	i2c4->slave_addr = 1 << 24 | 0x62 << 1;
 	i2c4->reg_addr = 1 << 24 | 0;
 	i2c4->rx_count = 1;
