@@ -56,7 +56,6 @@ int32_t ENTRY NO_ASAN main() {
 #ifdef CONFIG_EXC_STACK
 	sync_exc_handler_spx = sync_exc_handler;
 #endif
-	printf("__ro_end__: 0x%"PRIx64"\n", (u64)&__ro_end__);
 	mmu_setup(initial_mappings, critical_ranges);
 	/* map {PMU,}CRU, GRF */
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
