@@ -312,7 +312,7 @@ void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
 }
 
 #if CONFIG_EXC_STACK
-void sync_exc_handler(struct exc_state_save *save) {
+void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	u64 elr, esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
