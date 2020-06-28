@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <main.h>
+#include <rkpll.h>
 #include <rk3399.h>
 #include <stage.h>
 #include <uart.h>
@@ -197,9 +198,6 @@ _Noreturn void ENTRY main() {
 	struct stage_store store;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
-	setup_pll(cru + CRU_CPLL_CON, 1000);
-	/* aclk_cci = 500 MHz, DTS has 600 */
-	cru[CRU_CLKSEL_CON + 5] = SET_BITS16(2, 0) << 6 | SET_BITS16(5, 1);
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		printf("\nround %zu, %zu failed so far\n", round, failed_rounds);

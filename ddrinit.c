@@ -2,6 +2,7 @@
 #include <main.h>
 #include <rk3399.h>
 #include <mmu.h>
+#include <rkpll.h>
 #include "rk3399-dmc.h"
 
 const struct phy_layout cfg_layout = {
@@ -126,6 +127,16 @@ void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_u
 	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
 }
 
+static void dpll_wait() {
+	timestamp_t start = get_timestamp();
+	while (!rkpll_switch(cru + CRU_DPLL_CON)) {
+		if (get_timestamp() - start > 100 * TICKS_PER_MICROSECOND) {
+			die("failed to lock-on DPLL\n");
+		}
+		__asm__("yield");
+	}
+}
+
 void fast_freq_switch(u8 freqset, u32 freq) {
 	grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
 	pmu[PMU_NOC_AUTO_ENA] |= 0x180;
@@ -133,7 +144,8 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {debugs("waiting for bus idle\n");}
 	cic[0] = (SET_BITS16(2, freqset) << 4) | (SET_BITS16(1, 1) << 2) | SET_BITS16(1, 1);
 	while (!(cic[CIC_STATUS] & 4)) {debugs("waiting for CIC ready\n");}
-	if (!setup_pll(cru + CRU_DPLL_CON, freq)) {halt_and_catch_fire();}
+	rkpll_configure(cru + CRU_DPLL_CON, freq);
+	dpll_wait();
 	cic[0] = SET_BITS16(1, 1) << 1;
 	debugs("waiting for CIC finish … ");
 	u32 status;
@@ -302,11 +314,11 @@ void ddrinit() {
 	udelay(10);
 	logs("initializing DRAM\n");
 
-	if (!setup_pll(cru + CRU_DPLL_CON, 50)) {die("PLL setup failed\n");}
 	/* not doing this will make the CPU hang */
 	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
 	/* map memory controller ranges */
 	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
+	dsb_ishst();
 	if (!try_init(3, &init_cfg, 50)) {halt_and_catch_fire();}
 
 	dump_mrs();

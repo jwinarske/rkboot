@@ -3,6 +3,7 @@
 #include <main.h>
 #include <uart.h>
 #include <rk3399.h>
+#include <rkpll.h>
 #include <stage.h>
 #include <compression.h>
 #include <async.h>
@@ -11,6 +12,7 @@
 #include <exc_handler.h>
 #if CONFIG_ELFLOADER_SPI
 #include <rkspi.h>
+#include <rkspi_regs.h>
 #endif
 #include <gic.h>
 #include <gic_regs.h>
@@ -332,11 +334,13 @@ _Noreturn u32 ENTRY main() {
 	mmu_map_range(0xff8c0000, 0xff8dffff, 0xff8c0000, MEM_TYPE_NORMAL);	/* SRAM */
 	mmu_map_range(0xff3b0000, 0xff3b1fff, 0xff3b0000, MEM_TYPE_NORMAL);	/* PMUSRAM */
 	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
+	__asm__("dsb ishst");
 
-	/* clk_i2c4 = PPLL (= 24 MHz) */
+	assert_msg(rkpll_switch(pmucru + PMUCRU_PPLL_CON), "PPLL did not lock-on\n");
+	/* clk_i2c4 = PPLL/4 = 169 MHz, DTS has 200 */
 	pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
 	printf("RKI2C4_CON: %"PRIx32"\n", i2c4->control);
-	struct rki2c_config i2c_cfg = rki2c_calc_config_v1(24, 1000000, 600, 20);
+	struct rki2c_config i2c_cfg = rki2c_calc_config_v1(169, 1000000, 600, 20);
 	printf("setup %"PRIx32" %"PRIx32"\n", i2c_cfg.control, i2c_cfg.clkdiv);
 	i2c4->clkdiv = i2c_cfg.clkdiv;
 	i2c4->control = i2c_cfg.control;
@@ -364,22 +368,23 @@ _Noreturn u32 ENTRY main() {
 		info("not running on a Pinebook Pro ⇒ not setting up regulators or LEDs\n");
 	}
 
-	setup_pll(cru + CRU_CPLL_CON, 800);
-	/* aclk_gic = 200 MHz */
-	cru[CRU_CLKSEL_CON + 56] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 3) << 8;
-	/* aclk_cci = 400 MHz, DTS has 600 */
-	cru[CRU_CLKSEL_CON + 5] = SET_BITS16(2, 0) << 6 | SET_BITS16(5, 1);
-	/* aclk_perilp0 = hclk_perilp0 = 100 MHz, pclk_perilp = 50 MHz */
-	cru[CRU_CLKSEL_CON + 23] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 7) | SET_BITS16(2, 0) << 8 | SET_BITS16(3, 1) << 12;
-	/* hclk_perilp1 = pclk_perilp1 = 400 MHz */
-	cru[CRU_CLKSEL_CON + 25] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 3) | SET_BITS16(3, 1) << 8;
+#if CONFIG_ELFLOADER_SPI
+	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
+	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
+	/* clk_spi1 = CPLL/8 = 100 MHz */
+	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 0) << 15 | SET_BITS16(7, 7) << 8;
+	dsb_st();
+	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 0) << 13;
+	spi1->baud = 2;
+#endif
 #if CONFIG_ELFLOADER_SD
-	/* aclk_perihp = 125 MHz, hclk_perihp = aclk_perihp / 2, pclk_perihp = aclk_perihp / 4 */
-	cru[CRU_CLKSEL_CON + 14] = SET_BITS16(3, 3) << 12 | SET_BITS16(2, 1) << 8 | SET_BITS16(1, 0) << 7 | SET_BITS16(5, 7);
 	/* hclk_sd = 200 MHz */
 	cru[CRU_CLKSEL_CON + 13] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
 	/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
 	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 29);
+	dsb_st();
+	cru[CRU_CLKGATE_CON+6] = SET_BITS16(1, 0) << 1;
+	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 0) << 13;
 	/* drive phase 180° */
 	cru[CRU_SDMMC_CON] = SET_BITS16(1, 1);
 	cru[CRU_SDMMC_CON + 0] = SET_BITS16(2, 1) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
@@ -425,14 +430,13 @@ _Noreturn u32 ENTRY main() {
 
 #if CONFIG_ELFLOADER_IRQ
 	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
-	__asm__("dsb ish");
+	dsb_ishst();
 	gicv2_global_setup(gic500d);
 	gicv3_per_cpu_setup(gic500r);
 	u64 xfer_start = get_timestamp();
 #endif
 
 #if CONFIG_ELFLOADER_SPI
-	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
 #ifdef SPI_POLL
 	rkspi_read_flash_poll(spi1, blob, blob_end - blob, 0);
 #else
@@ -514,9 +518,10 @@ _Noreturn u32 ENTRY main() {
 	bl33_ep.args.arg1 = 0;
 	bl33_ep.args.arg2 = 0;
 	bl33_ep.args.arg3 = 0;
-	setup_pll(cru + CRU_BPLL_CON, 600);
+	assert_msg(rkpll_switch(cru + CRU_BPLL_CON), "BPLL did not lock-on\n");
 	/* aclkm_core_b = clk_core_b = BPLL */
 	cru[CRU_CLKSEL_CON + 2] = SET_BITS16(5, 0) << 8 | SET_BITS16(2, 1) << 6 | SET_BITS16(5, 0);
+	cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
 	stage_teardown(&store);
 	while (~uart->line_status & 0x60) {__asm__ volatile("yield");}
 	uart->shadow_fifo_enable = 0;

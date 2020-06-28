@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
+#include "defs.h"
 
 enum {
 	SCTLR_M = 1,
@@ -15,4 +16,5 @@ enum {
 	SCR_EL3_RES1 = 0x30,
 };
 
-static inline void dsb_st() {__asm__("dsb st");}
+static inline void UNUSED dsb_st() {__asm__("dsb st");}
+static inline void UNUSED dsb_ishst() {__asm__("dsb ishst");}
