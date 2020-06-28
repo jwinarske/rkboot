@@ -176,6 +176,8 @@ void rkspi_end_irq_flash_read() {
 	printf("end rxlvl=%"PRIu32", rxthreshold=%"PRIu32" intr_status=0x%"PRIx32"\n", spi->rx_fifo_level, spi->rx_fifo_threshold, spi->intr_raw_status);
 	spi->enable = 0;
 	spi->slave_enable = 0;
+	spi->intr_raw_status = SPI_RX_FULL_INTR;
+	mmio_barrier();
 	spi->intr_mask = 0;
 	gicv2_disable_spi(gic500d, spi1_intr);
 	fiq_handler_spx = irq_handler_spx = 0;
