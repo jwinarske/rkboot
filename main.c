@@ -65,7 +65,7 @@ int32_t ENTRY NO_ASAN main() {
 
 	setup_pll(cru + CRU_LPLL_CON, 1200);
 
-	const u32 pd_busses = 0x20c20ff9, pd_domains = 0x93dfc33e;
+	const u32 pd_busses = 0x20c00e79, pd_domains = 0x93cf833e;
 	pmu[PMU_BUS_IDLE_REQ] = pd_busses;
 	while (pmu[PMU_BUS_IDLE_ACK] != pd_busses) {__asm__("yield");}
 	debugs("bus idle ack\n");
