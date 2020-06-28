@@ -55,10 +55,10 @@ static void tx_fast_read_cmd(volatile struct rkspi *spi, u32 addr) {
 static const u16 spi1_intr = 85;
 static const u8 irq_threshold = 24;
 static const u16 max_transfer = 0xffff / (2 * irq_threshold) * irq_threshold * 2;
-struct async_transfer spi1_async;
+struct async_transfer spi1_async = {};
 struct spi_xfer_state {
 	u16 this_xfer_items;
-} spi1_state;
+} spi1_state = {};
 
 enum {
 	SPI_RX_FULL_INTR = 16,

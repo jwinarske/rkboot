@@ -217,7 +217,7 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 }
 
 #if CONFIG_ELFLOADER_SD
-struct async_transfer sdmmc_async;
+struct async_transfer sdmmc_async = {};
 static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
 
 static const u32 sdmmc_intid = 97, sdmmc_irq_threshold = 128;
@@ -412,6 +412,7 @@ _Noreturn u32 ENTRY main() {
 #elif CONFIG_ELFLOADER_SD
 	async = &sdmmc_async;
 	async->total_bytes = 60 << 20;
+	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
 	info("starting SDMMC\n");
 	dwmmc_init(sdmmc);
 	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
@@ -423,13 +424,15 @@ _Noreturn u32 ENTRY main() {
 #endif
 
 #if CONFIG_ELFLOADER_IRQ
+	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
+	__asm__("dsb ish");
 	gicv2_global_setup(gic500d);
 	gicv3_per_cpu_setup(gic500r);
 	u64 xfer_start = get_timestamp();
 #endif
 
 #if CONFIG_ELFLOADER_SPI
-
+	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
 #ifdef SPI_POLL
 	rkspi_read_flash_poll(spi1, blob, blob_end - blob, 0);
 #else
