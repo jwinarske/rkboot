@@ -8,6 +8,7 @@
 #include <exc_handler.h>
 #include <rkpll.h>
 #include <rksaradc_regs.h>
+#include <rkgpio_regs.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY_SRAM,
@@ -70,6 +71,11 @@ int32_t ENTRY NO_ASAN main() {
 	}
 	struct stage_store store;
 	stage_setup(&store);
+
+	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
+	gpio0->port |= 1 << 2;
+	gpio0->direction |= 1 << 2;
+
 #ifdef CONFIG_EXC_STACK
 	sync_exc_handler_spx = sync_exc_handler;
 #endif

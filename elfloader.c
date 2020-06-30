@@ -10,6 +10,7 @@
 #include <rki2c.h>
 #include <rki2c_regs.h>
 #include <exc_handler.h>
+#include <rkgpio_regs.h>
 #if CONFIG_ELFLOADER_SPI
 #include <rkspi.h>
 #include <rkspi_regs.h>
@@ -334,7 +335,8 @@ _Noreturn u32 ENTRY main() {
 	mmu_map_range(0xff8c0000, 0xff8dffff, 0xff8c0000, MEM_TYPE_NORMAL);	/* SRAM */
 	mmu_map_range(0xff3b0000, 0xff3b1fff, 0xff3b0000, MEM_TYPE_NORMAL);	/* PMUSRAM */
 	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
-	__asm__("dsb ishst");
+	mmu_map_mmio_identity((u64)gpio0, (u64)gpio0 + 0xfff);
+	dsb_ishst();
 
 	assert_msg(rkpll_switch(pmucru + PMUCRU_PPLL_CON), "PPLL did not lock-on\n");
 	/* clk_i2c4 = PPLL/4 = 169 MHz, DTS has 200 */
@@ -358,6 +360,7 @@ _Noreturn u32 ENTRY main() {
 
 	if (is_pbp) {
 		mmu_map_mmio_identity(0xff420000, 0xff420fff);
+		dsb_ishst();
 		info("ACK from i2c4-62, this seems to be a Pinebook Pro\n");
 		/* set up PWM2 without muxing it out, just so the kernel will find a value */
 		*(volatile u32*)0xff420024 = 1240;
@@ -499,6 +502,10 @@ _Noreturn u32 ENTRY main() {
 	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	gicv3_per_cpu_teardown(gic500r);
 #endif
+
+	/* GPIO0B3: White and green LED on the RockPro64 and Pinebook Pro respectively, not connected on the Rock Pi 4 */
+	gpio0->port |= 1 << 11;
+	gpio0->direction |= 1 << 11;
 
 	const struct elf_header *header = (const struct elf_header*)elf_addr;
 	load_elf(header);
