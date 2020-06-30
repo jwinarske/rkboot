@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <exc_handler.h>
 #include <rkpll.h>
+#include <rksaradc_regs.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY_SRAM,
@@ -52,6 +53,21 @@ void sync_exc_handler() {
 int32_t ENTRY NO_ASAN main() {
 	setup_uart();
 	setup_timer();
+	cru[CRU_CLKSEL_CON+26] = SET_BITS16(8, 2) << 8;
+	saradc->control = 0;
+	dsb_st();
+	saradc->control = 1 | RKSARADC_POWER_UP | RKSARADC_INT_ENABLE;
+	mmio_barrier();
+	while (~saradc->control & RKSARADC_INTERRUPT) {__asm__("yield");}
+	mmio_barrier();
+	u32 recovery_value = saradc->data;
+	mmio_barrier();
+	saradc->control = 0;
+	if (recovery_value <= 255) {
+		while (uart->tx_level) {__asm__("yield");}
+		for (const char *text = "recovery\r\n"; *text; ++text) {uart->tx = *text;}
+		__asm__("add sp, %0, #0x2000; br %1" : : "r"((u64)0xff8c0000), "r"((u64)0xffff0100));
+	}
 	struct stage_store store;
 	stage_setup(&store);
 #ifdef CONFIG_EXC_STACK

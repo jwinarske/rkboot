@@ -83,5 +83,8 @@ static volatile struct rkspi *const spi1 = (volatile struct rkspi*)0xff1d0000;
 struct rki2c_regs;
 static volatile struct rki2c_regs *const i2c4 = (volatile struct rki2c_regs *)0xff3d0000;
 
+struct rksaradc_regs;
+static volatile struct rksaradc_regs *const saradc = (volatile struct rksaradc_regs *)0xff100000;
+
 enum {SPI_MAX_RECV = 0xfffe};
 void spi_read_flash(u8 *buf, u32 size);
