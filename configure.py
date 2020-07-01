@@ -201,7 +201,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 ))
 
 lib = ('timer', 'lib/error', 'lib/uart', 'lib/mmu')
-levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
+levinboot = ('main', 'pll') + tuple('dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit'))
 if args.embed_elfloader:
     levinboot += ('compression/lzcommon', 'compression/lz4')
 elfloader = ('elfloader', 'transform_fdt', 'lib/rki2c', 'pll')
@@ -267,11 +267,8 @@ regtool_targets = {
     'grp_slave_delay_f1': regtool_job('adrctl', flags='--set freq 1 --mhz 50 800 400 --first 20 --last 22'),
 }
 for name, job in regtool_targets.items():
-    print(build(name+'.gen.c', 'regtool', path.join(srcdir, job.input+'-fields.txt'), 'regtool', flags=job.flags))
-print('build dramcfg.o: cc {src}/dramcfg.c | {deps}'.format(
-	src=esc(srcdir),
-	deps=" ".join(esc(name + ".gen.c") for name in regtool_targets.keys())
-))
+    print(build(name+'.gen.c', 'regtool', path.join(srcdir, "dram", job.input+'-fields.txt'), 'regtool', flags=job.flags))
+print(build('dramcfg.o', 'cc', path.join(srcdir, 'dram/dramcfg.c'), (name + ".gen.c" for name in regtool_targets)))
 levinboot += ('dramcfg',)
 
 levinboot = levinboot + lib
