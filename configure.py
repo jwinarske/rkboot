@@ -200,14 +200,14 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
     genld=esc(genld)
 ))
 
-lib = ('timer', 'error', 'uart', 'mmu')
+lib = ('timer', 'lib/error', 'lib/uart', 'lib/mmu')
 levinboot = ('main', 'pll', 'odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')
 if args.embed_elfloader:
     levinboot += ('compression/lzcommon', 'compression/lz4')
-elfloader = ('elfloader', 'transform_fdt', 'rki2c', 'pll')
+elfloader = ('elfloader', 'transform_fdt', 'lib/rki2c', 'pll')
 if elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
-    elfloader += ('compression/lzcommon', 'string')
+    elfloader += ('compression/lzcommon', 'lib/string')
     if args.elfloader_lz4:
         flags['elfloader'].append('-DHAVE_LZ4')
         elfloader += ('compression/lz4',)
@@ -219,11 +219,11 @@ if elfloader_decompression:
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
-    elfloader = elfloader + ('spi', 'gicv2')
+    elfloader = elfloader + ('lib/rkspi', 'lib/gicv2')
 if args.elfloader_sd:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
-    elfloader += ('dwmmc', 'gicv2')
-modules = lib + levinboot + elfloader + ('teststage', 'dump_fdt')
+    elfloader += ('lib/dwmmc', 'lib/gicv2')
+modules = lib + levinboot + elfloader + ('teststage', 'lib/dump_fdt')
 if not args.embed_elfloader:
     modules += ('memtest', 'brompatch')
 modules = set(modules)
@@ -238,14 +238,14 @@ for f in modules:
     src = path.join(srcdir, f+'.c')
     print(build(base+'.o', 'cc', src, **build_flags))
 
-print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'dcache.S'))))
+print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
 lib += ('dcache',)
-print(build('exc_handlers.o', 'cc', path.join(srcdir, 'exc_handlers.S')))
+print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 if args.excvec:
     lib += ('exc_handlers',)
 if args.elfloader_spi or args.elfloader_sd:
     elfloader += ('exc_handlers', 'gicv3')
-    print(build('gicv3.o', 'cc', path.join(srcdir, 'gicv3.S')))
+    print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
 lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))

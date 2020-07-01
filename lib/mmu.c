@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include "include/log.h"
-#include "include/die.h"
-#include "include/aarch64.h"
-#include "include/mmu.h"
+#include <log.h>
+#include <die.h>
+#include <aarch64.h>
+#include <mmu.h>
 #include <stdio.h>
 #include <assert.h>
 #include <inttypes.h>
