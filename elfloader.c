@@ -14,6 +14,7 @@
 #if CONFIG_ELFLOADER_SPI
 #include <rkspi.h>
 #include <rkspi_regs.h>
+#include "rk3399_spi.h"
 #endif
 #include <gic.h>
 #include <gic_regs.h>
@@ -437,7 +438,8 @@ _Noreturn u32 ENTRY main() {
 
 #if CONFIG_ELFLOADER_SPI
 #ifdef SPI_POLL
-	rkspi_read_flash_poll(spi1, blob, blob_end - blob, 0);
+	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, 0);
+	async->pos = async->total_bytes;
 #else
 	rkspi_start_irq_flash_read(0);
 #endif
@@ -492,6 +494,8 @@ _Noreturn u32 ENTRY main() {
 
 #endif
 #endif
+
+	printf("had read %zu bytes\n", async->pos);
 
 #if CONFIG_ELFLOADER_IRQ
 	u64 xfer_end = get_timestamp();
