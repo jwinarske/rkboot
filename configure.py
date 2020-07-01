@@ -219,13 +219,14 @@ if elfloader_decompression:
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
-    elfloader = elfloader + ('lib/rkspi', 'lib/gicv2')
+    elfloader = elfloader + ('lib/rkspi', 'lib/gicv2', 'rk3399_spi')
 if args.elfloader_sd:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
     elfloader += ('lib/dwmmc', 'lib/gicv2')
+spi_flasher = ('spi_flasher', 'lib/rkspi')
 modules = lib + levinboot + elfloader + ('teststage', 'lib/dump_fdt')
 if not args.embed_elfloader:
-    modules += ('memtest', 'brompatch')
+    modules += spi_flasher + ('memtest', 'brompatch')
 modules = set(modules)
 
 if args.full_debug:
@@ -294,6 +295,7 @@ binary('levinboot-sd', levinboot, 'ff8c2004')
 if not args.embed_elfloader:
     binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
     binary('brompatch', ('brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '04100000')
+    binary('spi-flasher', spi_flasher + lib, '04000000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:

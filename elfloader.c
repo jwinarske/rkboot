@@ -322,6 +322,8 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 }
 #endif
 
+void rk3399_spi_setup();
+
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
 	struct stage_store store;
@@ -372,13 +374,7 @@ _Noreturn u32 ENTRY main() {
 	}
 
 #if CONFIG_ELFLOADER_SPI
-	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
-	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
-	/* clk_spi1 = CPLL/8 = 100 MHz */
-	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 0) << 15 | SET_BITS16(7, 7) << 8;
-	dsb_st();
-	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 0) << 13;
-	spi1->baud = 2;
+	rk3399_spi_setup();
 #endif
 #if CONFIG_ELFLOADER_SD
 	/* hclk_sd = 200 MHz */
