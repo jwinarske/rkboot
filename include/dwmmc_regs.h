@@ -86,3 +86,20 @@ enum {
 	DWMMC_STATUS_DATA_BUSY = 1 << 9,
 	/* … */
 };
+
+struct dwmmc_idmac_desc {
+	u32 control;
+	u32 sizes;
+	u32 ptr1;
+	u32 ptr2;
+};
+
+enum {
+	DWMMC_DES_OWN = 1 << 31,
+	DWMMC_DES_CES = 1 << 30,
+	DWMMC_DES_END_OF_RING = 32,
+	DWMMC_DES_CHAIN_PTR = 16,
+	DWMMC_DES_FIRST = 8,
+	DWMMC_DES_LAST = 4,
+	DWMMC_DES_DISABLE_INTERRUPT = 2,
+};
