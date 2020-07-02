@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include "tools.h"
 
 void write_buf(const u8 *buf, size_t size) {
@@ -23,10 +24,36 @@ void write_buf(const u8 *buf, size_t size) {
 	}
 }
 
+enum mode {
+	MODE_HELP,
+	MODE_SD_IMAGE,
+	MODE_DECRYPT,
+};
+
 int main(int argc, char **argv) {
 	u8 rc4_state[258];
 	rc4_init(&rc4_state[0]);
-	if (argc == 2) {
+	enum mode mode = MODE_HELP;
+	if (argc == 1) {
+		mode = MODE_SD_IMAGE;
+	} else if (argc == 2) {
+		if (0 == strcmp(argv[1], "sd")){
+			mode = MODE_SD_IMAGE;
+		} else if (0 == strcmp(argv[1], "decrypt")){
+			mode = MODE_DECRYPT;
+		}
+	}
+	switch (mode) {
+	case MODE_HELP:
+		printf("usage: %s [sd | spi | decrypt | help]\n\n", argv[0]);
+		puts("Reads from stdin. Operating modes:\n\n"
+			"* sd (default): produces an ID block for the RK33xx chips with a single following bootloader image (which is read from stdin), in the format used on SD or eMMC.\n"
+			"* spi: produces an ID block for the RK33xx chips with a single following bootloader image (which is read from stdin), in the format used on SPI flash.\n"
+			"* decrypt: reads 512 bytes of stdin and XORs them with the well-known RC4 cipher stream used for ID blocks.\n"
+			"* help: displays this help.\n"
+		);
+		return 0;
+	case MODE_DECRYPT:{
 		u8 buf[512];
 		memset(&buf[0], 0, 512);
 		size_t size = 0;
@@ -44,7 +71,11 @@ int main(int argc, char **argv) {
 		}
 		rc4(&buf[0], 512, &rc4_state[0]);
 		write_buf(&buf[0], 512);
-	} else {
+		break;
+	}
+	case MODE_SD_IMAGE:{
+		u8 padding[2048];
+		memset(padding, 0, sizeof(padding));
 		u8 *buf = malloc(1 << 22);
 		if (!buf) {dprintf(2, "allocation failed\n"); return 1;}
 		size_t size = 0;
@@ -78,6 +109,7 @@ int main(int argc, char **argv) {
 		write_buf(&idblock[0], 2048);
 		write_buf((const u8*)"RK33", 4);
 		write_buf(buf, size);
-	}
+		break;
+	}}
 	return 0;
 }
