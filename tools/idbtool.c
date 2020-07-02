@@ -27,6 +27,7 @@ void write_buf(const u8 *buf, size_t size) {
 enum mode {
 	MODE_HELP,
 	MODE_SD_IMAGE,
+	MODE_SPI_IMAGE,
 	MODE_DECRYPT,
 };
 
@@ -37,7 +38,9 @@ int main(int argc, char **argv) {
 	if (argc == 1) {
 		mode = MODE_SD_IMAGE;
 	} else if (argc == 2) {
-		if (0 == strcmp(argv[1], "sd")){
+		if (0 == strcmp(argv[1], "spi")) {
+			mode = MODE_SPI_IMAGE;
+		} else if (0 == strcmp(argv[1], "sd")){
 			mode = MODE_SD_IMAGE;
 		} else if (0 == strcmp(argv[1], "decrypt")){
 			mode = MODE_DECRYPT;
@@ -73,7 +76,8 @@ int main(int argc, char **argv) {
 		write_buf(&buf[0], 512);
 		break;
 	}
-	case MODE_SD_IMAGE:{
+	case MODE_SD_IMAGE:
+	case MODE_SPI_IMAGE:{
 		u8 padding[2048];
 		memset(padding, 0, sizeof(padding));
 		u8 *buf = malloc(1 << 22);
@@ -107,8 +111,28 @@ int main(int argc, char **argv) {
 		idblock[508] = sectors & 0xff; idblock[509] = sectors >> 8;
 		rc4(&idblock[0], 512, &rc4_state[0]);
 		write_buf(&idblock[0], 2048);
-		write_buf((const u8*)"RK33", 4);
-		write_buf(buf, size);
+		if (mode == MODE_SD_IMAGE) {
+			write_buf((const u8*)"RK33", 4);
+			write_buf(buf, size);
+		} else {
+			assert(mode == MODE_SPI_IMAGE);
+			write_buf(padding, sizeof(padding));
+			write_buf((const u8*)"RK33", 4);
+			if (size <= 2044) {
+				write_buf(buf, size);
+				return 0;
+			}
+			write_buf(buf, 2044);
+			write_buf(padding, sizeof(padding));
+			size_t pos = 2044;
+			if (size >= 2048) {while (1) {
+				if (pos >= size - 2048) {break;}
+				write_buf(buf + pos, 2048);
+				pos += 2048;
+				write_buf(padding, sizeof(padding));
+			}}
+			write_buf(buf + pos, size - pos);
+		}
 		break;
 	}}
 	return 0;
