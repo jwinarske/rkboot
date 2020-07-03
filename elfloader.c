@@ -223,101 +223,11 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 #endif
 	die("couldn't probe");
 }
-
-#if CONFIG_ELFLOADER_SD
-struct async_transfer sdmmc_async = {};
-static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
-
-static const u32 sdmmc_intid = 97, sdmmc_irq_threshold = 128;
-
-static void handle_sdmmc_interrupt(volatile struct dwmmc_regs *sdmmc, struct async_transfer *async) {
-	u32 items_to_read = 0, rintsts = sdmmc->rintsts, ack = 0;
-	assert((rintsts & DWMMC_ERROR_INT_MASK) == 0);
-	if (rintsts & DWMMC_INT_DATA_TRANSFER_OVER) {
-		ack |= DWMMC_INT_DATA_TRANSFER_OVER;
-		items_to_read = sdmmc->status >> 17 & 0x1fff;
-	}
-	if (rintsts & DWMMC_INT_RX_FIFO_DATA_REQ) {
-		ack |= DWMMC_INT_RX_FIFO_DATA_REQ;
-		if (items_to_read < sdmmc_irq_threshold) {
-			items_to_read = sdmmc_irq_threshold;
-		}
-	}
-	if (items_to_read) {
-		u32 *buf = (u32*)async->buf;
-		size_t pos = async->pos;
-		assert(pos % 4 == 0);
-		for_range(i, 0, items_to_read) {
-			buf[pos/4] = *(volatile u32 *)0xfe320200;
-			pos += 4;
-		}
-		async->pos = pos;
-	}
-#ifdef DEBUG_MSG
-	if (unlikely(!ack)) {
-		dwmmc_print_status(sdmmc);
-		debug("don't know what to do with interrupt\n");
-	} else if (ack == 0x20) {
-		debugs(".");
-	} else {
-		debug("ack %"PRIx32"\n", ack);
-	}
-#endif
-	sdmmc->rintsts = ack;
-}
-
-static void irq_handler() {
-	u64 grp0_intid;
-	__asm__ volatile("mrs %0, "ICC_IAR0_EL1 : "=r"(grp0_intid));
-	u64 sp;
-	__asm__("add %0, SP, #0" : "=r"(sp));
-	spew("SP=%"PRIx64"\n", sp);
-	if (grp0_intid >= 1020 && grp0_intid < 1023) {
-		if (grp0_intid == 1020) {
-			die("intid1020");
-		} else if (grp0_intid == 1021) {
-			die("intid1021");
-		} else if (grp0_intid == 1022) {
-			die("intid1022");
-		}
-	} else {
-		__asm__("msr DAIFClr, #0xf");
-		if (grp0_intid == sdmmc_intid) {
-			spew("SDMMC interrupt, buf=0x%zx\n", (size_t)sdmmc_async.buf);
-			handle_sdmmc_interrupt(sdmmc, &sdmmc_async);
-		} else if (grp0_intid == 1023) {
-			debugs("spurious interrupt\n");
-		} else {
-			die("unexpected group 0 interrupt");
-		}
-	}
-	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
-}
-
-void dwmmc_start_irq_read(volatile struct dwmmc_regs *dwmmc, u32 sector) {
-	fiq_handler_spx = irq_handler_spx = irq_handler;
-	gicv2_setup_spi(gic500d, sdmmc_intid, 0x80, 1, IGROUP_0 | INTR_LEVEL);
-	dwmmc->intmask = DWMMC_ERROR_INT_MASK | DWMMC_INT_DATA_TRANSFER_OVER | DWMMC_INT_RX_FIFO_DATA_REQ | DWMMC_INT_TX_FIFO_DATA_REQ;
-	dwmmc->ctrl |= DWMMC_CTRL_INT_ENABLE;
-	assert(sdmmc_async.total_bytes % 512 == 0);
-	dwmmc->blksiz = 512;
-	dwmmc->bytcnt = sdmmc_async.total_bytes;
-	enum dwmmc_status st = dwmmc_wait_cmd_done(dwmmc, 18 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector, 1000);
-	dwmmc_check_ok_status(dwmmc, st, "CMD18 (READ_MULTIPLE_BLOCK)");
-}
-#endif
 #endif
 
-void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3) {
-	u32 cid[4] = {cid0, cid1, cid2, cid3};
-	for_range(i, 0, 4) {
-		info("CID%"PRIu32": %08"PRIx32"\n", i, cid[i]);
-	}
-	info("card month: %04"PRIu32"-%02"PRIu32", serial 0x%08"PRIx32"\n", (cid[0] >> 12 & 0xfff) + 2000, cid[0] >> 8 & 0xf, cid[0] >> 24 | cid[1] << 8);
-	info("mfg 0x%02"PRIx32" oem 0x%04"PRIx32" hwrev %"PRIu32" fwrev %"PRIu32"\n", cid[3] >> 24, cid[3] >> 8 & 0xffff, cid[1] >> 28 & 0xf, cid[1] >> 24 & 0xf);
-	char prod_name[6] = {cid[3] & 0xff, cid[2] >> 24 & 0xff, cid[2] >> 16 & 0xff, cid[2] >> 8 & 0xff, cid[2] & 0xff, 0};
-	info("product name: %s\n", prod_name);
-}
+void rk3399_sdmmc_start_irq_read(u32 sector);
+void rk3399_sdmmc_end_irq_read();
+extern struct async_transfer sdmmc_async;
 
 #if CONFIG_EXC_STACK
 void sync_exc_handler(struct exc_state_save UNUSED *save) {
@@ -455,7 +365,7 @@ _Noreturn u32 ENTRY main() {
 	dwmmc_read_poll(sdmmc, sd_start_sector, async->buf, async->total_bytes);
 	async->pos = async->total_bytes;
 #else
-	dwmmc_start_irq_read(sdmmc, sd_start_sector);
+	rk3399_sdmmc_start_irq_read(sd_start_sector);
 #endif
 
 #endif
@@ -493,8 +403,7 @@ _Noreturn u32 ENTRY main() {
 #elif CONFIG_ELFLOADER_SD
 
 #ifndef SD_POLL
-	gicv2_disable_spi(gic500d, sdmmc_intid);
-	fiq_handler_spx = irq_handler_spx = 0;
+	rk3399_sdmmc_end_irq_read();
 #endif
 
 #endif

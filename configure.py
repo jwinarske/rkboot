@@ -226,7 +226,7 @@ if args.elfloader_spi:
     elfloader = elfloader + ('lib/rkspi', 'lib/gicv2', 'rk3399_spi')
 if args.elfloader_sd:
     flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
-    elfloader += ('lib/dwmmc', 'lib/gicv2')
+    elfloader += ('lib/dwmmc', 'lib/sd', 'lib/gicv2', 'rk3399_sdmmc')
 spi_flasher = ('brompatch-spi', 'lib/rkspi', 'brompatch')
 modules = lib + levinboot + elfloader + ('teststage', 'lib/dump_fdt')
 if not args.embed_elfloader:
