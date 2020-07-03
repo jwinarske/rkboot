@@ -33,6 +33,12 @@ struct dwmmc_regs {
 	u32 rst_n;
 	u32 padding2;
 	u32 bmod;
+	u32 poll_demand;
+	u32 desc_list_base;
+	u32 idmac_status;
+	u32 idmac_int_enable;
+	u32 cur_desc_addr;
+	u32 cur_buf_addr;
 };
 CHECK_OFFSET(dwmmc_regs, cmdarg, 0x28);
 CHECK_OFFSET(dwmmc_regs, status, 0x48);
@@ -40,6 +46,7 @@ CHECK_OFFSET(dwmmc_regs, hcon, 0x70);
 CHECK_OFFSET(dwmmc_regs, bmod, 0x80);
 
 enum {
+	DWMMC_CTRL_USE_IDMAC = 1 << 25,
 	/* … */
 	DWMMC_CTRL_INT_ENABLE = 16,
 	/* bit 3 reserved */
@@ -87,12 +94,35 @@ enum {
 	/* … */
 };
 
+enum {
+	/* … */
+	DWMMC_BMOD_IDMAC_ENABLE = 1 << 7,
+	/* … */
+	DWMMC_BMOD_FIXED_BURST = 2,
+	DWMMC_BMOD_SOFT_RESET = 1,
+};
+
+enum {
+	DWMMC_IDMAC_INT_ABNORMAL = 1 << 9,
+	DWMMC_IDMAC_INT_NORMAL = 1 << 8,
+	DWMMC_IDMAC_INT_CARD_ERROR = 32,
+	DWMMC_IDMAC_INT_DESC_UNAVAILABLE = 16,
+	DWMMC_IDMAC_INT_FATAL_BUS_ERROR = 4,
+	DWMMC_IDMAC_INT_RECEIVE = 2,
+	DWMMC_IDMAC_INT_TRANSMIT = 1,
+	DWMMC_IDMAC_INTMASK_ABNORMAL = 0x214,
+	DWMMC_IDMAC_INTMASK_NORMAL = 0x103,
+	DWMMC_IDMAC_INTMASK_ALL = 0x337,
+};
+
 struct dwmmc_idmac_desc {
-	u32 control;
+	_Alignas(8)
+	_Atomic(u32) control;
 	u32 sizes;
 	u32 ptr1;
 	u32 ptr2;
 };
+_Static_assert(sizeof(struct dwmmc_idmac_desc) == 16, "iDMAC descriptor size is wrong");
 
 enum {
 	DWMMC_DES_OWN = 1 << 31,
