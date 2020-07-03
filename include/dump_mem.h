@@ -4,7 +4,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-static inline void UNUSED dump_mem(void *mem, size_t size) {
+static inline void UNUSED dump_mem(const void *mem, size_t size) {
 	static const size_t columns = 16;
 	for_range(i, 0, size / columns) {
 		const u8 *start = (const u8 *)(mem + columns*i);
