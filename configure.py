@@ -177,7 +177,7 @@ rule bin
 rule incbin
     command = {objcopy} -I binary -O elf64-littleaarch64 -B aarch64 $incbin_flags $flags $in $out
 rule run
-    command = $bin <$in >$out
+    command = $bin $flags <$in >$out
 rule regtool
     command = ./regtool --read $in $flags --hex >$out
 rule ldscript
@@ -188,6 +188,9 @@ rule lz4
 build idbtool: buildcc {src}/tools/idbtool.c
 build levinboot-sd.img: run levinboot-img.bin | idbtool
     bin = ./idbtool
+build levinboot-spi.img: run levinboot-img.bin | idbtool
+    bin = ./idbtool
+    flags = spi
 build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 '''.format(
     cflags=cflags,
@@ -298,7 +301,7 @@ if not args.embed_elfloader:
     binary('brompatch', ('brompatch-mem', 'brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '04100000')
     binary('spi-flasher', spi_flasher + lib, '04100000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
-print("default levinboot-sd.img levinboot-usb.bin teststage.bin")
+print("default levinboot-sd.img levinboot-spi.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:
     elfloader = elfloader + lib
     binary('elfloader', elfloader, '04000000')
