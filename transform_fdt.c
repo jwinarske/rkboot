@@ -50,10 +50,11 @@ static char *memcpy(char *dest, const char *src, size_t len) {
 	return ret;
 }
 
-void transform_fdt(const struct fdt_header *header, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size) {
+void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size) {
 	assert_unimpl(dram_start <= 0xffffffff && dram_size <= 0xffffffff, "64-bit DRAM address/size");
 	const u32 src_size = read_be32(&header->totalsize);
 	const u64 src_end = (u64)header + src_size;
+	assert(src_end <= (u64)input_end);
 	const u32 version = read_be32(&header->version);
 	const u32 compatible = read_be32(&header->last_compatible_version);
 	assert(version >= compatible);

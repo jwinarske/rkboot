@@ -138,11 +138,11 @@ static void load_elf(const struct elf_header *header) {
 	}
 }
 
-#define DRAM_START 0
+#define DRAM_START ((u64)0)
 #define TZRAM_SIZE 0x00200000
 
 static u32 dram_size() {return 0xf8000000;}
-void transform_fdt(const struct fdt_header *header, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size);
+void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size);
 
 static const u64 elf_addr = 0x04200000, fdt_addr = 0x00100000, fdt_out_addr = 0x00180000, payload_addr = 0x00280000;
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
@@ -183,7 +183,23 @@ static size_t wait_for_data(struct async_transfer *async, size_t old_pos) {
 	return pos;
 }
 
+static void UNUSED async_wait(struct async_transfer *async) {
+	while (async->pos < async->total_bytes) {
+#if CONFIG_ELFLOADER_SPI
+		spew("idle pos=0x%zx rxlvl=%"PRIu32", rxthreshold=%"PRIu32"\n", spi1_state.pos, spi->rx_fifo_level, spi->rx_fifo_threshold);
+#elif CONFIG_ELFLOADER_SD
+#ifdef SPEW_MSG
+		spew("idle ");dwmmc_print_status(sdmmc);
+#endif
+#endif
+		__asm__("wfi");
+	}
+}
+
 static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 **out_end) {
+#ifdef ASYNC_WAIT
+	async_wait(async);
+#endif
 	struct decompressor_state *state = (struct decompressor_state *)decomp_state;
 	size_t size, xfer_pos = async->pos;
 	u64 start = get_timestamp();
@@ -238,6 +254,92 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 #endif
 
 void rk3399_spi_setup();
+
+struct payload_desc {
+	u8 *elf_start, *elf_end;
+	u8 *fdt_start, *fdt_end;
+	u8 *kernel_start, *kernel_end;
+#if CONFIG_ELFLOADER_INITCPIO
+	u8 *initcpio_start, *initcpio_end;
+#endif
+};
+
+void decompress_payload(struct async_transfer *async, struct payload_desc *payload) {
+	payload->elf_end -= LZCOMMON_BLOCK;
+	size_t offset = decompress(async, 0, payload->elf_start, &payload->elf_end);
+	payload->fdt_end -= LZCOMMON_BLOCK;
+	offset = decompress(async, offset, (u8 *)fdt_addr, &payload->fdt_end);
+	payload->kernel_end -= LZCOMMON_BLOCK;
+	offset = decompress(async, offset, (u8 *)payload_addr, &payload->kernel_end);
+#ifdef CONFIG_ELFLOADER_INITCPIO
+	payload->initcpio_end -= LZCOMMON_BLOCK;
+	offset = decompress(async, offset, (u8 *)initcpio_addr, &payload->initcpio_end);
+#endif
+}
+
+#if CONFIG_ELFLOADER_MEMORY
+static void load_from_memory(struct payload_desc *payload) {
+	struct async_transfer async = {
+		.buf = (u8 *)blob_addr,
+		.total_bytes = 60 << 20,
+		.pos = 60 << 20,
+	};
+	decompress_payload(&async, payload);
+}
+#endif
+
+#if CONFIG_ELFLOADER_SPI
+static void load_from_spi(struct payload_desc *payload) {
+	u32 spi_load_addr = 256 << 10;
+	struct async_transfer *async = &spi1_async;
+	async->total_bytes = 16 << 20;
+	async->buf = (u8 *)blob_addr;
+	async->pos = 0;
+#if !CONFIG_ELFLOADER_IRQ
+	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, spi_load_addr);
+	async->pos = async->total_bytes;
+#else
+	rkspi_start_irq_flash_read(spi_load_addr);
+#endif
+
+	decompress_payload(async, payload);
+
+#if CONFIG_ELFLOADER_IRQ
+	rkspi_end_irq_flash_read();
+#endif
+
+	printf("had read %zu bytes\n", async->pos);
+}
+#endif
+
+#if CONFIG_ELFLOADER_SD
+static void load_from_sd(struct payload_desc *payload) {
+	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
+	struct async_transfer *async = &sdmmc_async;
+	async->total_bytes = 60 << 20;
+	async->buf = (u8 *)blob_addr;
+	async->pos = 0;
+	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
+	dsb_ishst();
+	info("starting SDMMC\n");
+	dwmmc_init(sdmmc);
+
+#if !CONFIG_ELFLOADER_IRQ
+	dwmmc_read_poll(sdmmc, sd_start_sector, async->buf, async->total_bytes);
+	async->pos = async->total_bytes;
+#else
+	rk3399_sdmmc_start_irq_read(sd_start_sector);
+#endif
+
+	decompress_payload(async, payload);
+
+#if !CONFIG_ELFLOADER_IRQ
+	rk3399_sdmmc_end_irq_read();
+#endif
+
+	printf("had read %zu bytes\n", async->pos);
+}
+#endif
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
@@ -315,32 +417,18 @@ _Noreturn u32 ENTRY main() {
 	udelay(2000);
 #endif
 
+	struct payload_desc payload;
+	payload.elf_start = (u8 *)elf_addr;
+	payload.elf_end =  (u8 *)blob_addr;
+	payload.fdt_start = (u8 *)fdt_addr;
+	payload.fdt_end = (u8 *)fdt_out_addr;
+	payload.kernel_start = (u8 *)payload_addr;
+	payload.kernel_end = __start__;
+
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
-	struct async_transfer *async;
-#if CONFIG_ELFLOADER_MEMORY
-	struct async_transfer xfer = {
-		.buf = (u8 *)blob_addr,
-		.total_bytes = 60 << 20,
-		.pos = 60 << 20,
-	};
-	async = &xfer;
-#else
-#if CONFIG_ELFLOADER_SPI
-	async = &spi1_async;
-	async->total_bytes = 16 << 20;
-	u32 spi_load_addr = 256 << 10;
-#elif CONFIG_ELFLOADER_SD
-	async = &sdmmc_async;
-	async->total_bytes = 60 << 20;
-	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
-	info("starting SDMMC\n");
-	dwmmc_init(sdmmc);
-	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
-#else
-#error No elfloader payload source specified
-#endif
-	async->buf = (u8 *)blob_addr;
-	async->pos = 0;
+#if CONFIG_ELFLOADER_INITCPIO
+	payload.initcpio_start = (u8 *)initcpio_addr;
+	payload.initcpio_end = (u8 *)(DRAM_START + dram_size());
 #endif
 
 #if CONFIG_ELFLOADER_IRQ
@@ -351,89 +439,40 @@ _Noreturn u32 ENTRY main() {
 	u64 xfer_start = get_timestamp();
 #endif
 
-#if CONFIG_ELFLOADER_SPI
-#ifdef SPI_POLL
-	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, spi_load_addr);
-	async->pos = async->total_bytes;
+#if CONFIG_ELFLOADER_MEMORY
+	load_from_memory(&payload);
+#elif CONFIG_ELFLOADER_SPI
+	load_from_spi(&payload);
+#elif CONFIG_ELFLOADER_SD
+	load_from_sd(&payload);
 #else
-	rkspi_start_irq_flash_read(spi_load_addr);
+#error No elfloader payload source specified
 #endif
-
-#elif CONFIG_ELFLOADER_SD
-
-#ifdef SD_POLL
-	dwmmc_read_poll(sdmmc, sd_start_sector, async->buf, async->total_bytes);
-	async->pos = async->total_bytes;
-#else
-	rk3399_sdmmc_start_irq_read(sd_start_sector);
-#endif
-
-#endif
-
-#ifdef ASYNC_WAIT
-	while (async->pos < async->total_bytes) {
-#if CONFIG_ELFLOADER_SPI
-		spew("idle pos=0x%zx rxlvl=%"PRIu32", rxthreshold=%"PRIu32"\n", spi1_state.pos, spi->rx_fifo_level, spi->rx_fifo_threshold);
-#elif CONFIG_ELFLOADER_SD
-#ifdef SPEW_MSG
-		spew("idle ");dwmmc_print_status(sdmmc);
-#endif
-#endif
-		__asm__("wfi");
-	}
-#endif
-
-	u8 *end = (u8 *)blob_addr - LZCOMMON_BLOCK;
-	size_t offset = decompress(async, 0, (u8 *)elf_addr, &end);
-	end = (u8 *)fdt_out_addr - LZCOMMON_BLOCK;
-	offset = decompress(async, offset, (u8 *)fdt_addr, &end);
-	end = __start__ - LZCOMMON_BLOCK;
-	offset = decompress(async, offset, (u8 *)payload_addr, &end);
-#ifdef CONFIG_ELFLOADER_INITCPIO
-	u8 *initcpio_end = (u8 *)(u64)(DRAM_START + dram_size() - LZCOMMON_BLOCK);
-	offset = decompress(async, offset, (u8 *)initcpio_addr, &initcpio_end);
-#endif
-
-#if CONFIG_ELFLOADER_SPI
-
-#ifndef SPI_POLL
-	rkspi_end_irq_flash_read();
-#endif
-
-#elif CONFIG_ELFLOADER_SD
-
-#ifndef SD_POLL
-	rk3399_sdmmc_end_irq_read();
-#endif
-
-#endif
-#endif
-
-	printf("had read %zu bytes\n", async->pos);
 
 #if CONFIG_ELFLOADER_IRQ
 	u64 xfer_end = get_timestamp();
 	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 	gicv3_per_cpu_teardown(gic500r);
 #endif
+#endif
 
 	/* GPIO0B3: White and green LED on the RockPro64 and Pinebook Pro respectively, not connected on the Rock Pi 4 */
 	gpio0->port |= 1 << 11;
 	gpio0->direction |= 1 << 11;
 
-	const struct elf_header *header = (const struct elf_header*)elf_addr;
+	const struct elf_header *header = (const struct elf_header*)payload.elf_start;
 	load_elf(header);
 
-	transform_fdt((const struct fdt_header *)fdt_addr, (void *)fdt_out_addr,
+	transform_fdt((const struct fdt_header *)payload.fdt_start, payload.fdt_end, (void *)fdt_out_addr,
 #ifdef CONFIG_ELFLOADER_INITCPIO
-		(void *)initcpio_addr, initcpio_end,
+		payload.initcpio_start, payload.initcpio_end,
 #else
 		0, 0,
 #endif
 	       DRAM_START + TZRAM_SIZE, dram_size() - TZRAM_SIZE
 	);
 
-	bl33_ep.pc = payload_addr;
+	bl33_ep.pc = (uintptr_t)payload.kernel_start;
 	bl33_ep.spsr = 9; /* jump into EL2 with SPSel = 1 */
 	bl33_ep.args.arg0 = fdt_out_addr;
 	bl33_ep.args.arg1 = 0;
