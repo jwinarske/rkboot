@@ -186,7 +186,7 @@ rule lz4
     command = lz4 -c $flags $in > $out
 
 build idbtool: buildcc {src}/tools/idbtool.c
-build levinboot.img: run levinboot-sd.bin | idbtool
+build levinboot-sd.img: run levinboot-img.bin | idbtool
     bin = ./idbtool
 build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 '''.format(
@@ -292,13 +292,13 @@ def binary(name, modules, base_address):
     print(build(name + '.bin', 'bin', name + '.elf'))
 
 binary('levinboot-usb', levinboot, 'ff8c2000')
-binary('levinboot-sd', levinboot, 'ff8c2004')
+binary('levinboot-img', levinboot, 'ff8c2004')
 if not args.embed_elfloader:
     binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
     binary('brompatch', ('brompatch-mem', 'brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '04100000')
     binary('spi-flasher', spi_flasher + lib, '04100000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
-print("default levinboot.img levinboot-usb.bin teststage.bin")
+print("default levinboot-sd.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:
     elfloader = elfloader + lib
     binary('elfloader', elfloader, '04000000')

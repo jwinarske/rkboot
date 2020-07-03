@@ -53,7 +53,7 @@
 					exit 1
 				fi
 				if test "$NIXOS_INSTALL_BOOTLOADER" = 1; then
-					dd if=${(import ./. {inherit pkgs;}).levinboot}/levinboot.img of="${cfg.bootloader-device}"
+					dd if=${(import ./. {inherit pkgs;}).levinboot}/levinboot-sd.img of="${cfg.bootloader-device}"
 				fi
 				${pkgs.dtc}/bin/fdtput -pt s - <$1/dtbs/${cfg.dtb} /chosen bootargs "systemConfig=$1 init=$1/init `cat $1/kernel-params`" | gzip | cat ${payload}/bl31.gz - ${payload}/Image.gz $1/initrd | dd of=${cfg.payload-device}
 				sync

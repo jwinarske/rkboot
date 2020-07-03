@@ -79,7 +79,7 @@ Primary build targets are:
 
 - :output:`levinboot-usb.bin`: this is used for _`Booting via USB`.
 
-- :output:`levinboot.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
+- :output:`levinboot-sd.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
   Configure with :cmdargs:`--elfloader-spi --embed-elfloader` to make this useful.
 
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
@@ -157,9 +157,9 @@ levinboot can load its payload images from SPI flash. This way it can be used as
 Currently the build system can only produce images usable on SD or eMMC chips, not for SPI flash itself.
 This is probably for the best since right now levinboot is not considered production-ready yet and as such it makes sense to store the critical part on easily-removed/-disabled storage in case it breaks.
 
-Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
+Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
 
-You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot.img` to sector 64 on SD/eMMC for use in self-booting.
+You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on SD/eMMC for use in self-booting.
 
 After DRAM init, this will asynchronously read up to 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro) as needed, and will decompress the payload blob from it.
 The flash contents after the end of _`The Payload Blob` are not used by levinboot and may be used for a root file system.
@@ -174,8 +174,8 @@ Compared to SPI payload loading, this offers potentially better performance and 
 
 Configure the build with :cmdargs:`--elfloader-sd --embed-elfloader` in addition to your choice of preferred compression format (you need at least one).
 
-The output images (:output:`levinboot.img` and :output:`levinboot-usb.bin`) will initialize the SDMMC block and try to start an SDHC/SDXC card connected to it, currently at 25 MHz bus frequency, and load up to 60 MiB of payload starting at sector 8192 (4 MiB offset), as needed for decompression.
+The output images (:output:`levinboot-sd.img` and :output:`levinboot-usb.bin`) will initialize the SDMMC block and try to start an SDHC/SDXC card connected to it, currently at 25 MHz bus frequency, and load up to 60 MiB of payload starting at sector 8192 (4 MiB offset), as needed for decompression.
 
-You can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot.img` to sector 64 on the SD card (or eMMC if you feel like it, but it makes little sense).
+You can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card (or eMMC if you feel like it, but it makes little sense).
 
 While levinboot does not read partition tables at this point, it may be advisable to create partitions starting at sectors 64 and 8192, for easier and potentially safer upgrades of levinboot and the payload, respectively.

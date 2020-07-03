@@ -90,7 +90,7 @@ fi
 if [ -z "$skip" -o "$skip" == "8" ]; then
 	echo "Configuration 8: levinboot SD image with zstd decompressor"
 	"$src/configure.py" --with-atf-headers "$atf" --embed-elfloader --elfloader-spi --elfloader-zstd
-	ninja levinboot.img
+	ninja levinboot-sd.img
 	echo "Build successful"
 fi
 
