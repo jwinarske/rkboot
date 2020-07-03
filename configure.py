@@ -155,6 +155,8 @@ if use_irq:
 for m in ('elfloader', 'rk3399_sdmmc', 'rk3399_spi'):
     flags[m].append('-DCONFIG_ELFLOADER_IRQ='+('1' if use_irq else '0'))
 
+flags['rk3399_sdmmc'].append("-DCONFIG_ELFLOADER_DMA=1")
+
 if elfloader_decompression and not args.elfloader_spi and not args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_MEMORY=1')
 

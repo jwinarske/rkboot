@@ -131,7 +131,12 @@ void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 	dwmmc_init(sdmmc);
 
 #if !CONFIG_ELFLOADER_IRQ
+#if !CONFIG_ELFLOADER_DMA
 	dwmmc_read_poll(sdmmc, sd_start_sector, async->buf, async->total_bytes);
+#else
+	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
+	dwmmc_read_poll_dma(sdmmc, sd_start_sector, async->buf, async->total_bytes);
+#endif
 	async->pos = async->total_bytes;
 #else
 	rk3399_sdmmc_start_irq_read(sd_start_sector);

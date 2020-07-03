@@ -15,6 +15,7 @@ timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t r
 void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc);
 void dwmmc_init(volatile struct dwmmc_regs *dwmmc);
 void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes);
+void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes);
 
 static inline void UNUSED dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
