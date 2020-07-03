@@ -33,6 +33,13 @@ prompt() {
 
 read -p "enter a configuration number, or press enter to start from the beginning: " skip
 
+if [ -z "$skip" -o "$skip" = "0" ]; then
+	echo "Configuration 0: wipe SPI ID block. Not needed if there is no bootloader in SPI, will require some kind of recovery button mechanism to get into mask ROM mode if there is."
+	"$src/configure.py"
+	ninja levinboot-usb.bin spi-flasher.bin
+	until prompt || echo -en "\\xff" | usbtool --call levinboot-usb.bin --load 4100000 spi-flasher.bin --dramcall 4100000 1000 --pload 0 -; do true; done
+fi
+
 if [ -z "$skip" -o "$skip" == "1" ]; then
 	echo "Configuration 1: only levinboot + memtest"
 	"$src/configure.py"
