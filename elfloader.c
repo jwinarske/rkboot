@@ -418,6 +418,7 @@ _Noreturn u32 ENTRY main() {
 #if CONFIG_ELFLOADER_SPI
 	async = &spi1_async;
 	async->total_bytes = 16 << 20;
+	u32 spi_load_addr = 256 << 10;
 #elif CONFIG_ELFLOADER_SD
 	async = &sdmmc_async;
 	async->total_bytes = 60 << 20;
@@ -442,10 +443,10 @@ _Noreturn u32 ENTRY main() {
 
 #if CONFIG_ELFLOADER_SPI
 #ifdef SPI_POLL
-	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, 0);
+	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, spi_load_addr);
 	async->pos = async->total_bytes;
 #else
-	rkspi_start_irq_flash_read(0);
+	rkspi_start_irq_flash_read(spi_load_addr);
 #endif
 
 #elif CONFIG_ELFLOADER_SD
