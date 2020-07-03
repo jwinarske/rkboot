@@ -12,10 +12,12 @@
 #include <log.h>
 #include <async.h>
 #include <assert.h>
+#include "elfloader.h"
+#include "rk3399_spi.h"
 
 static const u16 spi1_intr = 85;
-struct async_transfer spi1_async = {};
-struct rkspi_xfer_state spi1_state = {};
+static struct async_transfer spi1_async = {};
+static struct rkspi_xfer_state spi1_state = {};
 
 static void irq_handler() {
 	u64 grp0_intid;
@@ -72,4 +74,32 @@ void rkspi_end_irq_flash_read() {
 	spi->intr_mask = 0;
 	gicv2_disable_spi(gic500d, spi1_intr);
 	fiq_handler_spx = irq_handler_spx = 0;
+}
+
+void load_from_spi(struct payload_desc *payload, u8 *buf, size_t buf_size) {
+	u32 spi_load_addr = 256 << 10;
+	struct async_transfer *async = &spi1_async;
+	async->total_bytes = 16 << 20;
+	if (buf_size < (16 << 20)) {
+		async->total_bytes = buf_size;
+	}
+	async->buf = buf;
+	async->pos = 0;
+
+	rk3399_spi_setup();
+#if !CONFIG_ELFLOADER_IRQ
+	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, spi_load_addr);
+	async->pos = async->total_bytes;
+#else
+	rkspi_start_irq_flash_read(spi_load_addr);
+#endif
+
+	decompress_payload(async, payload);
+
+#if CONFIG_ELFLOADER_IRQ
+	rkspi_end_irq_flash_read();
+#endif
+	rk3399_spi_teardown();
+
+	printf("had read %zu bytes\n", async->pos);
 }

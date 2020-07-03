@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include "elfloader.h"
 #include <inttypes.h>
 #include <main.h>
 #include <uart.h>
@@ -241,10 +242,6 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 }
 #endif
 
-void rk3399_sdmmc_start_irq_read(u32 sector);
-void rk3399_sdmmc_end_irq_read();
-extern struct async_transfer sdmmc_async;
-
 #if CONFIG_EXC_STACK
 void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	u64 elr, esr, far;
@@ -254,15 +251,6 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 #endif
 
 void rk3399_spi_setup();
-
-struct payload_desc {
-	u8 *elf_start, *elf_end;
-	u8 *fdt_start, *fdt_end;
-	u8 *kernel_start, *kernel_end;
-#if CONFIG_ELFLOADER_INITCPIO
-	u8 *initcpio_start, *initcpio_end;
-#endif
-};
 
 void decompress_payload(struct async_transfer *async, struct payload_desc *payload) {
 	payload->elf_end -= LZCOMMON_BLOCK;
@@ -278,68 +266,18 @@ void decompress_payload(struct async_transfer *async, struct payload_desc *paylo
 }
 
 #if CONFIG_ELFLOADER_MEMORY
-static void load_from_memory(struct payload_desc *payload) {
+static void load_from_memory(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 	struct async_transfer async = {
 		.buf = (u8 *)blob_addr,
-		.total_bytes = 60 << 20,
-		.pos = 60 << 20,
+		.total_bytes = buf_size,
+		.pos = buf_size,
 	};
 	decompress_payload(&async, payload);
 }
 #endif
 
-#if CONFIG_ELFLOADER_SPI
-static void load_from_spi(struct payload_desc *payload) {
-	u32 spi_load_addr = 256 << 10;
-	struct async_transfer *async = &spi1_async;
-	async->total_bytes = 16 << 20;
-	async->buf = (u8 *)blob_addr;
-	async->pos = 0;
-#if !CONFIG_ELFLOADER_IRQ
-	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, spi_load_addr);
-	async->pos = async->total_bytes;
-#else
-	rkspi_start_irq_flash_read(spi_load_addr);
-#endif
-
-	decompress_payload(async, payload);
-
-#if CONFIG_ELFLOADER_IRQ
-	rkspi_end_irq_flash_read();
-#endif
-
-	printf("had read %zu bytes\n", async->pos);
-}
-#endif
-
-#if CONFIG_ELFLOADER_SD
-static void load_from_sd(struct payload_desc *payload) {
-	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
-	struct async_transfer *async = &sdmmc_async;
-	async->total_bytes = 60 << 20;
-	async->buf = (u8 *)blob_addr;
-	async->pos = 0;
-	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
-	dsb_ishst();
-	info("starting SDMMC\n");
-	dwmmc_init(sdmmc);
-
-#if !CONFIG_ELFLOADER_IRQ
-	dwmmc_read_poll(sdmmc, sd_start_sector, async->buf, async->total_bytes);
-	async->pos = async->total_bytes;
-#else
-	rk3399_sdmmc_start_irq_read(sd_start_sector);
-#endif
-
-	decompress_payload(async, payload);
-
-#if !CONFIG_ELFLOADER_IRQ
-	rk3399_sdmmc_end_irq_read();
-#endif
-
-	printf("had read %zu bytes\n", async->pos);
-}
-#endif
+void load_from_spi(struct payload_desc *payload, u8 *buf, size_t buf_size);
+void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size);
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
@@ -390,33 +328,6 @@ _Noreturn u32 ENTRY main() {
 		info("not running on a Pinebook Pro ⇒ not setting up regulators or LEDs\n");
 	}
 
-#if CONFIG_ELFLOADER_SPI
-	rk3399_spi_setup();
-#endif
-#if CONFIG_ELFLOADER_SD
-	/* hclk_sd = 200 MHz */
-	cru[CRU_CLKSEL_CON + 13] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
-	/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
-	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 29);
-	dsb_st();
-	cru[CRU_CLKGATE_CON+6] = SET_BITS16(1, 0) << 1;
-	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 0) << 13;
-	/* drive phase 180° */
-	cru[CRU_SDMMC_CON] = SET_BITS16(1, 1);
-	cru[CRU_SDMMC_CON + 0] = SET_BITS16(2, 1) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
-	cru[CRU_SDMMC_CON + 1] = SET_BITS16(2, 0) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
-	cru[CRU_SDMMC_CON] = SET_BITS16(1, 0);
-	/* mux out the SD lines */
-	grf[GRF_GPIO4B_IOMUX] = SET_BITS16(2, 1) | SET_BITS16(2, 1) << 2 | SET_BITS16(2, 1) << 4 | SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8 | SET_BITS16(2, 1) << 10;
-	/* mux out card detect */
-	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 14;
-	/* reset SDMMC */
-	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 1) << 10;
-	udelay(100);
-	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 0) << 10;
-	udelay(2000);
-#endif
-
 	struct payload_desc payload;
 	payload.elf_start = (u8 *)elf_addr;
 	payload.elf_end =  (u8 *)blob_addr;
@@ -440,11 +351,11 @@ _Noreturn u32 ENTRY main() {
 #endif
 
 #if CONFIG_ELFLOADER_MEMORY
-	load_from_memory(&payload);
+	load_from_memory(&payload, (u8 *)blob_addr, 60 << 20);
 #elif CONFIG_ELFLOADER_SPI
-	load_from_spi(&payload);
+	load_from_spi(&payload, (u8 *)blob_addr, 60 << 20);
 #elif CONFIG_ELFLOADER_SD
-	load_from_sd(&payload);
+	load_from_sd(&payload, (u8 *)blob_addr, 60 << 20);
 #else
 #error No elfloader payload source specified
 #endif

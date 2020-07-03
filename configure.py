@@ -86,6 +86,12 @@ parser.add_argument(
     help='embed the elfloader stage into levinboot proper'
 )
 parser.add_argument(
+    '--elfloader-poll',
+    action='store_true',
+    dest='elfloader_poll',
+    help='use polling instead of IRQs for loading payloads'
+)
+parser.add_argument(
     '--elfloader-spi',
     action='store_true',
     dest='elfloader_spi',
@@ -142,6 +148,12 @@ if (args.elfloader_spi or args.elfloader_initcpio) and not elfloader_decompressi
     print("WARNING: --elfloader-spi and --elfloader-initcpio require decompression support, enabling zstd")
     elfloader_decompression = True
     args.elfloader_zstd = True
+
+use_irq = not args.elfloader_poll and (args.elfloader_spi or args.elfloader_sd)
+if use_irq:
+    flags['elfloader'].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1'))
+for m in ('elfloader', 'rk3399_sdmmc', 'rk3399_spi'):
+    flags[m].append('-DCONFIG_ELFLOADER_IRQ='+('1' if use_irq else '0'))
 
 if elfloader_decompression and not args.elfloader_spi and not args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_MEMORY=1')
@@ -222,10 +234,10 @@ if elfloader_decompression:
         flags['elfloader'].append('-DHAVE_ZSTD')
         elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
 if args.elfloader_spi:
-    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SPI=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader = elfloader + ('lib/rkspi', 'lib/gicv2', 'rk3399_spi')
 if args.elfloader_sd:
-    flags['elfloader'].extend(('-DCONFIG_ELFLOADER_SD=1', '-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1', '-DCONFIG_ELFLOADER_IRQ=1'))
+    flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
     elfloader += ('lib/dwmmc', 'lib/sd', 'lib/gicv2', 'rk3399_sdmmc')
 spi_flasher = ('brompatch-spi', 'lib/rkspi', 'brompatch')
 modules = lib + levinboot + elfloader + ('teststage', 'lib/dump_fdt')

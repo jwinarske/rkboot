@@ -5,11 +5,6 @@
 #include <rkspi_regs.h>
 #include <mmu.h>
 
-extern struct async_transfer spi1_async;
-
-void rkspi_start_irq_flash_read(u32 addr);
-void rkspi_end_irq_flash_read();
-
 static inline void UNUSED rk3399_spi_setup() {
 	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
 	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
