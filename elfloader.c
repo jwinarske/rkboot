@@ -11,6 +11,7 @@
 #include <rki2c_regs.h>
 #include <exc_handler.h>
 #include <rkgpio_regs.h>
+#include <dump_mem.h>
 #if CONFIG_ELFLOADER_SPI
 #include <rkspi.h>
 #include <rkspi_regs.h>
@@ -217,6 +218,9 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 			return offset;
 		}
 	}
+#if DEBUG_MSG
+	dump_mem(buf + offset, xfer_pos - offset < 1024 ? xfer_pos - offset : 1024);
+#endif
 	die("couldn't probe");
 }
 
