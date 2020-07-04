@@ -199,50 +199,61 @@ void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, s
 		}
 	}
 }
-static struct dwmmc_idmac_desc _Alignas(64) dma_desc;
+static struct {_Alignas(64) struct dwmmc_idmac_desc desc;} dma_desc[4];
 
 void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes) {
 	assert(total_bytes >= 512);
 	puts("DMA read\n");
-	dma_desc.control = 0;
-	__asm__ volatile("dc cvac, %0": : "r"(&dma_desc));
+	for_array(i, dma_desc) {
+		dma_desc[i].desc.control = 0;
+		__asm__ volatile("dc cvac, %0": : "r"(&dma_desc[i]));
+	}
 	dwmmc->bmod = DWMMC_BMOD_SOFT_RESET;
 	dwmmc->ctrl |= DWMMC_CTRL_USE_IDMAC | DWMMC_CTRL_DMA_RESET;
 	while (dwmmc->ctrl & DWMMC_CTRL_DMA_RESET) {__asm__("yield");}
 	while (dwmmc->bmod & DWMMC_BMOD_SOFT_RESET) {__asm__("yield");}
-	dwmmc->bmod = DWMMC_BMOD_IDMAC_ENABLE;
+	dwmmc->bmod = DWMMC_BMOD_IDMAC_ENABLE | 12 << 2;
 	dwmmc->idmac_int_enable = DWMMC_IDMAC_INTMASK_ALL;
 	printf("bmod %"PRIx32"\n", dwmmc->bmod);
-		/*dma_desc.sizes = 512;
-		dma_desc.ptr1 = (u32)buf;
-		dma_desc.ptr2 = 0;
-		dma_desc.control = DWMMC_DES_FIRST | DWMMC_DES_LAST | DWMMC_DES_END_OF_RING | DWMMC_DES_OWN;
-		__asm__ volatile("dc cvac, %0": : "r"(&dma_desc));*/
 	dwmmc->desc_list_base = (u32)&dma_desc;
 	read_command(dwmmc, sector, total_bytes);
 	u32 desc_written = 0, desc_completed = 0;
 	while (total_bytes || desc_written > desc_completed) {
 		u32 status = dwmmc->idmac_status;
-		printf("idmac %"PRIu32"/%"PRIu32" status=0x%"PRIx32" cur_desc=0x%08"PRIx32" cur_buf=0x%08"PRIx32"\n", desc_written, desc_completed, status, dwmmc->cur_desc_addr, dwmmc->cur_buf_addr);
+		puts("?");
+		spew("idmac %"PRIu32"/%"PRIu32" status=0x%"PRIx32" cur_desc=0x%08"PRIx32" cur_buf=0x%08"PRIx32"\n", desc_completed, desc_written, status, dwmmc->cur_desc_addr, dwmmc->cur_buf_addr);
 		if (status & DWMMC_IDMAC_INT_RECEIVE) {
-			desc_completed += 1;
 			dwmmc->idmac_status = DWMMC_IDMAC_INT_NORMAL | DWMMC_IDMAC_INT_RECEIVE;
 		}
-		if (status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
+		while (desc_completed < desc_written) {
+			__asm__ volatile("dc ivac, %0;dmb sy": : "r"(dma_desc + desc_completed % ARRAY_SIZE(dma_desc)) : "memory");
+			if (dma_desc[desc_completed % ARRAY_SIZE(dma_desc)].desc.control & DWMMC_DES_OWN) {break;}
+			desc_completed += 1;
+			spews("complete\n");
+			puts(".");
+		}
+		while (total_bytes && desc_completed + ARRAY_SIZE(dma_desc) > desc_written) {
 			u32 dma_size = total_bytes < 4096 ? total_bytes : 4096;
 			total_bytes -= dma_size;
-			dma_desc.sizes = dma_size;
-			dma_desc.ptr1 = (u32)buf;
-			dma_desc.ptr2 = 0;
-			u32 first_flag = DWMMC_DES_FIRST;
+			u32 idx = desc_written % ARRAY_SIZE(dma_desc);
+			struct dwmmc_idmac_desc *desc = &dma_desc[idx].desc;
+			desc->sizes = dma_size;
+			desc->ptr1 = (u32)buf;
+			desc->ptr2 = 0;
+			u32 first_flag = !desc_written ? DWMMC_DES_FIRST : 0;
 			u32 last_flag = !total_bytes ? DWMMC_DES_LAST : 0;
-			u32 control = first_flag | last_flag | DWMMC_DES_END_OF_RING | DWMMC_DES_END_OF_RING | DWMMC_DES_OWN;
-			printf("writing descriptor %08"PRIx32" %08"PRIx32"\n", control, (u32)buf);
-			dma_desc.control = control;
+			u32 ring_end_flag = idx == ARRAY_SIZE(dma_desc) - 1 ? DWMMC_DES_END_OF_RING : 0;
+			u32 control = first_flag | last_flag | ring_end_flag | DWMMC_DES_OWN;
+			puts("=");
+			spew("writing descriptor@%"PRIx64": %08"PRIx32" %08"PRIx32"\n", (u64)desc, control, (u32)buf);
+			dsb_st();
+			desc->control = control;
 			first_flag = 0;
 			buf += dma_size;
 			desc_written += 1;
-			__asm__ volatile("dc cvac, %0": : "r"(&dma_desc));
+			__asm__ volatile("dmb sy;dc civac, %0": : "r"(desc) : "memory");
+		}
+		if (status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
 			dwmmc->idmac_status = DWMMC_IDMAC_INT_ABNORMAL | DWMMC_IDMAC_INT_DESC_UNAVAILABLE;
 			dwmmc->poll_demand = 1;
 		} else {
