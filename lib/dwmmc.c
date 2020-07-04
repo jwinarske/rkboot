@@ -199,66 +199,99 @@ void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, s
 		}
 	}
 }
-static struct {_Alignas(64) struct dwmmc_idmac_desc desc;} dma_desc[4];
+struct dwmmc_dma_state {
+	u32 desc_written, desc_completed;
+	void *buf;
+	size_t bytes_left, bytes_transferred;
+	struct {_Alignas(64) struct dwmmc_idmac_desc desc;} desc[4];
+};
 
-void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes) {
-	assert(total_bytes >= 512);
-	puts("DMA read\n");
-	for_array(i, dma_desc) {
-		dma_desc[i].desc.control = 0;
-		__asm__ volatile("dc cvac, %0": : "r"(&dma_desc[i]));
-	}
+void dwmmc_setup_dma(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc->bmod = DWMMC_BMOD_SOFT_RESET;
 	dwmmc->ctrl |= DWMMC_CTRL_USE_IDMAC | DWMMC_CTRL_DMA_RESET;
 	while (dwmmc->ctrl & DWMMC_CTRL_DMA_RESET) {__asm__("yield");}
 	while (dwmmc->bmod & DWMMC_BMOD_SOFT_RESET) {__asm__("yield");}
 	dwmmc->bmod = DWMMC_BMOD_IDMAC_ENABLE | 12 << 2;
 	dwmmc->idmac_int_enable = DWMMC_IDMAC_INTMASK_ALL;
+}
+
+void dwmmc_init_dma_state(struct dwmmc_dma_state *state) {
+	state->desc_completed = state->desc_written = 0;
+
+	for_array(i, state->desc) {
+		state->desc[i].desc.control = 0;
+		__asm__ volatile("dc cvac, %0": : "r"(&state->desc[i]) : "memory");
+	}
+}
+
+void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_dma_state *state) {
+	u32 status = dwmmc->idmac_status;
+	u32 desc_written = state->desc_written, desc_completed = state->desc_completed;
+	size_t bytes_transferred = state->bytes_transferred;
+	size_t bytes_left = state->bytes_left;
+	debugs("?");
+	spew("idmac %"PRIu32"/%"PRIu32" %zx/%zx status=0x%"PRIx32" cur_desc=0x%08"PRIx32" cur_buf=0x%08"PRIx32"\n", desc_completed, desc_written, bytes_transferred, bytes_left, status, dwmmc->cur_desc_addr, dwmmc->cur_buf_addr);
+	if (status & DWMMC_IDMAC_INT_RECEIVE) {
+		dwmmc->idmac_status = DWMMC_IDMAC_INT_NORMAL | DWMMC_IDMAC_INT_RECEIVE;
+	}
+	while (desc_completed < desc_written) {
+		__asm__ volatile("dc ivac, %0;dmb sy": : "r"(state->desc + desc_completed % ARRAY_SIZE(state->desc)) : "memory");
+		u32 idx = desc_completed % ARRAY_SIZE(state->desc);
+		if (state->desc[idx].desc.control & DWMMC_DES_OWN) {break;}
+		u32 sizes = state->desc[idx].desc.sizes;
+		bytes_transferred += (sizes & 0x1fff) + (sizes >> 13 & 0x1fff);
+		desc_completed += 1;
+		debugs(".");
+	}
+	state->desc_completed = desc_completed;
+	state->bytes_transferred = bytes_transferred;
+	void *buf = state->buf;
+	while (bytes_left && desc_completed + ARRAY_SIZE(state->desc) > desc_written) {
+		u32 dma_size = bytes_left < 4096 ? bytes_left : 4096;
+		bytes_left -= dma_size;
+		u32 idx = desc_written % ARRAY_SIZE(state->desc);
+		struct dwmmc_idmac_desc *desc = &state->desc[idx].desc;
+		desc->sizes = dma_size;
+		desc->ptr1 = (u32)buf;
+		desc->ptr2 = 0;
+		u32 first_flag = !desc_written ? DWMMC_DES_FIRST : 0;
+		u32 last_flag = !bytes_left ? DWMMC_DES_LAST : 0;
+		u32 ring_end_flag = idx == ARRAY_SIZE(state->desc) - 1 ? DWMMC_DES_END_OF_RING : 0;
+		u32 control = first_flag | last_flag | ring_end_flag | DWMMC_DES_OWN;
+		debugs("=");
+		spew("writing descriptor@%"PRIx64": %08"PRIx32" %08"PRIx32"\n", (u64)desc, control, (u32)buf);
+		dsb_st();
+		desc->control = control;
+		first_flag = 0;
+		buf += dma_size;
+		desc_written += 1;
+		__asm__ volatile("dmb sy;dc civac, %0": : "r"(desc) : "memory");
+	}
+	state->desc_written = desc_written;
+	state->bytes_left = bytes_left;
+	state->buf = buf;
+	if (status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
+		dwmmc->idmac_status = DWMMC_IDMAC_INT_ABNORMAL | DWMMC_IDMAC_INT_DESC_UNAVAILABLE;
+		dwmmc->poll_demand = 1;
+	} else {
+		assert_eq((status & DWMMC_IDMAC_INTMASK_ABNORMAL), 0, u32, "0x%"PRIx32);
+		__asm__("yield");
+	}
+}
+
+void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes) {
+	assert(total_bytes >= 512);
+	struct dwmmc_dma_state state;
+	dwmmc_init_dma_state(&state);
+	state.buf = buf;
+	state.bytes_left = total_bytes;
+	state.bytes_transferred = 0;
+	puts("DMA read\n");
+	dwmmc_setup_dma(dwmmc);
 	printf("bmod %"PRIx32"\n", dwmmc->bmod);
-	dwmmc->desc_list_base = (u32)&dma_desc;
+	dwmmc->desc_list_base = (u32)&state.desc;
 	read_command(dwmmc, sector, total_bytes);
-	u32 desc_written = 0, desc_completed = 0;
-	while (total_bytes || desc_written > desc_completed) {
-		u32 status = dwmmc->idmac_status;
-		puts("?");
-		spew("idmac %"PRIu32"/%"PRIu32" status=0x%"PRIx32" cur_desc=0x%08"PRIx32" cur_buf=0x%08"PRIx32"\n", desc_completed, desc_written, status, dwmmc->cur_desc_addr, dwmmc->cur_buf_addr);
-		if (status & DWMMC_IDMAC_INT_RECEIVE) {
-			dwmmc->idmac_status = DWMMC_IDMAC_INT_NORMAL | DWMMC_IDMAC_INT_RECEIVE;
-		}
-		while (desc_completed < desc_written) {
-			__asm__ volatile("dc ivac, %0;dmb sy": : "r"(dma_desc + desc_completed % ARRAY_SIZE(dma_desc)) : "memory");
-			if (dma_desc[desc_completed % ARRAY_SIZE(dma_desc)].desc.control & DWMMC_DES_OWN) {break;}
-			desc_completed += 1;
-			spews("complete\n");
-			puts(".");
-		}
-		while (total_bytes && desc_completed + ARRAY_SIZE(dma_desc) > desc_written) {
-			u32 dma_size = total_bytes < 4096 ? total_bytes : 4096;
-			total_bytes -= dma_size;
-			u32 idx = desc_written % ARRAY_SIZE(dma_desc);
-			struct dwmmc_idmac_desc *desc = &dma_desc[idx].desc;
-			desc->sizes = dma_size;
-			desc->ptr1 = (u32)buf;
-			desc->ptr2 = 0;
-			u32 first_flag = !desc_written ? DWMMC_DES_FIRST : 0;
-			u32 last_flag = !total_bytes ? DWMMC_DES_LAST : 0;
-			u32 ring_end_flag = idx == ARRAY_SIZE(dma_desc) - 1 ? DWMMC_DES_END_OF_RING : 0;
-			u32 control = first_flag | last_flag | ring_end_flag | DWMMC_DES_OWN;
-			puts("=");
-			spew("writing descriptor@%"PRIx64": %08"PRIx32" %08"PRIx32"\n", (u64)desc, control, (u32)buf);
-			dsb_st();
-			desc->control = control;
-			first_flag = 0;
-			buf += dma_size;
-			desc_written += 1;
-			__asm__ volatile("dmb sy;dc civac, %0": : "r"(desc) : "memory");
-		}
-		if (status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
-			dwmmc->idmac_status = DWMMC_IDMAC_INT_ABNORMAL | DWMMC_IDMAC_INT_DESC_UNAVAILABLE;
-			dwmmc->poll_demand = 1;
-		} else {
-			assert_eq((status & DWMMC_IDMAC_INTMASK_ABNORMAL), 0, u32, "0x%"PRIx32);
-			__asm__("yield");
-		}
+	while (state.bytes_transferred < total_bytes) {
+		dwmmc_handle_dma_interrupt(dwmmc, &state);
 	}
 }
