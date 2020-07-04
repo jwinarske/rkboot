@@ -199,12 +199,6 @@ void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, s
 		}
 	}
 }
-struct dwmmc_dma_state {
-	u32 desc_written, desc_completed;
-	void *buf;
-	size_t bytes_left, bytes_transferred;
-	struct {_Alignas(64) struct dwmmc_idmac_desc desc;} desc[4];
-};
 
 void dwmmc_setup_dma(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc->bmod = DWMMC_BMOD_SOFT_RESET;
@@ -272,7 +266,7 @@ void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_
 	state->buf = buf;
 	if (status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
 		dwmmc->idmac_status = DWMMC_IDMAC_INT_ABNORMAL | DWMMC_IDMAC_INT_DESC_UNAVAILABLE;
-		dwmmc->poll_demand = 1;
+		if (bytes_left) {dwmmc->poll_demand = 1;}
 	} else {
 		assert_eq((status & DWMMC_IDMAC_INTMASK_ABNORMAL), 0, u32, "0x%"PRIx32);
 		__asm__("yield");

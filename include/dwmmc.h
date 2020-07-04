@@ -15,6 +15,16 @@ timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t r
 void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc);
 void dwmmc_init(volatile struct dwmmc_regs *dwmmc);
 void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes);
+
+struct dwmmc_dma_state {
+	u32 desc_written, desc_completed;
+	void *buf;
+	size_t bytes_left, bytes_transferred;
+	struct {_Alignas(64) struct dwmmc_idmac_desc desc;} desc[4];
+};
+void dwmmc_setup_dma(volatile struct dwmmc_regs *dwmmc);
+void dwmmc_init_dma_state(struct dwmmc_dma_state *state);
+void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_dma_state *state);
 void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes);
 
 static inline void UNUSED dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
