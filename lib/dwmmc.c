@@ -5,6 +5,7 @@
 #include <rk3399.h>
 #include <inttypes.h>
 #include <sd.h>
+#include <assert.h>
 
 void dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	spew("starting command %08"PRIx32"\n", cmd);
@@ -67,7 +68,10 @@ static _Bool wait_data_finished(volatile struct dwmmc_regs *dwmmc, u64 usecs) {
 	return 1;
 }
 
-void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
+void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc) {
+	assert((~svc->frequencies_supported & (1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M)) == 0);
+	assert(svc->voltages_supported & 1 << DWMMC_SIGNAL_3V3);
+	svc->set_clock(svc, DWMMC_CLOCK_400K);
 	dwmmc->pwren = 1;
 	udelay(1000);
 	dwmmc->rintsts = ~(u32)0;
@@ -139,8 +143,7 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc_wait_not_busy(dwmmc, 1000 * CYCLES_PER_MICROSECOND);
 	dwmmc->clkena = 0;
 	dwmmc_wait_cmd(dwmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
-	/* clk_sdmmc = 50 MHz */
-	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 0) << 8 | SET_BITS16(7, 19);
+	svc->set_clock(svc, DWMMC_CLOCK_25M);
 	dwmmc->clkena = 1;
 	dwmmc_wait_cmd(dwmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
 	st = dwmmc_wait_cmd_done(dwmmc, 16 | DWMMC_R1, 512, 1000);

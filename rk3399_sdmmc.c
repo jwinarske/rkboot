@@ -118,6 +118,22 @@ static void UNUSED rk3399_sdmmc_end_irq_read() {
 
 void udelay(u32 usec);
 
+static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
+	switch (clk) {
+	case DWMMC_CLOCK_400K:
+		/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
+		cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 29);
+		break;
+	case DWMMC_CLOCK_25M:
+		/* clk_sdmmc = CPLL/16 = 50 MHz */
+		cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 0) << 8 | SET_BITS16(7, 15);
+		break;
+	default: return 0;
+	}
+	dsb_st();
+	return 1;
+}
+
 void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
 	struct async_transfer *async = &sdmmc_async;
@@ -127,8 +143,6 @@ void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 
 	/* hclk_sd = 200 MHz */
 	cru[CRU_CLKSEL_CON + 13] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
-	/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
-	cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 5) << 8 | SET_BITS16(7, 29);
 	dsb_st();
 	cru[CRU_CLKGATE_CON+6] = SET_BITS16(1, 0) << 1;
 	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 0) << 13;
@@ -150,7 +164,13 @@ void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
 	dsb_ishst();
 	info("starting SDMMC\n");
-	dwmmc_init(sdmmc);
+	struct dwmmc_signal_services svc = {
+		.set_clock = set_clock,
+		.set_signal_voltage = 0,
+		.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M,
+		.voltages_supported = 1 << DWMMC_SIGNAL_3V3,
+	};
+	dwmmc_init(sdmmc, &svc);
 
 #if CONFIG_ELFLOADER_DMA
 	/* set DRAM as Non-Secure */
