@@ -39,11 +39,19 @@ struct dwmmc_regs {
 	u32 idmac_int_enable;
 	u32 cur_desc_addr;
 	u32 cur_buf_addr;
+	u32 padding3[25];
+	u32 card_threshold;
+	u32 back_end_power;
+	u32 emmc_ddr;
+	u32 padding4[61];
+	u32 fifo;
 };
 CHECK_OFFSET(dwmmc_regs, cmdarg, 0x28);
 CHECK_OFFSET(dwmmc_regs, status, 0x48);
 CHECK_OFFSET(dwmmc_regs, hcon, 0x70);
 CHECK_OFFSET(dwmmc_regs, bmod, 0x80);
+CHECK_OFFSET(dwmmc_regs, card_threshold, 0x100);
+CHECK_OFFSET(dwmmc_regs, fifo, 0x200);
 
 enum {
 	DWMMC_CTRL_USE_IDMAC = 1 << 25,

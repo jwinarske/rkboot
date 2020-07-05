@@ -155,7 +155,7 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc_print_status(dwmmc);
 	dwmmc->rintsts = DWMMC_INT_DATA_TRANSFER_OVER;
 	for_range(i, 0, 16) {
-		info("SSR%"PRIu32": 0x%08"PRIx32"\n", i, *(u32*)0xfe320200);
+		info("SSR%"PRIu32": 0x%08"PRIx32"\n", i, dwmmc->fifo);
 	}
 	dwmmc_print_status(dwmmc);
 }
