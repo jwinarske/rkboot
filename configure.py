@@ -262,6 +262,7 @@ lib += ('dcache',)
 print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 if args.excvec:
     lib += ('exc_handlers',)
+spi_flasher += ('exc_handlers',)
 if args.elfloader_spi or args.elfloader_sd:
     elfloader += ('exc_handlers', 'gicv3')
     print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
@@ -313,7 +314,7 @@ binary('levinboot-img', levinboot, 'ff8c2004')
 if not args.embed_elfloader:
     binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
     binary('brompatch', ('brompatch-mem', 'brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '04100000')
-    binary('spi-flasher', spi_flasher + lib, '04100000')
+    binary('spi-flasher', spi_flasher + tuple(set(lib) - {'exc_handlers'}), '04100000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot-sd.img levinboot-spi.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:

@@ -146,8 +146,8 @@ static u32 dram_size() {return 0xf8000000;}
 void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size);
 
 static const u64 elf_addr = 0x04200000, fdt_addr = 0x00100000, fdt_out_addr = 0x00180000, payload_addr = 0x00280000;
-#ifdef CONFIG_ELFLOADER_DECOMPRESSION
 static const u64 blob_addr = 0x04400000;
+#ifdef CONFIG_ELFLOADER_DECOMPRESSION
 static _Alignas(16) u8 decomp_state[1 << 14];
 #ifdef CONFIG_ELFLOADER_INITCPIO
 static const u64 initcpio_addr = 0x08000000;
@@ -258,6 +258,7 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 
 void rk3399_spi_setup();
 
+#ifdef CONFIG_ELFLOADER_DECOMPRESSION
 void decompress_payload(struct async_transfer *async, struct payload_desc *payload) {
 	payload->elf_end -= LZCOMMON_BLOCK;
 	size_t offset = decompress(async, 0, payload->elf_start, &payload->elf_end);
@@ -270,9 +271,10 @@ void decompress_payload(struct async_transfer *async, struct payload_desc *paylo
 	offset = decompress(async, offset, (u8 *)initcpio_addr, &payload->initcpio_end);
 #endif
 }
+#endif
 
 #if CONFIG_ELFLOADER_MEMORY
-static void load_from_memory(struct payload_desc *payload, u8 *buf, size_t buf_size) {
+static void load_from_memory(struct payload_desc *payload, u8 UNUSED *buf, size_t buf_size) {
 	struct async_transfer async = {
 		.buf = (u8 *)blob_addr,
 		.total_bytes = buf_size,
