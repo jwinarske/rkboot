@@ -137,9 +137,15 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services 
 	info("status=%08"PRIx32"\n", dwmmc->status);
 	enum dwmmc_status st = dwmmc_wait_cmd_done(dwmmc, 8 | DWMMC_R1, 0x1aa, 100000);
 	assert_msg(st != DWMMC_ST_ERROR, "error on SET_IF_COND (CMD8)\n");
-	assert_unimpl(st != DWMMC_ST_TIMEOUT, "SD <2.0 cards\n");
-	info("CMD8 resp=%08"PRIx32" rintsts=%"PRIx32"\n", dwmmc->resp[0], dwmmc->rintsts);
-	assert_msg((dwmmc->resp[0] & 0xff) == 0xaa, "CMD8 check pattern returned incorrectly\n");
+	_Bool sd_2_0 = st != DWMMC_ST_TIMEOUT;
+	if (!sd_2_0) {
+		dwmmc_wait_cmd_done(dwmmc, 0 | DWMMC_CMD_SEND_INITIALIZATION | DWMMC_CMD_CHECK_RESPONSE_CRC, 0, 1000);
+		udelay(10000);
+		info("CMD0 resp=%08"PRIx32" rintsts=%"PRIx32"\n", dwmmc->resp[0], dwmmc->rintsts);
+	} else {
+		info("CMD8 resp=%08"PRIx32" rintsts=%"PRIx32"\n", dwmmc->resp[0], dwmmc->rintsts);
+		assert_msg((dwmmc->resp[0] & 0xff) == 0xaa, "CMD8 check pattern returned incorrectly\n");
+	}
 	info("status=%08"PRIx32"\n", dwmmc->status);
 	u32 resp;
 	{
@@ -147,7 +153,8 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services 
 		while (1) {
 			st = dwmmc_wait_cmd_done(dwmmc, 55 | DWMMC_R1, 0, 1000);
 			dwmmc_check_ok_status(dwmmc, st, "CMD55 (APP_CMD)");
-			st = dwmmc_wait_cmd_done(dwmmc, 41 | DWMMC_R3, 0x00ff8000 | SD_OCR_HIGH_CAPACITY | SD_OCR_S18R, 1000);
+			u32 arg = 0x00ff8000 | (sd_2_0 ? SD_OCR_HIGH_CAPACITY | SD_OCR_XPC | SD_OCR_S18R : 0);
+			st = dwmmc_wait_cmd_done(dwmmc, 41 | DWMMC_R3, arg, 1000);
 			dwmmc_check_ok_status(dwmmc, st, "ACMD41 (OP_COND)");
 			resp = dwmmc->resp[0];
 			if (resp & SD_RESP_BUSY) {break;}
@@ -158,7 +165,9 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services 
 		}
 	}
 	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32"\n", resp, dwmmc->status);
-	assert_msg(resp & SD_OCR_HIGH_CAPACITY, "card does not support high capacity addressing\n");
+	_Bool high_capacity = !!(resp & SD_OCR_HIGH_CAPACITY);
+	printf("%u", (unsigned)sd_2_0);
+	assert_msg(sd_2_0 || !high_capacity, "conflicting info about card capacity");
 	st = dwmmc_wait_cmd_done(dwmmc, 2 | DWMMC_R2, 0, 1000);
 	dwmmc_check_ok_status(dwmmc, st, "CMD2 (ALL_SEND_CID)");
 	sd_dump_cid(dwmmc->resp[0], dwmmc->resp[1], dwmmc->resp[2], dwmmc->resp[3]);
@@ -200,6 +209,7 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services 
 		info("SSR%"PRIu32": 0x%08"PRIx32"\n", i, dwmmc->fifo);
 	}
 	dwmmc_print_status(dwmmc);
+	assert_msg(high_capacity, "card does not support high capacity addressing\n");
 }
 
 static void read_command(volatile struct dwmmc_regs *dwmmc, u32 sector, size_t total_bytes) {
