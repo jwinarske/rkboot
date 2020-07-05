@@ -107,3 +107,14 @@ if [ -z "$skip" -o "$skip" == "9" ]; then
 	ninja levinboot-usb.bin
 	until prompt || usbtool --run levinboot-usb.bin;do true; done
 fi
+
+if [ -z "$skip" -o "$skip" == "10" ]; then
+	echo "Configuration 10: flash levinboot SPI image configured for SD and SPI boot with initcpio (lz4, gzip and zstd decompression)"
+	"$src/configure.py" --with-atf-headers "$atf" --embed-elfloader --elfloader-{sd,spi,lz4,gzip,zstd,initcpio}
+	ninja levinboot-spi.img
+	echo "Image build successful, building flasher"
+	"$src/configure.py"
+	ninja levinboot-usb.bin spi-flasher.bin
+	until prompt || usbtool --call levinboot-usb.bin --load 4100000 spi-flasher.bin --dramcall 4100000 1000 --pload 0 levinboot-spi.img;do true; done
+	read -p "now reset the board to try it out (both boot from SD and SPI), press enter to continue"
+fi
