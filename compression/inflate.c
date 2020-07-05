@@ -19,7 +19,7 @@ enum {GUARANTEED_BITS = 25};
 #define LDU32LEU_END(var, addr) __asm__("ldr %w0, [%1, #-4]" : "=r"(var) : "r"(addr))
 #endif
 #ifndef LDU32LEU_END
-#error "no unaligned 32-bit little-endian load sequence available"
+#warning "no unaligned 32-bit little-endian load sequence available, using generic fallback"
 #endif
 
 #define check(expr, ...) if (unlikely(!(expr))) {info(__VA_ARGS__);return 0;}
