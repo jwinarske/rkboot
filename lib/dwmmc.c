@@ -50,6 +50,23 @@ void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc) {
 void udelay(u32 usecs);
 void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3);
 
+/* WARNING: does not read from the FIFO, so only use for short results that are read later */
+static _Bool wait_data_finished(volatile struct dwmmc_regs *dwmmc, u64 usecs) {
+	u32 status;
+	timestamp_t start = get_timestamp();
+	while (~(status = dwmmc->rintsts) & DWMMC_INT_DATA_TRANSFER_OVER) {
+		if (status & DWMMC_ERROR_INT_MASK) {
+			return 0;
+		}
+		if (get_timestamp() - start > usecs * CYCLES_PER_MICROSECOND) {
+			return 0;
+		}
+	}
+	dwmmc_print_status(dwmmc);
+	dwmmc->rintsts = DWMMC_INT_DATA_TRANSFER_OVER;
+	return 1;
+}
+
 void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc->pwren = 1;
 	udelay(1000);
@@ -140,20 +157,7 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc) {
 	dwmmc->bytcnt = 64;
 	st = dwmmc_wait_cmd_done(dwmmc, 13 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0, 1000);
 	dwmmc_check_ok_status(dwmmc, st, "ACMD13 (SD_STATUS)");
-	{
-		u32 status;
-		timestamp_t start = get_timestamp();
-		while (~(status = dwmmc->rintsts) & DWMMC_INT_DATA_TRANSFER_OVER) {
-			if (status & DWMMC_ERROR_INT_MASK) {
-				die("error transferring SSR\n");
-			}
-			if (get_timestamp() - start > 1000 * CYCLES_PER_MICROSECOND) {
-				die("SSR timeout\n");
-			}
-		}
-	}
-	dwmmc_print_status(dwmmc);
-	dwmmc->rintsts = DWMMC_INT_DATA_TRANSFER_OVER;
+	assert_msg(wait_data_finished(dwmmc, 1000), "failed to read SSR");
 	for_range(i, 0, 16) {
 		info("SSR%"PRIu32": 0x%08"PRIx32"\n", i, dwmmc->fifo);
 	}
