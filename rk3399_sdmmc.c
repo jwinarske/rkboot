@@ -128,6 +128,10 @@ static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_cloc
 		/* clk_sdmmc = CPLL/16 = 50 MHz */
 		cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 0) << 8 | SET_BITS16(7, 15);
 		break;
+	case DWMMC_CLOCK_50M:
+		/* clk_sdmmc = CPLL/8 = 100 MHz */
+		cru[CRU_CLKSEL_CON + 16] = SET_BITS16(3, 0) << 8 | SET_BITS16(7, 7);
+		break;
 	default: return 0;
 	}
 	dsb_st();
@@ -167,7 +171,7 @@ void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 	struct dwmmc_signal_services svc = {
 		.set_clock = set_clock,
 		.set_signal_voltage = 0,
-		.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M,
+		.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M | 1 << DWMMC_CLOCK_50M,
 		.voltages_supported = 1 << DWMMC_SIGNAL_3V3,
 	};
 	dwmmc_init(sdmmc, &svc);

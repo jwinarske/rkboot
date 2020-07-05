@@ -68,6 +68,38 @@ static _Bool wait_data_finished(volatile struct dwmmc_regs *dwmmc, u64 usecs) {
 	return 1;
 }
 
+static void try_high_speed(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc) {
+	dwmmc->blksiz = 64;
+	dwmmc->bytcnt = 64;
+	enum dwmmc_status st = dwmmc_wait_cmd_done(
+		dwmmc, 6 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0x00ffffff, 1000
+	);
+	dwmmc_check_ok_status(dwmmc, st, "CMD6 (SD_SWITCH)");
+	assert_msg(wait_data_finished(dwmmc, 1000), "failed to read CMD6 result");
+	u32 UNUSED switch0 = dwmmc->fifo;
+	u32 UNUSED switch1 = dwmmc->fifo;
+	u32 UNUSED switch2 = dwmmc->fifo;
+	u32 switch3 = dwmmc->fifo;
+	info("CMD6: %08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n", switch0, switch1, switch2, switch3);
+	for_range(i, 4, 16) {
+		info("CMD6 %"PRIu32": 0x%08"PRIx32"\n", i, dwmmc->fifo);
+	}
+	if (switch3 & 0x200) {
+		infos("switching to high speed\n");
+		st = dwmmc_wait_cmd_done(dwmmc, 6 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0x80fffff1, 1000);
+		dwmmc_check_ok_status(dwmmc, st, "CMD6 (SD_SWITCH)");
+		assert_msg(wait_data_finished(dwmmc, 1000), "failed to read CMD6 result");
+		for_range(i, 0, 16) {
+			info("CMD6 %"PRIu32": 0x%08"PRIx32"\n", i, dwmmc->fifo);
+		}
+		dwmmc->clkena = 0;
+		dwmmc_wait_cmd(dwmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
+		assert_msg(svc->set_clock(svc, DWMMC_CLOCK_50M), "setting clock for high-speed failed");
+		dwmmc->clkena = 1;
+		dwmmc_wait_cmd(dwmmc, DWMMC_CMD_UPDATE_CLOCKS | DWMMC_CMD_SYNC_DATA);
+	}
+}
+
 void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc) {
 	assert((~svc->frequencies_supported & (1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M)) == 0);
 	assert(svc->voltages_supported & 1 << DWMMC_SIGNAL_3V3);
@@ -154,6 +186,9 @@ void dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services 
 	st = dwmmc_wait_cmd_done(dwmmc, 6 | DWMMC_R1, 2, 1000);
 	dwmmc_check_ok_status(dwmmc, st, "ACMD6 (SET_BUS_WIDTH)");
 	dwmmc->ctype = 1;
+	if (svc->frequencies_supported & 1 << DWMMC_CLOCK_50M) {
+		try_high_speed(dwmmc, svc);
+	}
 	st = dwmmc_wait_cmd_done(dwmmc, 55 | DWMMC_R1, rca, 1000);
 	dwmmc_check_ok_status(dwmmc, st, "CMD55 (APP_CMD)");
 	dwmmc->blksiz = 64;
