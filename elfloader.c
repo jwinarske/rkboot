@@ -283,7 +283,21 @@ static void load_from_memory(struct payload_desc *payload, u8 *buf, size_t buf_s
 #endif
 
 void load_from_spi(struct payload_desc *payload, u8 *buf, size_t buf_size);
-void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size);
+_Bool load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size);
+
+static void init_payload_desc(struct payload_desc *payload) {
+	payload->elf_start = (u8 *)elf_addr;
+	payload->elf_end =  (u8 *)blob_addr;
+	payload->fdt_start = (u8 *)fdt_addr;
+	payload->fdt_end = (u8 *)fdt_out_addr;
+	payload->kernel_start = (u8 *)payload_addr;
+	payload->kernel_end = __start__;
+
+#if CONFIG_ELFLOADER_INITCPIO
+	payload->initcpio_start = (u8 *)initcpio_addr;
+	payload->initcpio_end = (u8 *)(DRAM_START + dram_size());
+#endif
+}
 
 _Noreturn u32 ENTRY main() {
 	puts("elfloader\n");
@@ -335,19 +349,9 @@ _Noreturn u32 ENTRY main() {
 	}
 
 	struct payload_desc payload;
-	payload.elf_start = (u8 *)elf_addr;
-	payload.elf_end =  (u8 *)blob_addr;
-	payload.fdt_start = (u8 *)fdt_addr;
-	payload.fdt_end = (u8 *)fdt_out_addr;
-	payload.kernel_start = (u8 *)payload_addr;
-	payload.kernel_end = __start__;
+	init_payload_desc(&payload);
 
 #ifdef CONFIG_ELFLOADER_DECOMPRESSION
-#if CONFIG_ELFLOADER_INITCPIO
-	payload.initcpio_start = (u8 *)initcpio_addr;
-	payload.initcpio_end = (u8 *)(DRAM_START + dram_size());
-#endif
-
 #if CONFIG_ELFLOADER_IRQ
 	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
 	dsb_ishst();
@@ -358,6 +362,13 @@ _Noreturn u32 ENTRY main() {
 
 #if CONFIG_ELFLOADER_MEMORY
 	load_from_memory(&payload, (u8 *)blob_addr, 60 << 20);
+#elif CONFIG_ELFLOADER_SD && CONFIG_ELFLOADER_SPI
+	_Bool sd_success = load_from_sd(&payload, (u8 *)blob_addr, 60 << 20);
+	printf("GPIO0: %08"PRIx32"\n", gpio0->read);
+	if (!sd_success || ~gpio0->read & 32) {
+		init_payload_desc(&payload);
+		load_from_spi(&payload, (u8 *)blob_addr, 60 << 20);
+	}
 #elif CONFIG_ELFLOADER_SPI
 	load_from_spi(&payload, (u8 *)blob_addr, 60 << 20);
 #elif CONFIG_ELFLOADER_SD

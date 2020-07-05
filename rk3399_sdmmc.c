@@ -138,7 +138,7 @@ static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_cloc
 	return 1;
 }
 
-void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
+_Bool load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
 	struct async_transfer *async = &sdmmc_async;
 	async->total_bytes = buf_size;
@@ -174,7 +174,7 @@ void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 		.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M | 1 << DWMMC_CLOCK_50M,
 		.voltages_supported = 1 << DWMMC_SIGNAL_3V3,
 	};
-	assert_msg(dwmmc_init(sdmmc, &svc), "failed to initialize SD");
+	if (!dwmmc_init(sdmmc, &svc)) {return 0;}
 
 #if CONFIG_ELFLOADER_DMA
 	/* set DRAM as Non-Secure */
@@ -199,4 +199,5 @@ void load_from_sd(struct payload_desc *payload, u8 *buf, size_t buf_size) {
 #endif
 
 	printf("had read %zu bytes\n", async->pos);
+	return 1;
 }
