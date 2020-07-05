@@ -36,13 +36,11 @@ What is intended to work by 1.0, but not implemented yet:
 
 - Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
 
-- Boot completely from SPI. This requires adding zero-padding support to :command:`idbtool`.
-
-- basic FIT support
-
 General TODOs, not assigned to a milestone:
 
 - more boot medium options, e. g. eMMC, NVMe
+
+- basic FIT support
 
 License
 =======
@@ -52,7 +50,27 @@ See `<https://creativecommons.org/publicdomain/zero/1.0/legalcode>`__ for the le
 
 Source structure
 ================
+
 (still in flux)
+
+Board support
+=============
+
+levinboot is tested on the RockPro64 and the Pinebook Pro. From looking at the schematics, it should behave safely and sanely on the Rock Pi 4 too, but this hasn't been tested (testers welcome!).
+
+It makes the following assumptions about the board:
+
+- The SoC uses LPDDR4 for DRAM
+- an I²C bus is attached to the i2c4 pins of the SoC. It tries to read register 0 from address 0x62/(first byte byte 0xc5) and if it gets an ACK response, it assumes it is running on a Pinebook Pro and sets up a regulator on behalf of the kernel, which is needed on that platform.
+- the main "Power" LED is attached (active-high) to GPIO0B3. It is lit up before starting the DRAM initialization.
+- an auxiliary (e. g. "standby") LED is attached (active-high) to GPIO0A2. It is lit up after the payload is loaded.
+- ADC1 is connected to an active-low "recovery" button.
+- GPIO0A5 is connected to an active-low "power" button. This is read in a _`SPI Recovery` setup.
+- if loading from SPI is configured, it tries to read using the normal 0x0b 'fast read' command with 3 address and 1 dummy byte at 50 MHz on the SPI1 pins
+- if loading from SD is configured, it will configure the SD pins on GPIO4B0-5 (inclusive) and the card detect pin on GPIO0A7.
+
+These assumptions hold as described on the RockPro64 and the Pinebook Pro. On the Rock Pi 4 (according to the schematics), the pins used for the LEDs are unconnected and GPIO0A5 is connected to the anode of a diode, which should make it read high (i. e. inactive).
+
 
 Build process
 =============
@@ -68,6 +86,9 @@ Important command-line arguments for :src:`configure.py` are:
 --elfloader-spi, --elfloader-sd  configures :output:`elfloader.bin` to load payload images from SPI flash or SD cards (respectively) instead of expecting them preloaded at specific addresses.
   This process requires decompression support to be enabled.
   See _`Booting from SPI` and _`Booting from SD` for more information, respectively.
+
+  The two options can be combined, in which case :output:`elfloader.bin` will try to boot from SD, and if that fails (or if the power button is pressed when loading the payload finishes) it will boot from SPI instead.
+  See _`SPI Recovery`
 
 --elfloader-initcpio  configures :output:`elfloader.bin` to load an initcpio image and pass it to the kernel.
   This process requires decompression support to be enabled.
@@ -154,17 +175,23 @@ Booting from SPI
 ================
 
 levinboot can load its payload images from SPI flash. This way it can be used as the first stage in a kexec-based boot flow.
-Currently the build system can only produce images usable on SD or eMMC chips, not for SPI flash itself.
-This is probably for the best since right now levinboot is not considered production-ready yet and as such it makes sense to store the critical part on easily-removed/-disabled storage in case it breaks.
 
 Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
 
-You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on SD/eMMC for use in self-booting.
+You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin`, write :output:`levinboot-sd.img` to sector 64 or write :output: on SD/eMMC for use in self-booting.
 
-After DRAM init, this will asynchronously read up to 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro) as needed, and will decompress the payload blob from it.
+After DRAM init, this will asynchronously read up to 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro) as needed, starting from address 0x40000 (256 KiB offset from start), and will decompress the payload blob from it.
 The flash contents after the end of _`The Payload Blob` are not used by levinboot and may be used for a root file system.
 
 See the notes about _`The Payload Blob` for general advice on how to create it.
+
+Recovery Button
+---------------
+
+The "Recover" button on the RockPro64/Rock Pi 4 and inside the Pinebook Pro can be used to put the SoC in mask ROM USB gadget boot mode, which can be used to reflash it or otherwise start a different bootloader.
+This button is checked very early in levinboot, allowing you to recover from SPI mis-flashes without hardware modification such as shorting the SPI clock, as long as a certain (small) part of levinboot is still intact.
+
+The recovery button function is built in all configurations of levinboot, even though it is mostly useful for SPI images, because unlike SD cards it cannot be removed and unlike eMMC it cannot be disabled using a button or switch.
 
 Booting from SD
 ===============
@@ -179,3 +206,9 @@ The output images (:output:`levinboot-sd.img` and :output:`levinboot-usb.bin`) w
 You can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card (or eMMC if you feel like it, but it makes little sense).
 
 While levinboot does not read partition tables at this point, it may be advisable to create partitions starting at sectors 64 and 8192, for easier and potentially safer upgrades of levinboot and the payload, respectively.
+
+SPI fallback
+------------
+
+If configured with both :cmdargs:`--elfloader-sd` and :cmdargs:`--elfloader-spi`, levinboot will first try to load the payload from SD cards.
+When this fails or finishes, with the power button (still) held, levinboot will load the payload from SPI instead.
