@@ -197,6 +197,12 @@ static void UNUSED async_wait(struct async_transfer *async) {
 	}
 }
 
+static const char *const decode_status_msg[NUM_DECODE_STATUS] = {
+#define X(name, msg) msg,
+	DEFINE_DECODE_STATUS
+#undef X
+};
+
 static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 **out_end) {
 #ifdef ASYNC_WAIT
 	async_wait(async);
@@ -226,7 +232,7 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 				if (res == DECODE_NEED_MORE_DATA) {
 					xfer_pos = wait_for_data(async, xfer_pos);
 				} else {
-					assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu\n", res);
+					assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu (%s)\n", res, decode_status_msg[res]);
 					offset += res - NUM_DECODE_STATUS;
 				}
 			}
