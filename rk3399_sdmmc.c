@@ -39,8 +39,7 @@ static void UNUSED handle_sdmmc_interrupt_pio(volatile struct dwmmc_regs *sdmmc,
 	}
 #ifdef DEBUG_MSG
 	if (unlikely(!ack)) {
-		dwmmc_print_status(sdmmc);
-		debug("don't know what to do with interrupt\n");
+		dwmmc_print_status(sdmmc, "unexpected interrupt ");
 	} else if (ack == 0x20) {
 		debugs(".");
 	} else {
@@ -50,7 +49,9 @@ static void UNUSED handle_sdmmc_interrupt_pio(volatile struct dwmmc_regs *sdmmc,
 	sdmmc->rintsts = ack;
 }
 
+#if CONFIG_ELFLOADER_DMA
 static struct dwmmc_dma_state dma_state;
+#endif
 
 static void irq_handler() {
 	u64 grp0_intid;
