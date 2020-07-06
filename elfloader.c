@@ -341,13 +341,12 @@ _Noreturn u32 ENTRY main() {
 		mmu_map_mmio_identity(0xff420000, 0xff420fff);
 		dsb_ishst();
 		info("ACK from i2c4-62, this seems to be a Pinebook Pro\n");
-		/* set up PWM2 without muxing it out, just so the kernel will find a value */
-		*(volatile u32*)0xff420024 = 1240;
-		*(volatile u32*)0xff420028 = 310;
+		*(volatile u32*)0xff420024 = 0x96e;
+		*(volatile u32*)0xff420028 = 0x25c;
 		*(volatile u32*)0xff42002c = 0x13;
-		pmucru[0x104/4] = SET_BITS16(1, 1) << 10;
+        pmugrf[PMUGRF_GPIO1C_IOMUX] = SET_BITS16(2, 1) << 6;
 	} else {
-		info("not running on a Pinebook Pro ⇒ not setting up regulators or LEDs\n");
+		info("not running on a Pinebook Pro ⇒ not setting up regulators\n");
 	}
 
 	struct payload_desc payload;
