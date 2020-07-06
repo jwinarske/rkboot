@@ -111,7 +111,8 @@ static void UNUSED rk3399_sdmmc_end_irq_read() {
 	fiq_handler_spx = irq_handler_spx = 0;
 #if CONFIG_ELFLOADER_DMA
 	/* make sure the iDMAC is suspended before we hand off */
-	while (~sdmmc->idmac_status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
+    u32 tmp;
+	while (((tmp = sdmmc->idmac_status) & (DWMMC_IDMAC_INTMASK_ABNORMAL | DWMMC_IDMAC_INT_CARD_ERROR)) == 0 && (tmp >> 13 & 15) > 1) {
 		__asm__("yield");
 	}
 #endif
