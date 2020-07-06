@@ -87,7 +87,7 @@ static _Bool try_high_speed(volatile struct dwmmc_regs *dwmmc, struct dwmmc_sign
 	);
 	dwmmc_print_status(dwmmc, "CMD6 check ");
 	if (st != DWMMC_ST_OK) {return 0;}
-	if (!wait_data_finished(dwmmc, 1000)) {
+	if (!wait_data_finished(dwmmc, 100000)) {
 		dwmmc_print_status(dwmmc, "CMD6 read failure");
 		return 0;
 	}
@@ -105,7 +105,7 @@ static _Bool try_high_speed(volatile struct dwmmc_regs *dwmmc, struct dwmmc_sign
 		st = dwmmc_wait_cmd_done(dwmmc, 6 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0x80fffff1, 1000);
 		dwmmc_print_status(dwmmc, "CMD6 commit ");
 		if (st != DWMMC_ST_OK) {return 0;}
-		if (!wait_data_finished(dwmmc, 1000)) {
+		if (!wait_data_finished(dwmmc, 100000)) {
 			dwmmc_print_status(dwmmc, "CMD6 read failure");
 			return 0;
 		}
