@@ -343,11 +343,15 @@ void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_
 	while (desc_completed < desc_written) {
 		__asm__ volatile("dc ivac, %0;dmb sy": : "r"(state->desc + desc_completed % ARRAY_SIZE(state->desc)) : "memory");
 		u32 idx = desc_completed % ARRAY_SIZE(state->desc);
-		if (state->desc[idx].desc.control & DWMMC_DES_OWN) {break;}
-		u32 sizes = state->desc[idx].desc.sizes;
+		struct dwmmc_idmac_desc *desc = &state->desc[idx].desc;
+		if (desc->control & DWMMC_DES_OWN) {break;}
+		u32 sizes = desc->sizes;
 		bytes_transferred += (sizes & 0x1fff) + (sizes >> 13 & 0x1fff);
 		desc_completed += 1;
 		debugs(".");
+		for (u64 addr = desc->ptr1, end = addr + (sizes & 0x1fff); addr < end; addr += 64) {
+			__asm__ volatile("dc ivac, %0" : : "r"(addr));
+		}
 	}
 	state->desc_completed = desc_completed;
 	state->bytes_transferred = bytes_transferred;
