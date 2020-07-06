@@ -374,7 +374,7 @@ _Noreturn u32 ENTRY main() {
 #elif CONFIG_ELFLOADER_SPI
 	load_from_spi(&payload, (u8 *)blob_addr, 60 << 20);
 #elif CONFIG_ELFLOADER_SD
-	load_from_sd(&payload, (u8 *)blob_addr, 60 << 20);
+	assert_msg(load_from_sd(&payload, (u8 *)blob_addr, 60 << 20), "loading the payload failed");
 #else
 #error No elfloader payload source specified
 #endif
