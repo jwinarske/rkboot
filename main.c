@@ -40,6 +40,9 @@ void sync_exc_handler() {
 }
 #endif
 
+void ddrinit_configure();
+_Bool ddrinit_finish();
+
 int32_t NO_ASAN main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;
@@ -110,6 +113,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 	for_array(i, plls) {
 		rkpll_configure(plls[i].pll, plls[i].mhz);
 	}
+	debugs("PLLs configured\n");
 	const timestamp_t pll_start = get_timestamp();
 	for_array(i, plls) {
 		while (!rkpll_switch(plls[i].pll)) {
@@ -119,8 +123,12 @@ int32_t NO_ASAN main(u64 sctlr) {
 			__asm__("yield");
 		}
 	}
+	debugs("PLLs enabled\n");
 
-	ddrinit();
+	logs("jumping to ddrinit");
+	logs("jumping to ddrinit");
+	ddrinit_configure();
+	assert_msg(ddrinit_finish(), "DRAM initialization failed");
 #ifdef CONFIG_EMBED_ELFLOADER
 	void *loadaddr = (void *)0x4000000;
 	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_NORMAL);

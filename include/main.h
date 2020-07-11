@@ -7,8 +7,6 @@
 #include <lib.h>
 #include <mmu.h>
 
-void ddrinit();
-
 static inline void clrset32(volatile u32 *addr, u32 clear, u32 set) {
 	*addr = (*addr & ~clear) | set;
 }

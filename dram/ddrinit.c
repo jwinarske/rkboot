@@ -220,7 +220,7 @@ void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
-static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
+static void configure(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 	u32 sref_save[MC_NUM_CHANNELS];
 	softreset_memory_controller();
 	for_channel(ch) {
@@ -271,6 +271,9 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
 		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
 	}
+}
+
+static _Bool finish(struct dram_cfg *cfg) {
 	u64 start_ts = get_timestamp();
 	while (1) {
 		u32 ch0_status = pctl_base_for(0)[PCTL_INT_STATUS];
@@ -289,7 +292,6 @@ static _Bool try_init(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
 			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
 		}
-		clrset32(pctl_base_for(ch) + 68, PWRUP_SREF_EXIT, sref_save[ch] & PWRUP_SREF_EXIT);
 		if (ch == 1) { /* restore reset drive strength */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, cfg->regs.phy.PHY_GLOBAL(937) & 0xff);
 		}
@@ -305,22 +307,27 @@ static void set_channel_stride(u32 val) {
 
 void memtest(u64);
 
-void ddrinit() {
+void ddrinit_configure() {
+	debugs("ddrinit() reached\n");
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
 	odt.flags |= ODT_SET_RST_DRIVE;
 	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
-	udelay(10);
+	udelay(1000);
 	logs("initializing DRAM\n");
 
 	/* not doing this will make the CPU hang */
 	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
+	udelay(1000);
 	/* map memory controller ranges */
 	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
 	dsb_ishst();
-	if (!try_init(3, &init_cfg, 50)) {halt_and_catch_fire();}
+	configure(3, &init_cfg, 50);
+}
 
+_Bool ddrinit_finish() {
+	if (!finish(&init_cfg)) {return 0;}
 	dump_mrs();
 	/* map DRAM region as MMIO; needed for geometry detection */
 	mmu_map_mmio_identity(0, 0xf7ffffff);
@@ -357,4 +364,5 @@ void ddrinit() {
 	}
 	mmu_unmap_range(0, 0xf7ffffff);
 	mmu_unmap_range(0xffa80000, 0xffa8ffff);
+	return 1;
 }
