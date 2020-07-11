@@ -210,9 +210,10 @@ static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state 
 	} else {die(" unexpected ep0 event\n");}
 }
 
-_Noreturn void ENTRY main() {
+_Noreturn void main(u64 sctlr) {
 	puts("usbstage\n");
 	struct stage_store store;
+	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
 	assert(sizeof(event_buffer) >= 256 && sizeof(event_buffer) <= 0xfffc && sizeof(event_buffer) % 4 == 0);

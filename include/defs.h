@@ -17,8 +17,8 @@ typedef u64 timestamp_t;
 #define NO_ASAN __attribute__((no_sanitize_address))
 #define UNUSED __attribute__((unused))
 #define PRINTF(str_idx, start) __attribute__((format(printf, str_idx, start)))
-#define ENTRY __attribute__((section(".entry")))
 #define UNINITIALIZED __attribute__((section(".bss.noinit")))
+#define HEADER_FUNC static inline UNUSED
 
 #define CHECK_OFFSET(strct, member, offs) _Static_assert(offsetof(struct strct, member) == offs, "wrong offset for " #member)
 

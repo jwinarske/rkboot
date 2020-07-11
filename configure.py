@@ -218,34 +218,33 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
     genld=esc(genld)
 ))
 
-lib = ('timer', 'lib/error', 'lib/uart', 'lib/mmu')
-levinboot = ('main', 'pll') + tuple('dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit'))
+lib = {'lib/error', 'lib/uart', 'lib/mmu'}
+levinboot = {'main', 'pll'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
 if args.embed_elfloader:
-    levinboot += ('compression/lzcommon', 'compression/lz4')
-elfloader = ('elfloader', 'transform_fdt', 'lib/rki2c', 'pll')
+    levinboot |= {'compression/lzcommon', 'compression/lz4'}
+elfloader = {'elfloader', 'transform_fdt', 'lib/rki2c'}
 if elfloader_decompression:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
-    elfloader += ('compression/lzcommon', 'lib/string')
+    elfloader |= {'compression/lzcommon', 'lib/string'}
     if args.elfloader_lz4:
         flags['elfloader'].append('-DHAVE_LZ4')
-        elfloader += ('compression/lz4',)
+        elfloader |= {'compression/lz4'}
     if args.elfloader_gzip:
         flags['elfloader'].append('-DHAVE_GZIP')
-        elfloader += ('compression/inflate',)
+        elfloader |= {'compression/inflate'}
     if args.elfloader_zstd:
         flags['elfloader'].append('-DHAVE_ZSTD')
-        elfloader += ('compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences')
+        elfloader |= {'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences'}
 if args.elfloader_spi:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
-    elfloader = elfloader + ('lib/rkspi', 'lib/gicv2', 'rk3399_spi')
+    elfloader |= {'lib/rkspi', 'lib/gicv2', 'rk3399_spi'}
 if args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
-    elfloader += ('lib/dwmmc', 'lib/sd', 'lib/gicv2', 'rk3399_sdmmc')
-spi_flasher = ('brompatch-spi', 'lib/rkspi', 'brompatch')
-modules = lib + levinboot + elfloader + ('teststage', 'lib/dump_fdt', 'usbstage')
+    elfloader |= {'lib/dwmmc', 'lib/sd', 'lib/gicv2', 'rk3399_sdmmc'}
+spi_flasher = {'brompatch-spi', 'lib/rkspi', 'brompatch'}
+modules = lib | levinboot | elfloader | {'teststage', 'lib/dump_fdt', 'usbstage'}
 if not args.embed_elfloader:
-    modules += spi_flasher + ('memtest', 'brompatch-mem')
-modules = set(modules)
+    modules |= spi_flasher | {'memtest', 'brompatch-mem'}
 
 if args.full_debug:
     for f in modules:
@@ -258,15 +257,16 @@ for f in modules:
     print(build(base+'.o', 'cc', src, **build_flags))
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
-lib += ('dcache',)
+print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
+print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
+lib |= {'dcache', 'entry'}
 print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 if args.excvec:
-    lib += ('exc_handlers',)
-spi_flasher += ('exc_handlers',)
+    lib |= {'exc_handlers'}
+spi_flasher |= {'exc_handlers'}
 if args.elfloader_spi or args.elfloader_sd:
-    elfloader += ('exc_handlers', 'gicv3')
+    elfloader |= {'exc_handlers', 'gicv3'}
     print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
-lib = tuple(sorted(lib))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
 regtool_targets = {
@@ -289,13 +289,13 @@ regtool_targets = {
 for name, job in regtool_targets.items():
     print(build(name+'.gen.c', 'regtool', path.join(srcdir, "dram", job.input+'-fields.txt'), 'regtool', flags=job.flags))
 print(build('dramcfg.o', 'cc', path.join(srcdir, 'dram/dramcfg.c'), (name + ".gen.c" for name in regtool_targets)))
-levinboot += ('dramcfg',)
+levinboot |= {'dramcfg'}
 
-levinboot = levinboot + lib
+levinboot = (set(levinboot) | lib | {'entry-first'}) - {'entry'}
 if args.embed_elfloader:
     print(build('elfloader.lz4', 'lz4', 'elfloader.bin', flags='--content-size'))
     print(build('elfloader.lz4.o', 'incbin', 'elfloader.lz4'))
-    levinboot += ('elfloader.lz4',)
+    levinboot |= {'elfloader.lz4'}
 
 base_addresses = set()
 def binary(name, modules, base_address):
@@ -312,15 +312,14 @@ def binary(name, modules, base_address):
 binary('levinboot-usb', levinboot, 'ff8c2000')
 binary('levinboot-img', levinboot, 'ff8c2004')
 if not args.embed_elfloader:
-    binary('memtest', ('memtest', 'pll') + lib, 'ff8c2000')
-    binary('usbstage', ('usbstage', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), 'ff8c2000')
-    binary('brompatch', ('brompatch-mem', 'brompatch', 'exc_handlers') + tuple(set(lib) - {'exc_handlers'}), '04100000')
-    binary('spi-flasher', spi_flasher + tuple(set(lib) - {'exc_handlers'}), '04100000')
+    binary('memtest', {'memtest'} | lib, 'ff8c2000')
+    binary('usbstage', {'usbstage', 'exc_handlers'} | lib, 'ff8c2000')
+    binary('brompatch', {'brompatch-mem', 'brompatch', 'exc_handlers'} | lib, '04100000')
+    binary('spi-flasher', spi_flasher | lib, '04100000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
 print("default levinboot-sd.img levinboot-spi.img levinboot-usb.bin teststage.bin")
 if args.atf_headers:
-    elfloader = elfloader + lib
-    binary('elfloader', elfloader, '04000000')
+    binary('elfloader', elfloader | lib, '04000000')
     print("default elfloader.bin")
 
 for addr in base_addresses:

@@ -7,10 +7,6 @@
 #include <lib.h>
 #include <mmu.h>
 
-void setup_timer();
-void udelay(u32 usec);
-u64 get_timestamp();
-
 void ddrinit();
 
 static inline void clrset32(volatile u32 *addr, u32 clear, u32 set) {

@@ -40,4 +40,5 @@ SECTIONS {
 	} >${memory}
 }
 __end__ = __bss_end__;
+brom_recovery_mode_entry = 0xffff0100;
 END

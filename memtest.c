@@ -193,9 +193,10 @@ static const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
-_Noreturn void ENTRY main() {
+_Noreturn void main(u64 sctlr) {
 	puts("memtest\n");
 	struct stage_store store;
+	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
 	u64 round = 0, failed_rounds = 0;

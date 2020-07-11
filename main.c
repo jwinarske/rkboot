@@ -23,17 +23,6 @@ static const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
-static void NO_ASAN setup_uart() {
-	uart->line_control = UART_LCR_8_DATA_BITS | UART_LCR_DIVISOR_ACCESS;
-	uart->divisor_low = CONFIG_UART_CLOCK_DIV;
-	uart->line_control = UART_LCR_8_DATA_BITS;
-	uart->shadow_fifo_enable = 1;
-	grf[GRF_GPIO4C_IOMUX] = 0x03c00140;
-	grf[GRF_SOC_CON7] = SET_BITS16(2, 2) << 10;
-	const char *text = CONFIG_GREETING;
-	for (char c; (c = *text) ; ++text) {uart->tx = *text;}
-}
-
 #ifdef CONFIG_EMBED_ELFLOADER
 extern const u8 _binary_elfloader_lz4_start[], _binary_elfloader_lz4_end[];
 
@@ -51,25 +40,9 @@ void sync_exc_handler() {
 }
 #endif
 
-int32_t ENTRY NO_ASAN main() {
-	setup_uart();
-	setup_timer();
-	cru[CRU_CLKSEL_CON+26] = SET_BITS16(8, 2) << 8;
-	saradc->control = 0;
-	dsb_st();
-	saradc->control = 1 | RKSARADC_POWER_UP | RKSARADC_INT_ENABLE;
-	mmio_barrier();
-	while (~saradc->control & RKSARADC_INTERRUPT) {__asm__("yield");}
-	mmio_barrier();
-	u32 recovery_value = saradc->data;
-	mmio_barrier();
-	saradc->control = 0;
-	if (recovery_value <= 255) {
-		while (uart->tx_level) {__asm__("yield");}
-		for (const char *text = "recovery\r\n"; *text; ++text) {uart->tx = *text;}
-		__asm__("add sp, %0, #0x2000; br %1" : : "r"((u64)0xff8c0000), "r"((u64)0xffff0100));
-	}
+int32_t NO_ASAN main(u64 sctlr) {
 	struct stage_store store;
+	store.sctlr = sctlr;
 	stage_setup(&store);
 
 	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */

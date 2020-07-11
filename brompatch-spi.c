@@ -152,9 +152,10 @@ static void read_sfdp(u32 addr, u8 *buf, size_t size) {
 
 void patch_brom();
 
-u32 ENTRY main() {
+u32 main(u64 sctlr) {
 	puts("spi-flasher\n");
 	struct stage_store store;
+	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
 	rk3399_spi_setup();

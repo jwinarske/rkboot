@@ -301,9 +301,10 @@ static void init_payload_desc(struct payload_desc *payload) {
 #endif
 }
 
-_Noreturn u32 ENTRY main() {
+_Noreturn u32 main(u64 sctlr) {
 	puts("elfloader\n");
 	struct stage_store store;
+	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
 #ifdef CONFIG_EXC_STACK

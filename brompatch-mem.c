@@ -42,8 +42,9 @@ static const struct address_range critical_ranges[] = {
 
 void patch_brom();
 
-void ENTRY main() {
+void main(u64 sctlr) {
 	puts("brompatch\n");
+	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
 	u32 crc;__asm__("crc32cx %w0, %w1, %2" : "=r"(crc) : "r"(~(u32)0), "r"(0x0706050403020100));

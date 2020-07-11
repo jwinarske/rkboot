@@ -92,3 +92,6 @@ static volatile struct rkgpio_regs *const gpio0 = (volatile struct rkgpio_regs *
 
 struct dwmmc_regs;
 static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
+
+struct rktimer_regs;
+static volatile struct rktimer_regs *const stimer6 = (volatile struct rktimer_regs *)0xff868000;
