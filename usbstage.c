@@ -358,9 +358,8 @@ _Noreturn void main(u64 sctlr) {
 				} else {die(" unknown endpoint\n");}
 			}
 			puts("\n");
-			dwc3->event_count = 4;
 		}
-		//dwc3->event_count = (ptr - evtbuf) * 4;
+		dwc3->event_count = evtcount * 4;
 		dwc3->event_buffer_size = 256;
 		puts("\n");
 	}
