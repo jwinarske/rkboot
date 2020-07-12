@@ -92,6 +92,7 @@ struct dwc3_setup {
 	volatile struct dwc3_regs *dwc3;
 	volatile u32 *evtbuf;
 	volatile void *trb;
+	u32 hwparams[9];
 	u32 evt_slots;
 };
 
@@ -105,6 +106,7 @@ enum dwc3_ep0phase {
 
 struct dwc3_state {
 	enum dwc3_ep0phase ep0phase;
+	u32 dcfg;
 };
 
 const u8 _Alignas(64) device_desc[18] = {
@@ -175,8 +177,8 @@ static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state 
 				assert(!wLength);
 				u16 wValue = req[2] | (u16)req[3] << 8;
 				assert(wValue < 0x80);
-				u32 tmp = dwc3->device_config & ~(u32)DWC3_DCFG_DEVADDR_MASK;
-				dwc3->device_config = tmp | wValue << 3;
+				u32 tmp = st->dcfg & ~(u32)DWC3_DCFG_DEVADDR_MASK;
+				dwc3->device_config = st->dcfg = tmp | wValue << 3;
 				st->ep0phase = DWC3_EP0_STATUS2;
 			} else if ((req_header & 0xe0ff) == 0x0009) { /* SET_CONFIGURATION */
 				assert(!wLength);
@@ -228,7 +230,25 @@ _Noreturn void main(u64 sctlr) {
 		.evtbuf = evtbuf,
 		.evt_slots = 64,
 		.trb = trb,
+		.hwparams = {
+			dwc3->hardware_parameters[0],
+			dwc3->hardware_parameters[1],
+			dwc3->hardware_parameters[2],
+			dwc3->hardware_parameters[3],
+			dwc3->hardware_parameters[4],
+			dwc3->hardware_parameters[5],
+			dwc3->hardware_parameters[6],
+			dwc3->hardware_parameters[7],
+			dwc3->hardware_parameters8,
+		},
 	};
+	const u32 mdwidth = setup.hwparams[0] >> 8 & 0xff;
+	const u32 ram2_bytes = (setup.hwparams[7] >> 16) * (mdwidth / 8);
+	struct dwc3_state st = {
+		.ep0phase = DWC3_EP0_DISCONNECTED,
+		.dcfg = DWC3_HIGH_SPEED | 0 << 12 | (ram2_bytes / 512) << 17 | DWC3_DCFG_LPM_CAPABLE,
+	};
+
 	for_range(i, 0, setup.evt_slots) {evtbuf[i] = 0;}
 	for (volatile const void *ptr2 = evtbuf; ptr2 < (void*)(evtbuf + setup.evt_slots); ptr2 += 64) {
 		__asm__ volatile("dc civac, %0" : : "r"(ptr2) : "memory");
@@ -268,10 +288,10 @@ _Noreturn void main(u64 sctlr) {
 	dwc3->phy_config = val;
 	udelay(100000);
 	printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
-	
+
 	dwc3->global_control |= DWC3_GCTL_PORT_CAP_DEVICE;
 	/* HiSpeed */
-	dwc3->device_config &= ~(u32)DWC3_DCFG_DEVSPD_MASK & ~(u32)DWC3_DCFG_DEVADDR_MASK;
+	dwc3->device_config = st.dcfg;
 	printf("DCFG: %08"PRIx32"\n", dwc3->device_config);
 	udelay(10000);
 	printf("new config GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
@@ -296,8 +316,6 @@ _Noreturn void main(u64 sctlr) {
 		u32 evtcount = dwc3->event_count;
 		printf("%"PRIu32" events pending, evtsiz0x%"PRIx32"\n", evtcount, dwc3->event_buffer_size);
 	}
-	struct dwc3_state st;
-	st.ep0phase = DWC3_EP0_DISCONNECTED;
 	timestamp_t last_status = get_timestamp();
 	u32 evt_pos = 0;
 	while (1) {
@@ -336,7 +354,7 @@ _Noreturn void main(u64 sctlr) {
 					for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
 						post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
 					}
-					dwc3->device_config &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
+					dwc3->device_config = st.dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
 					puts(" USB reset");
 					st.ep0phase = DWC3_EP0_SETUP;
 					break;

@@ -69,11 +69,20 @@ CHECK_OFFSET(dwc3_regs, device_endpoint_enable, 0x620);
 CHECK_OFFSET(dwc3_regs, device_ep_cmd, 0x700);
 
 enum {
+	DWC3_HIGH_SPEED = 0,
+	DWC3_FULL_SPEED = 1,
+	DWC3_LOW_SPEED = 2,
+	DWC3_SUPERSPEED = 4,
+	DWC3_SUPERSPEED_PLUS = 5,
+};
+
+enum {
 	DWC3_DCFG_LPM_CAPABLE = 1 << 22,
 	DWC3_DCFG_INTRNUM_MASK = 0xf000,
 	DWC3_DCFG_DEVADDR_MASK = 0x3f8,
 	DWC3_DCFG_DEVSPD_MASK = 7,
 };
+
 #define DWC3_DCTL_LST_CHANGE_REQ(v) ((u32)(v) << 5 & 0x1e)
 enum {
 	DWC3_DCTL_RUN = 1 << 31,
