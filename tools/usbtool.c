@@ -224,43 +224,56 @@ const uint32_t copy_program[24] = {
 	0,
 };
 
+struct device_discovery {
+	libusb_device *device;
+	libusb_device_handle *handle;
+};
+
+static struct device_discovery  find_device(libusb_context *ctx) {
+	libusb_device **list;
+	ssize_t err;
+	if ((err = libusb_get_device_list(ctx, &list)) < 0) {
+		fprintf(stderr, "error listing devices: %zd (%s)\n", err, libusb_error_name(err));
+		exit(2);
+	}
+	struct device_discovery res = {.device = 0, .handle = 0};
+	for (size_t pos = 0; list[pos]; ++pos) {
+		struct libusb_device_descriptor devdesc;
+		libusb_get_device_descriptor(list[pos], &devdesc);
+		if (devdesc.idVendor == 0x2207 && devdesc.idProduct == 0x330c) {
+			int err = libusb_open(list[pos], &res.handle);
+			res.device = list[pos];
+			if (err) {
+				fprintf(stderr, "error opening device: %d (%s)\n", err, libusb_error_name(err));
+				exit(2);
+			}
+			break;
+		}
+	}
+	libusb_free_device_list(list, 1);
+	return res;
+}
+
 int main(int UNUSED argc, char UNUSED **argv) {
 	libusb_context *ctx;
 	if (libusb_init(&ctx)) {
 		fprintf(stderr, "error initializing libusb\n");
 		return 2;
 	}
-	libusb_device **list;
-	ssize_t res;
-	if ((res = libusb_get_device_list(ctx, &list)) < 0) {
-		fprintf(stderr, "error listing devices: %zd (%s)\n", res, libusb_error_name(res));
-		return 2;
-	}
-	libusb_device_handle *handle = 0;
-	for (size_t pos = 0; list[pos]; ++pos) {
-		struct libusb_device_descriptor devdesc;
-		libusb_get_device_descriptor(list[pos], &devdesc);
-		if (devdesc.idVendor == 0x2207 && devdesc.idProduct == 0x330c) {
-			int res = libusb_open(list[pos], &handle);
-			if (res) {
-				fprintf(stderr, "error opening device: %d (%s)\n", res, libusb_error_name(res));
-				return 2;
-			}
-			break;
-		}
-	}
+	struct device_discovery discovery = find_device(ctx);
+	libusb_device_handle *handle = discovery.handle;
 	if (!handle) {
 		fprintf(stderr, "no device found\n");
 		return 2;
 	}
-	libusb_free_device_list(list, 1);
 	const size_t buf_size = 180 * 1024;
 	uint8_t *buf = malloc(buf_size);
 	if (!buf) {
 		fprintf(stderr, "buffer allocation failed\n");
 		abort();
 	}
-	for (char **arg = argv + 1; *arg; ++arg) {
+	char **arg = argv;
+	while (*++arg) {
 		_Bool call = 0, unpatched, pstart = 0;
 		if ((call = !strcmp("--call", *arg)) || !strcmp("--run", *arg)) {
 			if (!*++arg) {
@@ -284,6 +297,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				return 1;
 			}
 			if (fd) {close(fd);}
+			if (!call) {break;}
 		} else if ((unpatched =!strcmp("--load", *arg)) || (pstart = !strcmp("--pstart", *arg)) || !strcmp("--pload", *arg)) {
 			char *command = *arg;
 			char *addr_string = *++arg;
@@ -325,6 +339,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				if (!(unpatched ? transfer : transfer_patched)(handle, buf, header_size + size + rem, pstart ? 0x0472 : 0x0471)) {return 1;}
 				load_addr = end_addr;
 			} while (size + header_size >= buf_size);
+			if (pstart) {break;}
 		} else if ((call = !strcmp("--dramcall", *arg)) || !strcmp("--jump", *arg)) {
 			uint64_t entry_addr, stack_addr;
 			char *command = *arg, *entry_str = *++arg;
@@ -352,12 +367,41 @@ int main(int UNUSED argc, char UNUSED **argv) {
 			rc4_init(rc4state);
 			uint16_t crc = 0xffff;
 			if (!block_transfer(handle, buf, &crc, rc4state) || !final_transfer(handle, crc, call ? 0x0471 : 0x0472)) {return 1;}
+			if (!call) {break;}
 		} else {
 			fprintf(stderr, "unknown command line argument %s", *arg);
 			return 1;
 		}
 	}
-	printf("done, closing USB handle\n");
+	puts("mask ROM mode done, closing USB handle\n");
 	libusb_close(handle);
+	if (*arg) {
+		usleep(500000);	/* need to wait for usbstage to reset the USB controller */
+		puts("more commands, starting to look for usbstage");
+		for (int timeout = 100; timeout; --timeout) {
+			discovery = find_device(ctx);
+			if (discovery.handle) {
+				break;
+			}
+			usleep(100000);
+		}
+		handle = discovery.handle;
+		if (!handle) {
+			fprintf(stderr, "usbstage did not bring up the USB controller within 10s\n");
+			return 2;
+		}
+		int err = libusb_claim_interface(handle, 0);
+		if (err) {
+			fprintf(stderr, "error claiming interface: %d (%s)\n", err, libusb_error_name(err));
+			exit(2);
+		}
+		int transferred_bytes = 0;
+		err = libusb_bulk_transfer(handle, 2, "test", 4, &transferred_bytes, 1000);
+		if (err) {
+			fprintf(stderr, "error while sending CRC: %d (%s)\n", err, libusb_error_name(err));
+			return 0;
+		}
+		libusb_close(handle);
+	}
 	libusb_exit(ctx);
 }
