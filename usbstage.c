@@ -344,13 +344,6 @@ _Noreturn void main(u64 sctlr) {
 					printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
 					assert((dwc3->device_status & 7) == 0);
 					dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
-					for_range(ep, 0, 2) {
-						configure_ep(dwc3, ep, DWC3_DEPCFG0_MODIFY, max_packet_size);
-					}
-					for_range(ep, 0, num_ep) {
-						post_depcmd(dwc3, ep, DWC3_DEPCMD_SET_XFER_RSC_CONFIG, 1, 0, 0);
-						wait_depcmd(dwc3, ep);
-					}
 					break;
 				case DWC3_DEVT_LINK_STATE_CHANGE:
 					puts(" link status change");
