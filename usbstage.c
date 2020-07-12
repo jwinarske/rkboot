@@ -46,7 +46,6 @@ void submit_trb(volatile struct dwc3_regs *dwc3, u32 ep, volatile u32 *trb, u64 
 	trb[2] = status;
 	trb[3] = ctrl | DWC3_TRB_HWO;
 	post_depcmd(dwc3, ep, DWC3_DEPCMD_START_XFER, (u32)((u64)trb >> 32), (u32)(u64)trb, 0);
-	//wait_depcmd(dwc3, ep);
 }
 
 enum {
@@ -297,7 +296,6 @@ _Noreturn void main(u64 sctlr) {
 		u32 evtcount = dwc3->event_count;
 		printf("%"PRIu32" events pending, evtsiz0x%"PRIx32"\n", evtcount, dwc3->event_buffer_size);
 	}
-	/*assert(evtcount == 0);*/
 	struct dwc3_state st;
 	st.ep0phase = DWC3_EP0_DISCONNECTED;
 	timestamp_t last_status = get_timestamp();
@@ -321,7 +319,6 @@ _Noreturn void main(u64 sctlr) {
 			__asm__ volatile("dc ivac, %0" : : "r"(ptr2) : "memory");
 		}
 		__asm__("dsb sy");
-		//dump_mem(evtbuf, 256);
 		for_range(i, 0, evtcount) {
 			u32 event = evtbuf[evt_pos];
 			evt_pos = (evt_pos + 1) % setup.evt_slots;
@@ -347,8 +344,6 @@ _Noreturn void main(u64 sctlr) {
 					printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
 					assert((dwc3->device_status & 7) == 0);
 					dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
-					//post_depcmd(dwc3, 0, DWC3_DEPCMD_START_NEW_CONFIG, 0, 0, 0);
-					//wait_depcmd(dwc3, 0);
 					for_range(ep, 0, 2) {
 						configure_ep(dwc3, ep, DWC3_DEPCFG0_MODIFY, max_packet_size);
 					}
@@ -376,17 +371,4 @@ _Noreturn void main(u64 sctlr) {
 		dwc3->event_buffer_size = 256;
 		puts("\n");
 	}
-/*
-	for_range(i, 0, 8) {
-		printf("%2u:", i * 8);
-		const u8 *start = (const u8 *)((u64)0xff8c01c0 + 8*i);
-		for_range(j, 0, 8) {
-			printf(" %02"PRIx8, start[j]);
-		}
-		puts("  ");
-		for_range(j, 0, 8) {
-			printf("%c", start[j] < 0x7f && start[j] >= 32 ? start[j] : '.');
-		}
-		puts("\n");
-	}*/
 }
