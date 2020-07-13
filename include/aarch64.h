@@ -16,5 +16,7 @@ enum {
 	SCR_EL3_RES1 = 0x30,
 };
 
+static inline void UNUSED dmb_st() {__asm__("dmb st");}
+
 static inline void UNUSED dsb_st() {__asm__("dsb st");}
 static inline void UNUSED dsb_ishst() {__asm__("dsb ishst");}

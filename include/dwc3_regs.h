@@ -156,6 +156,7 @@ enum {
 };
 
 enum {
+	DWC3_DEPCMD_CMDIOC = 0x100,
 	/* … */
 	DWC3_DEPCMD_START_NEW_CONFIG = 9,
 	/* … */

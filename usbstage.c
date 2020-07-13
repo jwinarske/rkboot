@@ -39,12 +39,18 @@ void wait_depcmd(volatile struct dwc3_regs *dwc3, u32 ep) {
 	}
 }
 
-void submit_trb(volatile struct dwc3_regs *dwc3, u32 ep, volatile u32 *trb, u64 param, u32 status, u32 ctrl) {
-	printf("submit TRB: %016"PRIx64" %08"PRIx32" %"PRIx32"\n", param, status, ctrl);
+static void write_trb(volatile u32 *trb, u64 param, u32 status, u32 ctrl) {
 	trb[0] = (u32)param;
 	trb[1] = (u32)(param >> 32);
 	trb[2] = status;
-	trb[3] = ctrl | DWC3_TRB_HWO;
+	dmb_st();
+	trb[3] = ctrl;
+}
+
+void submit_trb(volatile struct dwc3_regs *dwc3, u32 ep, volatile u32 *trb, u64 param, u32 status, u32 ctrl) {
+	printf("submit TRB: %016"PRIx64" %08"PRIx32" %"PRIx32"\n", param, status, ctrl);
+	write_trb(trb, param, status, ctrl | DWC3_TRB_HWO);
+	dmb_st();
 	post_depcmd(dwc3, ep, DWC3_DEPCMD_START_XFER, (u32)((u64)trb >> 32), (u32)(u64)trb, 0);
 }
 
@@ -61,30 +67,42 @@ static void dwc3_write_dctl(volatile struct dwc3_regs *dwc3, u32 val) {
 	dwc3->device_control = val & ~(u32)DWC3_DCTL_LST_CHANGE_REQ_MASK;
 }
 
-static void configure_ep(volatile struct dwc3_regs *dwc3, u32 ep, u32 action, u32 max_packet_size) {
-	u32 cfg0 = action;
-	cfg0 |= max_packet_size << 3 | USB_EP_TYPE_CONTROL << 1;
-	u32 cfg1 = DWC3_DEPCFG1_XFER_COMPLETE_EN | DWC3_DEPCFG1_XFER_NOT_READY_EN;
+static void configure_ep(volatile struct dwc3_regs *dwc3, u32 ep, u32 cfg0, u32 cfg1) {
 	cfg1 |= 0;	/*interrupt number*/
 	cfg1 |= ep << 25 & 0x3e000000;	/*endpoint number*/
 	if (ep & 1) {
 		cfg0 |= ep << 16 & 0x3e0000;	/* FIFO number */
 	}
 	post_depcmd(dwc3, ep, DWC3_DEPCMD_SET_EP_CONFIG, cfg0, cfg1, 0);
-	wait_depcmd(dwc3, ep);
-	dwc3->device_endpoint_enable |= 1 << ep;
 }
 
-static void configure_all_eps(volatile struct dwc3_regs *dwc3, u32 max_packet_size) {
+static void configure_control_ep(volatile struct dwc3_regs *dwc3, u32 ep, u32 action, u32 max_packet_size) {
+	u32 cfg0 = action;
+	cfg0 |= max_packet_size << 3 | USB_EP_TYPE_CONTROL << 1;
+	u32 cfg1 = DWC3_DEPCFG1_XFER_COMPLETE_EN | DWC3_DEPCFG1_XFER_IN_PROGRESS_EN | DWC3_DEPCFG1_XFER_NOT_READY_EN;
+	configure_ep(dwc3, ep, cfg0, cfg1);
+}
+static void configure_bulk_ep(volatile struct dwc3_regs *dwc3, u32 ep, u32 action, u32 max_packet_size) {
+	u32 cfg0 = action | max_packet_size << 3 | USB_EP_TYPE_BULK << 1;
+	u32 cfg1 = DWC3_DEPCFG1_XFER_IN_PROGRESS_EN | DWC3_DEPCFG1_XFER_NOT_READY_EN | DWC3_DEPCFG1_XFER_COMPLETE_EN;
+	configure_ep(dwc3, ep, cfg0, cfg1);
+}
+
+static void dwc3_new_configuration(volatile struct dwc3_regs *dwc3, u32 max_packet_size) {
 	post_depcmd(dwc3, 0, DWC3_DEPCMD_START_NEW_CONFIG, 0, 0, 0);
 	wait_depcmd(dwc3, 0);
 	printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 	for_range(ep, 0, 2) {
-		configure_ep(dwc3, ep, DWC3_DEPCFG0_INIT, max_packet_size);
+		configure_control_ep(dwc3, ep, DWC3_DEPCFG0_INIT, max_packet_size);
 	}
 	for_range(ep, 0, num_ep) {
-		post_depcmd(dwc3, ep, DWC3_DEPCMD_SET_XFER_RSC_CONFIG, 1, 0, 0);
 		wait_depcmd(dwc3, ep);
+		post_depcmd(dwc3, ep, DWC3_DEPCMD_SET_XFER_RSC_CONFIG, 1, 0, 0);
+	}
+	dwc3->device_endpoint_enable = 3;
+	for_range(ep, 0, num_ep) {
+		wait_depcmd(dwc3, ep);
+		printf("%"PRIu32": %08"PRIx32"\n", ep, dwc3->device_ep_cmd[ep].cmd);
 	}
 }
 
@@ -137,12 +155,12 @@ const u8 _Alignas(64) conf_desc[32] = {
 	7, 5,	/* 7-byte endpoint descriptor */
 		0x81,	/* address 81 (device-to-host) */
 		0x02,	/* attributes: bulk endpoint */
-		0x00, 0x02, /* max. packet size: 512 */
+		0x40, 0x00, /* max. packet size: 64 */
 		0,	/* interval value 0 */
 	7, 5,	/* 7-byte endpoint descriptor */
 		0x02,	/* address 2 (host-to-device) */
 		0x02,	/* attributes: bulk endpoint */
-		0x00, 0x02,	/* max. packet size: 512 */
+		0x40, 0x0,	/* max. packet size: 64 */
 		0,	/* interval value 0 */
 };
 
@@ -185,6 +203,13 @@ static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state 
 				u16 wValue = req[2] | (u16)req[3] << 8;
 				assert(wValue == 1);
 				dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_ACCEPT_U1 | DWC3_DCTL_ACCEPT_U2);
+
+				volatile u32 *ep4_trb = (u32 *)0xff8c0210;
+				write_trb(ep4_trb, 0xff8c0400, 64, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+				dsb_st();
+				wait_depcmd(dwc3, 4);
+				post_depcmd(dwc3, 4, DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_CMDIOC, (u32)((u64)ep4_trb >> 32), (u32)(u64)ep4_trb, 0);
+				wait_depcmd(dwc3, 4);
 				st->ep0phase = DWC3_EP0_STATUS2;
 			} else {die("unexpected control request: %04"PRIx16"\n", req_header);}
 		} else if (phase == DWC3_EP0_DATA) {
@@ -211,6 +236,36 @@ static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state 
 	} else {die(" unexpected ep0 event\n");}
 }
 
+static void process_device_event(const struct dwc3_setup *setup, struct dwc3_state *st, u32 event) {
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	switch (event >> 8 & 15) {
+	case DWC3_DEVT_DISCONNECT:
+		puts(" disconnect");
+		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_INIT_U1 & ~(u32)DWC3_DCTL_INIT_U2);
+		st->ep0phase = DWC3_EP0_DISCONNECTED;
+		break;
+	case DWC3_DEVT_RESET:
+		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_TEST_CONTROL_MASK);
+		for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
+			post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
+		}
+		dwc3->device_config = st->dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
+		puts(" USB reset");
+		st->ep0phase = DWC3_EP0_SETUP;
+		break;
+	case DWC3_DEVT_CONNECTION_DONE:
+		printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
+		assert((dwc3->device_status & 7) == 0);
+		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
+		dwc3->device_endpoint_enable |= 1 << 4;
+		break;
+	case DWC3_DEVT_LINK_STATE_CHANGE:
+		puts(" link status change");
+		break;
+	default: abort();
+	}
+}
+
 _Noreturn void main(u64 sctlr) {
 	puts("usbstage\n");
 	struct stage_store store;
@@ -221,7 +276,7 @@ _Noreturn void main(u64 sctlr) {
 	volatile struct dwc3_regs *dwc3 = (volatile struct dwc3_regs *)0xfe80c100;
 
 	mmu_unmap_range(0xff8c0000, 0xff8c0fff);
-	mmu_map_mmio_identity(0xff8c0000, 0xff8c0fff);
+	mmu_map_range(0xff8c0000, 0xff8c0fff, 0xff8c0000, MEM_TYPE_UNCACHED);
 	dsb_st();
 	volatile u32 *evtbuf = (u32 *)0xff8c0100;
 	volatile u32 *trb = (u32 *)0xff8c0200;
@@ -296,7 +351,9 @@ _Noreturn void main(u64 sctlr) {
 	udelay(10000);
 	printf("new config GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 	u32 max_packet_size = 64;
-	configure_all_eps(dwc3, max_packet_size);
+	dwc3_new_configuration(dwc3, max_packet_size);
+	configure_bulk_ep(dwc3, 4, DWC3_DEPCFG0_INIT, 64);
+	wait_depcmd(dwc3, 4);
 	printf("DALEPENA: %"PRIx32"\n", dwc3->device_endpoint_enable);
 
 	dwc3->event_buffer_address[0] = (u32)(u64)evtbuf;
@@ -331,7 +388,7 @@ _Noreturn void main(u64 sctlr) {
 			__asm__("yield");
 			continue;
 		}
-		printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32" evtbuf: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status, dwc3->event_buffer_address[0]);
+		printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 		dwc3->event_buffer_size = 256 | 1 << 31;
 		for (volatile const void *ptr2 = evtbuf; ptr2 < (void*)(evtbuf + setup.evt_slots); ptr2 += 64) {
 			__asm__ volatile("dc ivac, %0" : : "r"(ptr2) : "memory");
@@ -343,37 +400,20 @@ _Noreturn void main(u64 sctlr) {
 			printf("0x%08"PRIx32, event);
 			if (event & 1) { /* generic event */
 				assert((event >> 1 & 0x7f) == 0);
-				switch (event >> 8 & 15) {
-				case DWC3_DEVT_DISCONNECT:
-					puts(" disconnect");
-					dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_INIT_U1 & ~(u32)DWC3_DCTL_INIT_U2);
-					st.ep0phase = DWC3_EP0_DISCONNECTED;
-					break;
-				case DWC3_DEVT_RESET:
-					dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_TEST_CONTROL_MASK);
-					for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
-						post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
-					}
-					dwc3->device_config = st.dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
-					puts(" USB reset");
-					st.ep0phase = DWC3_EP0_SETUP;
-					break;
-				case DWC3_DEVT_CONNECTION_DONE:
-					printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
-					assert((dwc3->device_status & 7) == 0);
-					dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
-					break;
-				case DWC3_DEVT_LINK_STATE_CHANGE:
-					puts(" link status change");
-					break;
-				default: abort();
-				}
+				process_device_event(&setup, &st, event);
 			} else { /* endpoint event */
 				u32 ep = event >> 1 & 0x1f;
 				printf(" ep%"PRIu32, ep);
 				if (ep <= 1) {
 					process_ep0_event(&setup, &st, event);
-				} else {die(" unknown endpoint\n");}
+				} else {
+					u32 type = event >> 6 & 15, status = event >> 12 & 15;
+					printf(" type%"PRIu32" status%"PRIx32, type, status);
+					printf("DEPCMD: %"PRIx32"\n", dwc3->device_ep_cmd[ep].cmd);
+					if (type == DWC3_DEPEVT_XFER_COMPLETE) {
+						dump_mem((void*)0xff8c0400, 64);
+					}
+				}
 			}
 			puts("\n");
 		}
