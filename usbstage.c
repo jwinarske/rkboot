@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdatomic.h>
 
-#include <endian.h>
+#include <byteorder.h>
 
 #include <main.h>
 #include <rk3399.h>
