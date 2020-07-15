@@ -254,6 +254,13 @@ static struct device_discovery  find_device(libusb_context *ctx) {
 	return res;
 }
 
+enum usbstage_command {
+	CMD_LOAD = 0,
+	CMD_CALL,
+	CMD_START,
+	NUM_CMD
+};
+
 void bulk_mode(libusb_context *ctx, char **arg) {
 	const size_t buf_size = 1024 * 1024;
 	uint8_t *buf = malloc(buf_size);
@@ -280,8 +287,8 @@ void bulk_mode(libusb_context *ctx, char **arg) {
 		exit(2);
 	}
 	while (*++arg) {
-		_Bool load;
-		if ((load = !strcmp("--load", *arg)) || !strcmp("--start", *arg)) {
+		_Bool call;
+		if (!strcmp("--load", *arg)) {
 			char *command = *arg;
 			char *addr_string = *++arg;
 			uint64_t addr_;
@@ -313,11 +320,11 @@ void bulk_mode(libusb_context *ctx, char **arg) {
 				printf("offset 0x%"PRIx64", loading 0x%x bytes to 0x%"PRIx64"\n", total_loaded, size, load_addr);
 				u8 header[512];
 				memset(header, 0, sizeof(header));
-				write_le32(header + 0, size);
-				write_le32(header + 4, 0);
-				write_le32(header + 8, load_addr);
-				write_le32(header + 12, load_addr >> 32);
-				write_le32(header + 16, !load);
+				write_le32(header + 0, CMD_LOAD);
+				write_le32(header + 8, size);
+				write_le32(header + 12, 0);
+				write_le32(header + 16, load_addr);
+				write_le32(header + 20, load_addr >> 32);
 
 				int transferred_bytes = 0;
 				err = libusb_bulk_transfer(handle, 2, header, 512, &transferred_bytes, 1000);
@@ -333,7 +340,32 @@ void bulk_mode(libusb_context *ctx, char **arg) {
 				load_addr += size;
 				if (size < buf_size) {break;}
 			}
-			if (!load) {break;}
+		} else if  ((call = !strcmp("--call", *arg)) || !strcmp("--start", *arg)) {
+			uint64_t entry_addr, stack_addr;
+			char *command = *arg, *entry_str = *++arg;
+			if (!entry_str || sscanf(entry_str, "%"SCNx64, &entry_addr) != 1) {
+				fprintf(stderr, "%s needs an entry point address\n", command);
+				exit(1);
+			}
+			char *stack_str = *++arg;
+			if (!stack_str || sscanf(stack_str, "%"SCNx64, &stack_addr) != 1) {
+				fprintf(stderr, "%s needs a stack address\n", command);
+				exit(1);
+			}
+			u8 header[512];
+			memset(header, 0, sizeof(header));
+			write_le32(header + 0, call ? CMD_CALL : CMD_START);
+			write_le32(header + 8, (uint32_t)entry_addr);
+			write_le32(header + 12, entry_addr >> 32);
+			write_le32(header + 16, (uint32_t)stack_addr);
+			write_le32(header + 24, stack_addr >> 32);
+			int transferred_bytes = 0;
+			err = libusb_bulk_transfer(handle, 2, header, 512, &transferred_bytes, 1000);
+			if (err) {
+				fprintf(stderr, "error while sending run command: %d (%s)\n", err, libusb_error_name(err));
+				exit(2);
+			}
+			if (!call) {break;}
 		}
 	}
 	libusb_close(handle);

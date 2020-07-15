@@ -306,10 +306,10 @@ _Noreturn u32 main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
-	mmu_setup(initial_mappings, critical_ranges);
 #ifdef CONFIG_EXC_STACK
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 #endif
+	mmu_setup(initial_mappings, critical_ranges);
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);	/* {PMU,}CRU, GRF */
 	mmu_map_mmio_identity(0xff310000, 0xff33ffff);	/* PMU{,SGRF,GRF} */
 	mmu_map_range(0xff8c0000, 0xff8dffff, 0xff8c0000, MEM_TYPE_NORMAL);	/* SRAM */

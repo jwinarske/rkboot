@@ -101,6 +101,13 @@ enum {
 	DWC3_DCTL_TEST_CONTROL_MASK = 0xe,
 	/* … */
 };
+
+enum {
+	/* … */
+	DWC3_DSTS_HALTED = 1 << 22,
+	/* … */
+};
+
 #define DWC3_GUSB2PHYCFG_TURNAROUND(v) ((u32)(v) << 10 & 0x3c00)
 enum {
 	DWC3_GUSB2PHYCFG_PHY_SOFT_RESET = 1 << 31,
