@@ -80,6 +80,23 @@ enum usb_transfer_type {
 	USB_INTERRUPT = 3,
 };
 
+enum usb_speed {
+	USB_LOW_SPEED = 0,
+	USB_FULL_SPEED,
+	USB_HIGH_SPEED,
+	USB_SUPER_SPEED,
+	USB_SUPER_SPEED_PLUS,
+	NUM_USB_SPEED
+};
+
+static const u16 usb_max_packet_size[NUM_USB_SPEED] = {
+	[USB_LOW_SPEED] = 8,
+	[USB_FULL_SPEED] = 64,
+	[USB_HIGH_SPEED] = 1024,
+	[USB_SUPER_SPEED] = 1024,
+	[USB_SUPER_SPEED_PLUS] = 1024,
+};
+
 struct usb_setup {
 	u8 bRequestType;
 	u8 bRequest;
@@ -145,6 +162,7 @@ struct dwc3_bufs {
 struct dwc3_setup {
 	volatile struct dwc3_regs *dwc3;
 	struct dwc3_bufs *bufs;
+	const struct dwc3_gadget_ops *ops;
 	u32 hwparams[9];
 	u32 evt_slots;
 };
@@ -157,9 +175,157 @@ enum dwc3_ep0phase {
 	DWC3_EP0_DISCONNECTED,
 };
 
+typedef u32 buf_id_t;
+
 struct dwc3_state {
 	enum dwc3_ep0phase ep0phase;
+	enum usb_speed speed;
 	u32 dcfg;
+	buf_id_t ep0_buf;
+	u64 ep0_buf_addr;
+	u32 ep0_buf_size;
+};
+
+struct dwc3_gadget_ops {
+	buf_id_t (*prepare_descriptor)(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req);
+	_Bool (*set_configuration)(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req);
+	void (*release_buffer)(const struct dwc3_setup *setup, struct dwc3_state *st, buf_id_t buf);
+};
+
+enum {LAST_TRB = DWC3_TRB_ISP_IMI | DWC3_TRB_IOC | DWC3_TRB_LAST};
+
+static void dwc3_ep0_restart(const struct dwc3_setup *setup, struct dwc3_state *st) {
+	puts("restarting ep0\n");
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	post_depcmd(dwc3, 0, DWC3_DEPCMD_SET_STALL, 0, 0, 0);
+	wait_depcmd(dwc3, 0);
+	struct dwc3_bufs *bufs = setup->bufs;
+	submit_trb(dwc3, 0, &bufs->ep0_trb, (u64)&bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
+	st->ep0phase = DWC3_EP0_SETUP;
+}
+
+static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state *st, u32 event) {
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	struct dwc3_bufs *bufs = setup->bufs;
+	u32 UNUSED ep = event >> 1 & 0x1f, type = event >> 6 & 15, status = event >> 12 & 15;
+	printf(" type%"PRIu32" status%"PRIu32, type, status);
+	const enum dwc3_ep0phase phase = st->ep0phase;
+	if (type == DWC3_DEPEVT_XFER_COMPLETE) {
+		if (phase == DWC3_EP0_SETUP) {
+			puts(" setup complete\n");
+			atomic_thread_fence(memory_order_acquire);
+			struct usb_setup *req = &bufs->setup_packet;
+			dump_mem(req, 16);
+			u16 req_header = (u16)req->bRequestType << 8 | req->bRequest;
+			const u16 wLength = from_le16(req->wLength);
+			const u16 wValue = from_le16(req->wValue);
+			if ((req_header & 0xe0ff) == 0x8006) { /* GET_DESCRIPTOR */
+				assert(wLength);
+				buf_id_t buf = setup->ops->prepare_descriptor(setup, st, req);
+				if (buf) {
+					st->ep0_buf = buf;
+					u32 len = st->ep0_buf_size;
+					dump_mem((void*)st->ep0_buf_addr, len);
+					if (len > wLength) {len = wLength;}
+					submit_trb(dwc3, 1, &bufs->ep0_trb, st->ep0_buf_addr, len, DWC3_TRB_TYPE_CONTROL_DATA | LAST_TRB);
+					st->ep0phase = DWC3_EP0_DATA;
+				} else {
+					dwc3_ep0_restart(setup, st);
+					return;
+				}
+			} else if ((req_header & 0xe0ff) == 0x0005) { /* SET_ADDRESS */
+				assert(!wLength);
+				assert(wValue < 0x80);
+				u32 tmp = st->dcfg & ~(u32)DWC3_DCFG_DEVADDR_MASK;
+				dwc3->device_config = st->dcfg = tmp | wValue << 3;
+				st->ep0phase = DWC3_EP0_STATUS2;
+			} else if ((req_header & 0xe0ff) == 0x0009) { /* SET_CONFIGURATION */
+				assert(!wLength);
+				dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_ACCEPT_U1 | DWC3_DCTL_ACCEPT_U2);
+
+				if (setup->ops->set_configuration(setup, st, req)) {
+					st->ep0phase = DWC3_EP0_STATUS2;
+				} else {
+					dwc3_ep0_restart(setup, st);
+					return;
+				}
+			} else {die("unexpected control request: %04"PRIx16"\n", req_header);}
+		} else if (phase == DWC3_EP0_DATA) {
+			puts(" data complete");
+			setup->ops->release_buffer(setup, st, st->ep0_buf);
+			st->ep0_buf = 0;
+			st->ep0phase = DWC3_EP0_STATUS3;
+		} else if (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3) {
+			puts(" restarting EP0 cycle");
+			submit_trb(dwc3, 0, &bufs->ep0_trb, (u64)&bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
+			st->ep0phase = DWC3_EP0_SETUP;
+		} else {die("XferComplete in unexpected EP0 phase");}
+		assert(st->ep0phase != phase);
+	} else if (type == DWC3_DEPEVT_XFER_NOT_READY) {
+		u32 state = status & 3;
+		if (state == 1 && phase == DWC3_EP0_DATA) {
+			puts(" data not ready");
+		} else if (state == 2 && (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3)) {
+			puts(" status not ready");
+			assert(phase == DWC3_EP0_STATUS3 || ep == 1);
+			u32 cmd = phase == DWC3_EP0_STATUS2
+				? DWC3_TRB_TYPE_CONTROL_STATUS2
+				: DWC3_TRB_TYPE_CONTROL_STATUS3;
+			submit_trb(dwc3, ep, &bufs->ep0_trb, (u64)&bufs->setup_packet, 0, cmd | LAST_TRB);
+		} else {die(" unexpected XferNotReady");}
+	} else {die(" unexpected ep0 event\n");}
+}
+
+static enum usb_speed dwc3_speed_to_standard[8] = {
+	USB_HIGH_SPEED,
+	USB_FULL_SPEED,
+	USB_LOW_SPEED,
+	NUM_USB_SPEED,
+	USB_SUPER_SPEED,
+	USB_SUPER_SPEED_PLUS,
+	NUM_USB_SPEED,
+	NUM_USB_SPEED,
+};
+
+static void process_device_event(const struct dwc3_setup *setup, struct dwc3_state *st, u32 event) {
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	switch (event >> 8 & 15) {
+	case DWC3_DEVT_DISCONNECT:
+		puts(" disconnect");
+		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_INIT_U1 & ~(u32)DWC3_DCTL_INIT_U2);
+		st->ep0phase = DWC3_EP0_DISCONNECTED;
+		break;
+	case DWC3_DEVT_RESET:
+		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_TEST_CONTROL_MASK);
+		for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
+			post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
+		}
+		dwc3->device_config = st->dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
+		puts(" USB reset");
+		st->ep0phase = DWC3_EP0_SETUP;
+		break;
+	case DWC3_DEVT_CONNECTION_DONE:
+		printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
+		enum usb_speed speed = dwc3_speed_to_standard[dwc3->device_status & 7];
+		assert(speed < NUM_USB_SPEED);
+		st->speed = speed;
+		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
+		dwc3->device_endpoint_enable |= 1 << 4;
+		break;
+	case DWC3_DEVT_LINK_STATE_CHANGE:
+		puts(" link status change");
+		break;
+	default: abort();
+	}
+}
+
+struct usbstage_state {
+	struct dwc3_state st;
+	u64 addr, size;
+};
+struct usbstage_bufs {
+	struct dwc3_bufs bufs;
+	_Alignas(16) u8 desc[32];
 };
 
 const u8 _Alignas(64) device_desc[18] = {
@@ -190,119 +356,60 @@ const u8 _Alignas(64) conf_desc[32] = {
 	7, USB_EP_DESC,	/* 7-byte endpoint descriptor */
 		0x81,	/* address 81 (device-to-host) */
 		0x02,	/* attributes: bulk endpoint */
-		0x40, 0x00, /* max. packet size: 64 */
+		0x00, 0x04, /* max. packet size: 1024 */
 		0,	/* interval value 0 */
 	7, USB_EP_DESC,	/* 7-byte endpoint descriptor */
 		0x02,	/* address 2 (host-to-device) */
 		0x02,	/* attributes: bulk endpoint */
-		0x40, 0x0,	/* max. packet size: 64 */
+		0x00, 0x04,	/* max. packet size: 1024 */
 		0,	/* interval value 0 */
 };
 
-enum {LAST_TRB = DWC3_TRB_ISP_IMI | DWC3_TRB_IOC | DWC3_TRB_LAST};
-
-static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state *st, u32 event) {
-	volatile struct dwc3_regs *dwc3 = setup->dwc3;
-	struct dwc3_bufs *bufs = setup->bufs;
-	u32 UNUSED ep = event >> 1 & 0x1f, type = event >> 6 & 15, status = event >> 12 & 15;
-	printf(" type%"PRIu32" status%"PRIu32, type, status);
-	const enum dwc3_ep0phase phase = st->ep0phase;
-	if (type == DWC3_DEPEVT_XFER_COMPLETE) {
-		if (phase == DWC3_EP0_SETUP) {
-			puts(" setup complete\n");
-			atomic_thread_fence(memory_order_acquire);
-			struct usb_setup *req = &bufs->setup_packet;
-			dump_mem(req, 16);
-			u16 req_header = (u16)req->bRequestType << 8 | req->bRequest;
-			const u16 wLength = from_le16(req->wLength);
-			const u16 wValue = from_le16(req->wValue);
-			if ((req_header & 0xe0ff) == 0x8006) { /* GET_DESCRIPTOR */
-				assert(wLength);
-				const u8 descriptor_type = wValue >> 8;
-				const u8 *desc;
-				u16 transfer_length = wLength;
-				if (descriptor_type == USB_DEVICE_DESC) {
-					desc = device_desc;
-					if (wLength > 18) {transfer_length = 18;}
-				} else {
-					assert(descriptor_type == USB_CONFIG_DESC);
-					desc = conf_desc;
-					if (wLength > 32) {transfer_length = 32;}
-				}
-				submit_trb(dwc3, 1, &bufs->ep0_trb, (u64)desc, transfer_length, DWC3_TRB_TYPE_CONTROL_DATA | LAST_TRB);
-				st->ep0phase = DWC3_EP0_DATA;
-			} else if ((req_header & 0xe0ff) == 0x0005) { /* SET_ADDRESS */
-				assert(!wLength);
-				assert(wValue < 0x80);
-				u32 tmp = st->dcfg & ~(u32)DWC3_DCFG_DEVADDR_MASK;
-				dwc3->device_config = st->dcfg = tmp | wValue << 3;
-				st->ep0phase = DWC3_EP0_STATUS2;
-			} else if ((req_header & 0xe0ff) == 0x0009) { /* SET_CONFIGURATION */
-				assert(!wLength);
-				assert(wValue == 1);
-				dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_ACCEPT_U1 | DWC3_DCTL_ACCEPT_U2);
-
-				struct xhci_trb *ep4_trb = (struct xhci_trb *)0xff8c0210;
-				write_trb(ep4_trb, 0xff8c0400, 64, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
-				atomic_thread_fence(memory_order_release);
-				wait_depcmd(dwc3, 4);
-				post_depcmd(dwc3, 4, DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_CMDIOC, (u32)((u64)ep4_trb >> 32), (u32)(u64)ep4_trb, 0);
-				wait_depcmd(dwc3, 4);
-				st->ep0phase = DWC3_EP0_STATUS2;
-			} else {die("unexpected control request: %04"PRIx16"\n", req_header);}
-		} else if (phase == DWC3_EP0_DATA) {
-			puts(" data complete");
-			st->ep0phase = DWC3_EP0_STATUS3;
-		} else if (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3) {
-			puts(" restarting EP0 cycle");
-			submit_trb(dwc3, 0, &bufs->ep0_trb, (u64)&bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
-			st->ep0phase = DWC3_EP0_SETUP;
-		} else {die("XferComplete in unexpected EP0 phase");}
-		assert(st->ep0phase != phase);
-	} else if (type == DWC3_DEPEVT_XFER_NOT_READY) {
-		u32 state = status & 3;
-		if (state == 1 && phase == DWC3_EP0_DATA) {
-			puts(" data not ready");
-		} else if (state == 2 && (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3)) {
-			puts(" status not ready");
-			assert(phase == DWC3_EP0_STATUS3 || ep == 1);
-			u32 cmd = phase == DWC3_EP0_STATUS2
-				? DWC3_TRB_TYPE_CONTROL_STATUS2
-				: DWC3_TRB_TYPE_CONTROL_STATUS3;
-			submit_trb(dwc3, ep, &bufs->ep0_trb, (u64)&bufs->setup_packet, 0, cmd | LAST_TRB);
-		} else {die(" unexpected XferNotReady");}
-	} else {die(" unexpected ep0 event\n");}
-}
-
-static void process_device_event(const struct dwc3_setup *setup, struct dwc3_state *st, u32 event) {
-	volatile struct dwc3_regs *dwc3 = setup->dwc3;
-	switch (event >> 8 & 15) {
-	case DWC3_DEVT_DISCONNECT:
-		puts(" disconnect");
-		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_INIT_U1 & ~(u32)DWC3_DCTL_INIT_U2);
-		st->ep0phase = DWC3_EP0_DISCONNECTED;
-		break;
-	case DWC3_DEVT_RESET:
-		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_TEST_CONTROL_MASK);
-		for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
-			post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
+buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req) {
+	u8 *buf = ((struct usbstage_bufs *)setup->bufs)->desc;
+	const u8 descriptor_type = from_le16(req->wValue) >> 8;
+	st->ep0_buf_addr = (u64)buf;
+	u16 max_packet_size = usb_max_packet_size[st->speed];
+	
+	if (descriptor_type == USB_DEVICE_DESC) {
+		for_array(i, device_desc) {buf[i] = device_desc[i];}
+		if (max_packet_size < 64) {buf[7] = max_packet_size;}
+		st->ep0_buf_size = device_desc[0];
+		return 1;
+	} else if (descriptor_type == USB_CONFIG_DESC) {
+		for_array(i, conf_desc) {buf[i] = conf_desc[i];}
+		if (max_packet_size < 1024) {
+			buf[22] = max_packet_size & 0xff;
+			buf[23] = max_packet_size >> 8;
+			buf[29] = max_packet_size & 0xff;
+			buf[30] = max_packet_size >> 8;
 		}
-		dwc3->device_config = st->dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
-		puts(" USB reset");
-		st->ep0phase = DWC3_EP0_SETUP;
-		break;
-	case DWC3_DEVT_CONNECTION_DONE:
-		printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
-		assert((dwc3->device_status & 7) == 0);
-		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
-		dwc3->device_endpoint_enable |= 1 << 4;
-		break;
-	case DWC3_DEVT_LINK_STATE_CHANGE:
-		puts(" link status change");
-		break;
-	default: abort();
-	}
+		st->ep0_buf_size = from_le16(*(u16 *)(conf_desc + 2));
+		return 1;
+	} else {return 0;}
 }
+
+_Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state UNUSED *st, const struct usb_setup *req) {
+	assert(from_le16(req->wValue) == 1);
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	struct xhci_trb *ep4_trb = (struct xhci_trb *)0xff8c0210;
+	write_trb(ep4_trb, 0xff8c0400, 64, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+	atomic_thread_fence(memory_order_release);
+	wait_depcmd(dwc3, 4);
+	post_depcmd(dwc3, 4, DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_CMDIOC, (u32)((u64)ep4_trb >> 32), (u32)(u64)ep4_trb, 0);
+	wait_depcmd(dwc3, 4);
+	return 1;
+}
+
+static void release_buffer(const struct dwc3_setup UNUSED *setup, struct dwc3_state UNUSED *st, buf_id_t UNUSED buf) {
+	/* do nothing, buffers are statically allocated */
+}
+
+static const struct dwc3_gadget_ops usbstage_ops = {
+	.prepare_descriptor = prepare_descriptor,
+	.set_configuration = set_configuration,
+	.release_buffer = release_buffer,
+};
 
 enum {MIN_CACHELINE_SIZE = 32, MAX_CACHELINE_SIZE = 128};
 
@@ -350,6 +457,7 @@ _Noreturn void main(u64 sctlr) {
 			dwc3->hardware_parameters[7],
 			dwc3->hardware_parameters8,
 		},
+		.ops = &usbstage_ops
 	};
 	const u32 mdwidth = setup.hwparams[0] >> 8 & 0xff;
 	const u32 ram2_bytes = (setup.hwparams[7] >> 16) * (mdwidth / 8);
@@ -474,7 +582,7 @@ _Noreturn void main(u64 sctlr) {
 			}
 			puts("\n");
 		}
-		atomic_thread_fence(memory_order_acquire);
+		atomic_thread_fence(memory_order_acq_rel);
 		invalidate_range(evtbuf, sizeof(setup.bufs->event_buffer));
 		atomic_thread_fence(memory_order_release);
 		dwc3->event_count = evtcount * 4;
