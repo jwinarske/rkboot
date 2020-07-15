@@ -70,6 +70,7 @@ enum usb_descriptor_type {
 	/* … */
 	USB_INTERFACE_DESC = 4,
 	USB_EP_DESC = 5,
+	USB_DEVICE_QUALIFIER = 6,
 	/* … */
 };
 
@@ -92,7 +93,7 @@ enum usb_speed {
 static const u16 usb_max_packet_size[NUM_USB_SPEED] = {
 	[USB_LOW_SPEED] = 8,
 	[USB_FULL_SPEED] = 64,
-	[USB_HIGH_SPEED] = 1024,
+	[USB_HIGH_SPEED] = 512,
 	[USB_SUPER_SPEED] = 1024,
 	[USB_SUPER_SPEED_PLUS] = 1024,
 };
@@ -326,6 +327,7 @@ struct usbstage_state {
 struct usbstage_bufs {
 	struct dwc3_bufs bufs;
 	_Alignas(16) u8 desc[32];
+	_Alignas(16) u8 header[512];
 };
 
 const u8 _Alignas(64) device_desc[18] = {
@@ -337,6 +339,15 @@ const u8 _Alignas(64) device_desc[18] = {
 	0x00, 0x01,	/* device version: 1.0 */
 	0x00, 0x00, 0x00,	/* manufacturer, product, serial number */
 	01,	/* number of configurations */
+};
+
+const u8 _Alignas(64) device_qualifier[10] = {
+	0x0a, USB_DEVICE_DESC,	/* length, descriptor type (device) */
+	0x00, 0x02,	/* USB version: 2.0 */
+	0x00, 0x00, 0x00,	/* device class, subclass, protocol: defined by interface */
+	0x40,	/* max packet size for EP0: 64 */
+	01,	/* number of configurations */
+	0,	/* reserved byte */
 };
 
 const u8 _Alignas(64) conf_desc[32] = {
@@ -376,6 +387,10 @@ buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *s
 		if (max_packet_size < 64) {buf[7] = max_packet_size;}
 		st->ep0_buf_size = device_desc[0];
 		return 1;
+	} else if (descriptor_type == USB_DEVICE_QUALIFIER) {
+		for_array(i, device_desc) {buf[i] = device_qualifier[i];}
+		st->ep0_buf_size = device_qualifier[0];
+		return 1;
 	} else if (descriptor_type == USB_CONFIG_DESC) {
 		for_array(i, conf_desc) {buf[i] = conf_desc[i];}
 		if (max_packet_size < 1024) {
@@ -392,8 +407,13 @@ buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *s
 _Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state UNUSED *st, const struct usb_setup *req) {
 	assert(from_le16(req->wValue) == 1);
 	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	u16 max_packet_size = usb_max_packet_size[st->speed];
+	struct usbstage_bufs *bufs = (struct usbstage_bufs *)setup->bufs;
+	assert(max_packet_size <= sizeof(bufs->header));
+	configure_bulk_ep(dwc3, 4, DWC3_DEPCFG0_INIT, max_packet_size);
+	wait_depcmd(dwc3, 4);
 	struct xhci_trb *ep4_trb = (struct xhci_trb *)0xff8c0210;
-	write_trb(ep4_trb, 0xff8c0400, 64, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+	write_trb(ep4_trb, 0xff8c0400, max_packet_size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
 	atomic_thread_fence(memory_order_release);
 	wait_depcmd(dwc3, 4);
 	post_depcmd(dwc3, 4, DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_CMDIOC, (u32)((u64)ep4_trb >> 32), (u32)(u64)ep4_trb, 0);
@@ -519,8 +539,6 @@ _Noreturn void main(u64 sctlr) {
 #endif
 	u32 max_packet_size = 64;
 	dwc3_new_configuration(dwc3, max_packet_size);
-	configure_bulk_ep(dwc3, 4, DWC3_DEPCFG0_INIT, 64);
-	wait_depcmd(dwc3, 4);
 	printf("DALEPENA: %"PRIx32"\n", dwc3->device_endpoint_enable);
 
 	dwc3->event_buffer_address[0] = (u32)(u64)&setup.bufs->event_buffer;
