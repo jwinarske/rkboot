@@ -322,7 +322,7 @@ static void process_device_event(const struct dwc3_setup *setup, struct dwc3_sta
 
 struct usbstage_state {
 	struct dwc3_state st;
-	u64 addr, size;
+	_Bool expect_header;
 };
 struct usbstage_bufs {
 	struct dwc3_bufs bufs;
@@ -405,11 +405,14 @@ buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *s
 	} else {return 0;}
 }
 
-_Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state UNUSED *st, const struct usb_setup *req) {
+_Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req) {
 	assert(from_le16(req->wValue) == 1);
 	volatile struct dwc3_regs *dwc3 = setup->dwc3;
-	u16 max_packet_size = usb_max_packet_size[st->speed];
+	struct usbstage_state *ust = (struct usbstage_state *)st;
+	ust->expect_header = 1;
 	struct usbstage_bufs *bufs = (struct usbstage_bufs *)setup->bufs;
+
+	u16 max_packet_size = usb_max_packet_size[st->speed];
 	assert(max_packet_size <= sizeof(bufs->header));
 	configure_bulk_ep(dwc3, 4, DWC3_DEPCFG0_INIT, max_packet_size);
 	wait_depcmd(dwc3, 4);
@@ -459,6 +462,8 @@ _Noreturn void main(u64 sctlr) {
 	mmu_setup(initial_mappings, critical_ranges);
 	assert(sizeof(event_buffer) >= 256 && sizeof(event_buffer) <= 0xfffc && sizeof(event_buffer) % 4 == 0);
 	volatile struct dwc3_regs *dwc3 = (volatile struct dwc3_regs *)0xfe80c100;
+	/* set DRAM as Non-Secure */
+	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
 
 	mmu_unmap_range(0xff8c0000, 0xff8c0fff);
 	mmu_map_range(0xff8c0000, 0xff8c0fff, 0xff8c0000, MEM_TYPE_WRITE_THROUGH);
