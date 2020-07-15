@@ -327,6 +327,7 @@ struct usbstage_state {
 struct usbstage_bufs {
 	struct dwc3_bufs bufs;
 	_Alignas(16) u8 desc[32];
+	struct xhci_trb ep4_trb;
 	_Alignas(16) u8 header[512];
 };
 
@@ -412,8 +413,8 @@ _Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state UNUSED
 	assert(max_packet_size <= sizeof(bufs->header));
 	configure_bulk_ep(dwc3, 4, DWC3_DEPCFG0_INIT, max_packet_size);
 	wait_depcmd(dwc3, 4);
-	struct xhci_trb *ep4_trb = (struct xhci_trb *)0xff8c0210;
-	write_trb(ep4_trb, 0xff8c0400, max_packet_size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+	struct xhci_trb *ep4_trb = &bufs->ep4_trb;
+	write_trb(ep4_trb, (u64)&bufs->header, max_packet_size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
 	atomic_thread_fence(memory_order_release);
 	wait_depcmd(dwc3, 4);
 	post_depcmd(dwc3, 4, DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_CMDIOC, (u32)((u64)ep4_trb >> 32), (u32)(u64)ep4_trb, 0);
@@ -462,9 +463,10 @@ _Noreturn void main(u64 sctlr) {
 	mmu_unmap_range(0xff8c0000, 0xff8c0fff);
 	mmu_map_range(0xff8c0000, 0xff8c0fff, 0xff8c0000, MEM_TYPE_WRITE_THROUGH);
 	dsb_st();
+	struct usbstage_bufs *bufs = (struct usbstage_bufs *)0xff8c0100;
 	const struct dwc3_setup setup = {
 		.dwc3 = dwc3,
-		.bufs = (struct dwc3_bufs *)0xff8c0100,
+		.bufs = (struct dwc3_bufs *)bufs,
 		.evt_slots = 64,
 		.hwparams = {
 			dwc3->hardware_parameters[0],
@@ -594,7 +596,7 @@ _Noreturn void main(u64 sctlr) {
 					printf(" type%"PRIu32" status%"PRIx32, type, status);
 					printf("DEPCMD: %"PRIx32"\n", dwc3->device_ep_cmd[ep].cmd);
 					if (type == DWC3_DEPEVT_XFER_COMPLETE) {
-						dump_mem((void*)0xff8c0400, 64);
+						dump_mem(bufs->header, 64);
 					}
 				}
 			}
