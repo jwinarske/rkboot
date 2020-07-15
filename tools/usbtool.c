@@ -254,11 +254,105 @@ static struct device_discovery  find_device(libusb_context *ctx) {
 	return res;
 }
 
-int main(int UNUSED argc, char UNUSED **argv) {
+void bulk_mode(libusb_context *ctx, char **arg) {
+	const size_t buf_size = 1024 * 1024;
+	uint8_t *buf = malloc(buf_size);
+	if (!buf) {
+		fprintf(stderr, "buffer allocation failed\n");
+		abort();
+	}
+	struct device_discovery discovery;
+	for (int timeout = 100; timeout; --timeout) {
+		discovery = find_device(ctx);
+		if (discovery.handle) {
+			break;
+		}
+		usleep(100000);
+	}
+	libusb_device_handle *handle = discovery.handle;
+	if (!handle) {
+		fprintf(stderr, "usbstage did not bring up the USB controller within 10s\n");
+		exit(2);
+	}
+	int err = libusb_claim_interface(handle, 0);
+	if (err) {
+		fprintf(stderr, "error claiming interface: %d (%s)\n", err, libusb_error_name(err));
+		exit(2);
+	}
+	while (*++arg) {
+		_Bool load;
+		if ((load = !strcmp("--load", *arg)) || !strcmp("--start", *arg)) {
+			char *command = *arg;
+			char *addr_string = *++arg;
+			uint64_t addr_;
+			if (!addr_string || sscanf(addr_string, "%"PRIx64, &addr_) != 1) {
+				fprintf(stderr, "%s needs a load address\n", command);
+				exit(1);;
+			}
+			uint64_t load_addr = addr_;
+			char *filename = *++arg;
+			if (!filename) {
+				fprintf(stderr, "%s needs a file name\n", command);
+				exit(1);
+			}
+			int fd = 0;
+			if (strcmp("-", filename)) {
+				fd = open(filename, O_RDONLY, 0);
+				if (fd < 0) {
+					fprintf(stderr, "cannot open %s\n", filename);
+					exit(1);
+				}
+			}
+			size_t total_loaded = 0;
+			while (1) {
+				int size = read_file(fd, buf, buf_size);
+				if (size & 0x1ff) {
+					memset(buf + size, 0, 0x200 - (size & 0x1ff));
+					size = (size + 0x1ff) & ~(size_t)0x1ff;
+				}
+				printf("offset 0x%"PRIx64", loading 0x%x bytes to 0x%"PRIx64"\n", total_loaded, size, load_addr);
+				u8 header[512];
+				memset(header, 0, sizeof(header));
+				write_le32(header + 0, size);
+				write_le32(header + 4, 0);
+				write_le32(header + 8, load_addr);
+				write_le32(header + 12, load_addr >> 32);
+				write_le32(header + 16, !load);
+
+				int transferred_bytes = 0;
+				err = libusb_bulk_transfer(handle, 2, header, 512, &transferred_bytes, 1000);
+				if (err) {
+					fprintf(stderr, "error while sending header: %d (%s)\n", err, libusb_error_name(err));
+					exit(2);
+				}
+				err = libusb_bulk_transfer(handle, 2, buf, size, &transferred_bytes, 1000);
+				if (err) {
+					fprintf(stderr, "error while sending data: %d (%s)\n", err, libusb_error_name(err));
+					exit(2);
+				}
+				load_addr += size;
+				if (size < buf_size) {break;}
+			}
+			if (!load) {break;}
+		}
+	}
+	libusb_close(handle);
+}
+
+int main(int argc, char **argv) {
+	if (argc < 2) {
+		fprintf(stderr, "no commands given, not initializing USB\n");
+		return 0;
+	}
 	libusb_context *ctx;
 	if (libusb_init(&ctx)) {
 		fprintf(stderr, "error initializing libusb\n");
 		return 2;
+	}
+	if (0 == strcmp("--bulk", argv[1])) {
+		bulk_mode(ctx, argv + 1);
+		libusb_exit(ctx);
+		return 0;
 	}
 	struct device_discovery discovery = find_device(ctx);
 	libusb_device_handle *handle = discovery.handle;
@@ -375,33 +469,12 @@ int main(int UNUSED argc, char UNUSED **argv) {
 	}
 	puts("mask ROM mode done, closing USB handle\n");
 	libusb_close(handle);
+	free(buf);
 	if (*arg) {
 		usleep(500000);	/* need to wait for usbstage to reset the USB controller */
 		puts("more commands, starting to look for usbstage");
-		for (int timeout = 100; timeout; --timeout) {
-			discovery = find_device(ctx);
-			if (discovery.handle) {
-				break;
-			}
-			usleep(100000);
-		}
-		handle = discovery.handle;
-		if (!handle) {
-			fprintf(stderr, "usbstage did not bring up the USB controller within 10s\n");
-			return 2;
-		}
-		int err = libusb_claim_interface(handle, 0);
-		if (err) {
-			fprintf(stderr, "error claiming interface: %d (%s)\n", err, libusb_error_name(err));
-			exit(2);
-		}
-		int transferred_bytes = 0;
-		err = libusb_bulk_transfer(handle, 2, "test", 4, &transferred_bytes, 1000);
-		if (err) {
-			fprintf(stderr, "error while sending CRC: %d (%s)\n", err, libusb_error_name(err));
-			return 0;
-		}
-		libusb_close(handle);
+		bulk_mode(ctx, arg);
 	}
 	libusb_exit(ctx);
+	return 0;
 }
