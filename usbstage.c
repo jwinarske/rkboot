@@ -389,7 +389,7 @@ buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *s
 		st->ep0_buf_size = device_desc[0];
 		return 1;
 	} else if (descriptor_type == USB_DEVICE_QUALIFIER) {
-		for_array(i, device_desc) {buf[i] = device_qualifier[i];}
+		for_array(i, device_qualifier) {buf[i] = device_qualifier[i];}
 		st->ep0_buf_size = device_qualifier[0];
 		return 1;
 	} else if (descriptor_type == USB_CONFIG_DESC) {
