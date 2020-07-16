@@ -26,8 +26,31 @@ const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
-u32 event_buffer[64];
-size_t event_offset = 0;
+enum {MIN_CACHELINE_SIZE = 32, MAX_CACHELINE_SIZE = 128};
+
+static void cache_fence() {
+	atomic_thread_fence(memory_order_seq_cst);	/* as per ARMv8 ARM, cache maintenance is only ordered by barriers that order both loads and stores */
+}
+
+static void flush_range(void *ptr, size_t size) {
+	cache_fence();
+	void *end = ptr + size;
+	while (ptr < end) {
+		__asm__ volatile("dc civac, %0" : : "r"(ptr) : "memory");
+		ptr += MIN_CACHELINE_SIZE;
+	}
+	cache_fence();
+}
+
+static void invalidate_range(void *ptr, size_t size) {
+	cache_fence();
+	void *end = ptr + size;
+	while (ptr < end) {
+		__asm__ volatile("dc ivac, %0" : : "r"(ptr) : "memory");
+		ptr += MIN_CACHELINE_SIZE;
+	}
+	cache_fence();
+}
 
 void post_depcmd(volatile struct dwc3_regs *dwc3, u32 ep, u32 cmd, u32 par0, u32 par1, u32 par2) {
 	info("depcmd@%08"PRIx64" 0x%08"PRIx32" %"PRIx32" %"PRIx32" %"PRIx32"\n", (u64)&dwc3->device_ep_cmd[ep].par2, cmd, par0, par1, par2);
@@ -205,6 +228,46 @@ static void dwc3_ep0_restart(const struct dwc3_setup *setup, struct dwc3_state *
 	st->ep0phase = DWC3_EP0_SETUP;
 }
 
+static void dwc3_dispatch_control_request(const struct dwc3_setup *setup, struct dwc3_state *st, struct usb_setup *req) {
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	struct dwc3_bufs *bufs = setup->bufs;
+	dump_mem(req, 16);
+	u16 req_header = (u16)req->bRequestType << 8 | req->bRequest;
+	const u16 wLength = from_le16(req->wLength);
+	const u16 wValue = from_le16(req->wValue);
+	if ((req_header & 0xe0ff) == 0x8006) { /* GET_DESCRIPTOR */
+		assert(wLength);
+		buf_id_t buf = setup->ops->prepare_descriptor(setup, st, req);
+		if (buf) {
+			st->ep0_buf = buf;
+			u32 len = st->ep0_buf_size;
+			dump_mem((void*)st->ep0_buf_addr, len);
+			if (len > wLength) {len = wLength;}
+			submit_trb(dwc3, 1, &bufs->ep0_trb, st->ep0_buf_addr, len, DWC3_TRB_TYPE_CONTROL_DATA | LAST_TRB);
+			st->ep0phase = DWC3_EP0_DATA;
+		} else {
+			dwc3_ep0_restart(setup, st);
+			return;
+		}
+	} else if ((req_header & 0xe0ff) == 0x0005) { /* SET_ADDRESS */
+		assert(!wLength);
+		assert(wValue < 0x80);
+		u32 tmp = st->dcfg & ~(u32)DWC3_DCFG_DEVADDR_MASK;
+		dwc3->device_config = st->dcfg = tmp | wValue << 3;
+		st->ep0phase = DWC3_EP0_STATUS2;
+	} else if ((req_header & 0xe0ff) == 0x0009) { /* SET_CONFIGURATION */
+		assert(!wLength);
+		dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_ACCEPT_U1 | DWC3_DCTL_ACCEPT_U2);
+
+		if (setup->ops->set_configuration(setup, st, req)) {
+			st->ep0phase = DWC3_EP0_STATUS2;
+		} else {
+			dwc3_ep0_restart(setup, st);
+			return;
+		}
+	} else {die("unexpected control request: %04"PRIx16"\n", req_header);}
+}
+
 static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state *st, u32 event) {
 	volatile struct dwc3_regs *dwc3 = setup->dwc3;
 	struct dwc3_bufs *bufs = setup->bufs;
@@ -216,41 +279,8 @@ static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state 
 			puts(" setup complete\n");
 			atomic_thread_fence(memory_order_acquire);
 			struct usb_setup *req = &bufs->setup_packet;
-			dump_mem(req, 16);
-			u16 req_header = (u16)req->bRequestType << 8 | req->bRequest;
-			const u16 wLength = from_le16(req->wLength);
-			const u16 wValue = from_le16(req->wValue);
-			if ((req_header & 0xe0ff) == 0x8006) { /* GET_DESCRIPTOR */
-				assert(wLength);
-				buf_id_t buf = setup->ops->prepare_descriptor(setup, st, req);
-				if (buf) {
-					st->ep0_buf = buf;
-					u32 len = st->ep0_buf_size;
-					dump_mem((void*)st->ep0_buf_addr, len);
-					if (len > wLength) {len = wLength;}
-					submit_trb(dwc3, 1, &bufs->ep0_trb, st->ep0_buf_addr, len, DWC3_TRB_TYPE_CONTROL_DATA | LAST_TRB);
-					st->ep0phase = DWC3_EP0_DATA;
-				} else {
-					dwc3_ep0_restart(setup, st);
-					return;
-				}
-			} else if ((req_header & 0xe0ff) == 0x0005) { /* SET_ADDRESS */
-				assert(!wLength);
-				assert(wValue < 0x80);
-				u32 tmp = st->dcfg & ~(u32)DWC3_DCFG_DEVADDR_MASK;
-				dwc3->device_config = st->dcfg = tmp | wValue << 3;
-				st->ep0phase = DWC3_EP0_STATUS2;
-			} else if ((req_header & 0xe0ff) == 0x0009) { /* SET_CONFIGURATION */
-				assert(!wLength);
-				dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_ACCEPT_U1 | DWC3_DCTL_ACCEPT_U2);
-
-				if (setup->ops->set_configuration(setup, st, req)) {
-					st->ep0phase = DWC3_EP0_STATUS2;
-				} else {
-					dwc3_ep0_restart(setup, st);
-					return;
-				}
-			} else {die("unexpected control request: %04"PRIx16"\n", req_header);}
+			dwc3_dispatch_control_request(setup, st, req);
+			invalidate_range(req, sizeof(*req));
 		} else if (phase == DWC3_EP0_DATA) {
 			puts(" data complete");
 			setup->ops->release_buffer(setup, st, st->ep0_buf);
@@ -431,25 +461,6 @@ static const struct dwc3_gadget_ops usbstage_ops = {
 	.release_buffer = release_buffer,
 };
 
-enum {MIN_CACHELINE_SIZE = 32, MAX_CACHELINE_SIZE = 128};
-
-static void flush_range(void *ptr, size_t size) {
-	atomic_thread_fence(memory_order_acq_rel);	/* as per ARMv8 ARM, cache maintenance is only ordered by barriers that order both loads and stores */
-	void *end = ptr + size;
-	while (ptr < end) {
-		__asm__ volatile("dc civac, %0" : : "r"(ptr) : "memory");
-		ptr += MIN_CACHELINE_SIZE;
-	}
-}
-
-static void invalidate_range(void *ptr, size_t size) {
-	void *end = ptr + size;
-	while (ptr < end) {
-		__asm__ volatile("dc ivac, %0" : : "r"(ptr) : "memory");
-		ptr += MIN_CACHELINE_SIZE;
-	}
-}
-
 enum usbstage_command {
 	CMD_LOAD = 0,
 	CMD_CALL,
@@ -457,16 +468,74 @@ enum usbstage_command {
 	NUM_CMD
 };
 
+static struct stage_store store;
 void handoff(u64, u64, u64, u64, u64, u64, u64, u64);
 __asm__("handoff: add x8, sp, #0; add sp, x1, #0; stp x30, x8, [sp, #-16]!; blr x0;ldp x30, x8, [sp]; add sp, x8, #0");
 
+static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state *st) {
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	struct usbstage_bufs *bufs = (struct usbstage_bufs *)setup->bufs;
+
+	dump_mem(bufs->header, 64);
+	u64 *header = (u64 *)bufs->header;
+	if (st->expect_header) {
+		u64 cmd = header[0];
+		switch (cmd) {
+		case CMD_LOAD:;
+			u64 size = header[1];
+			assert((size & 0xff0001ff) == 0);
+			u64 addr = header[2];
+			submit_trb(dwc3, 4, &bufs->ep4_trb, addr, size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+			break;
+		case CMD_START:;
+			dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_RUN);
+			while (~dwc3->device_status & DWC3_DSTS_HALTED) {
+				u32 evtcount = dwc3->event_count;
+				if (evtcount) {dwc3->event_count = evtcount;}
+				__asm__("yield");
+			}
+			stage_teardown(&store);
+			FALLTHROUGH;
+		case CMD_CALL:;
+			handoff(header[1], header[2], header[3], header[4], header[5], header[6], header[7], header[8]);
+			break;
+		default:assert(UNREACHABLE);
+		}
+		st->expect_header = 0;
+	} else {
+		submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+		st->expect_header = 1;
+	}
+}
+
+static void process_event(const struct dwc3_setup *setup, struct usbstage_state *st, u32 event) {
+	volatile struct dwc3_regs *dwc3 = setup->dwc3;
+	printf("0x%08"PRIx32, event);
+	if (event & 1) { /* generic event */
+		assert((event >> 1 & 0x7f) == 0);
+		process_device_event(setup, &st->st, event);
+	} else { /* endpoint event */
+		u32 ep = event >> 1 & 0x1f;
+		printf(" ep%"PRIu32, ep);
+		if (ep <= 1) {
+			process_ep0_event(setup, &st->st, event);
+		} else {
+			u32 type = event >> 6 & 15, status = event >> 12 & 15;
+			printf(" type%"PRIu32" status%"PRIx32, type, status);
+			printf("DEPCMD: %"PRIx32"\n", dwc3->device_ep_cmd[ep].cmd);
+			if (type == DWC3_DEPEVT_XFER_COMPLETE) {
+				xfer_complete(setup, st);
+			}
+		}
+	}
+	puts("\n");
+}
+
 _Noreturn void main(u64 sctlr) {
 	puts("usbstage\n");
-	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
-	assert(sizeof(event_buffer) >= 256 && sizeof(event_buffer) <= 0xfffc && sizeof(event_buffer) % 4 == 0);
 	volatile struct dwc3_regs *dwc3 = (volatile struct dwc3_regs *)0xfe80c100;
 	/* set DRAM as Non-Secure */
 	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
@@ -595,54 +664,7 @@ _Noreturn void main(u64 sctlr) {
 		for_range(i, 0, evtcount) {
 			u32 event = evtbuf[evt_pos];
 			evt_pos = (evt_pos + 1) % setup.evt_slots;
-			printf("0x%08"PRIx32, event);
-			if (event & 1) { /* generic event */
-				assert((event >> 1 & 0x7f) == 0);
-				process_device_event(&setup, &st.st, event);
-			} else { /* endpoint event */
-				u32 ep = event >> 1 & 0x1f;
-				printf(" ep%"PRIu32, ep);
-				if (ep <= 1) {
-					process_ep0_event(&setup, &st.st, event);
-				} else {
-					u32 type = event >> 6 & 15, status = event >> 12 & 15;
-					printf(" type%"PRIu32" status%"PRIx32, type, status);
-					printf("DEPCMD: %"PRIx32"\n", dwc3->device_ep_cmd[ep].cmd);
-					if (type == DWC3_DEPEVT_XFER_COMPLETE) {
-						dump_mem(bufs->header, 64);
-						u64 *header = (u64 *)bufs->header;
-						if (st.expect_header) {
-							u64 cmd = header[0];
-							switch (cmd) {
-							case CMD_LOAD:;
-								u64 size = header[1];
-								assert((size & 0xff0001ff) == 0);
-								u64 addr = header[2];
-								submit_trb(dwc3, 4, &bufs->ep4_trb, addr, size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
-								break;
-							case CMD_START:;
-								dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_RUN);
-								while (~dwc3->device_status & DWC3_DSTS_HALTED) {
-									evtcount = dwc3->event_count;
-									if (evtcount) {dwc3->event_count = evtcount;}
-									__asm__("yield");
-								}
-								stage_teardown(&store);
-								FALLTHROUGH;
-							case CMD_CALL:;
-								handoff(header[1], header[2], header[3], header[4], header[5], header[6], header[7], header[8]);
-								break;
-							default:assert(UNREACHABLE);
-							}
-							st.expect_header = 0;
-						} else {
-							submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
-							st.expect_header = 1;
-						}
-					}
-				}
-			}
-			puts("\n");
+			process_event(&setup, &st, event);
 		}
 		atomic_thread_fence(memory_order_acq_rel);
 		invalidate_range(evtbuf, sizeof(setup.bufs->event_buffer));
