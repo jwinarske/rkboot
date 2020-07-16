@@ -10,6 +10,9 @@
 #include <mmu.h>
 #include <uart.h>
 #include <dwc3_regs.h>
+#include <dwc3.h>
+#include <xhci_regs.h>
+#include <usb.h>
 #include <dump_mem.h>
 
 const struct mapping initial_mappings[] = {
@@ -66,13 +69,6 @@ void wait_depcmd(volatile struct dwc3_regs *dwc3, u32 ep) {
 	}
 }
 
-struct xhci_trb {
-	_Alignas(16)
-	u64 param;
-	u32 status;
-	u32 control;
-};
-
 static void write_trb(struct xhci_trb *trb, u64 param, u32 status, u32 ctrl) {
 	trb->param = to_le64(param);
 	trb->status = to_le32(status);
@@ -86,48 +82,6 @@ void submit_trb(volatile struct dwc3_regs *dwc3, u32 ep, struct xhci_trb *trb, u
 	atomic_thread_fence(memory_order_release);
 	post_depcmd(dwc3, ep, DWC3_DEPCMD_START_XFER, (u32)((u64)trb >> 32), (u32)(u64)trb, 0);
 }
-
-enum usb_descriptor_type {
-	USB_DEVICE_DESC = 1,
-	USB_CONFIG_DESC = 2,
-	/* … */
-	USB_INTERFACE_DESC = 4,
-	USB_EP_DESC = 5,
-	USB_DEVICE_QUALIFIER = 6,
-	/* … */
-};
-
-enum usb_transfer_type {
-	USB_CONTROL = 0,
-	USB_ISOCHRONOUS = 1,
-	USB_BULK = 2,
-	USB_INTERRUPT = 3,
-};
-
-enum usb_speed {
-	USB_LOW_SPEED = 0,
-	USB_FULL_SPEED,
-	USB_HIGH_SPEED,
-	USB_SUPER_SPEED,
-	USB_SUPER_SPEED_PLUS,
-	NUM_USB_SPEED
-};
-
-static const u16 usb_max_packet_size[NUM_USB_SPEED] = {
-	[USB_LOW_SPEED] = 8,
-	[USB_FULL_SPEED] = 64,
-	[USB_HIGH_SPEED] = 512,
-	[USB_SUPER_SPEED] = 1024,
-	[USB_SUPER_SPEED_PLUS] = 1024,
-};
-
-struct usb_setup {
-	u8 bRequestType;
-	u8 bRequest;
-	u16 wValue;
-	u16 wIndex;
-	u16 wLength;
-};
 
 static const u32 num_ep = 13;
 
@@ -173,42 +127,6 @@ static void dwc3_new_configuration(volatile struct dwc3_regs *dwc3, u32 max_pack
 		printf("%"PRIu32": %08"PRIx32"\n", ep, dwc3->device_ep_cmd[ep].cmd);
 	}
 }
-
-struct dwc3_bufs {
-	u32 event_buffer[64];
-	union {
-		/* this is what the Linux driver does, since only one control transfer is handled at a time. Why not do the same here? */
-		struct xhci_trb ep0_trb;
-		struct usb_setup setup_packet;
-	};
-};
-
-struct dwc3_setup {
-	volatile struct dwc3_regs *dwc3;
-	struct dwc3_bufs *bufs;
-	const struct dwc3_gadget_ops *ops;
-	u32 hwparams[9];
-	u32 evt_slots;
-};
-
-enum dwc3_ep0phase {
-	DWC3_EP0_SETUP,
-	DWC3_EP0_DATA,
-	DWC3_EP0_STATUS2,
-	DWC3_EP0_STATUS3,
-	DWC3_EP0_DISCONNECTED,
-};
-
-typedef u32 buf_id_t;
-
-struct dwc3_state {
-	enum dwc3_ep0phase ep0phase;
-	enum usb_speed speed;
-	u32 dcfg;
-	buf_id_t ep0_buf;
-	u64 ep0_buf_addr;
-	u32 ep0_buf_size;
-};
 
 struct dwc3_gadget_ops {
 	buf_id_t (*prepare_descriptor)(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req);
