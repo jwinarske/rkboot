@@ -2,7 +2,7 @@
 #include <main.h>
 #include <fdt.h>
 
-__asm__(".section .entry, \"ax\", %progbits;adr x5, #0x10000;add sp, x5, #0;b main");
+__asm__(".section .text.entry, \"ax\", %progbits;adr x5, #0x10000;add sp, x5, #0;b main");
 
 void dump_fdt(const struct fdt_header *);
 

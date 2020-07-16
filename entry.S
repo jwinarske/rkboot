@@ -2,7 +2,7 @@
 
 #define SCTLR_I 0x1000
 
-.section .entry
+.section .text.entry
 mrs x0, SCTLR_EL3	// this is preserved in X0 for the entire file, in order to pass it to main in case it wants to return to bootloader
 orr x1, x0, #SCTLR_I
 ic iallu

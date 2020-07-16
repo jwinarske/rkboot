@@ -323,4 +323,4 @@ if args.atf_headers:
     print("default elfloader.bin")
 
 for addr in base_addresses:
-    print(build(addr + '.ld', 'ldscript', (), deps=genld, flags=addr))
+    print(build(addr + '.ld', 'ldscript', (), deps=genld, flags="0x"+addr))
