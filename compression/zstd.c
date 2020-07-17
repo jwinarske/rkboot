@@ -130,8 +130,8 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 	const u8 *literal_start = in;
 	struct literals_probe probe = probe_literals(in, end);
 	check(probe.end, "not enough data for literal section\n");
+	debug("%"PRIu32" (0x%"PRIx32") bytes of literals, %zu (0x%zx) compressed\n", probe.size, probe.size, probe.end - in, probe.end - in);
 	in = probe.end;
-	debug("%"PRIu32" (0x%"PRIx32") bytes of literals\n", probe.size, probe.size);
 	if (unlikely(out_end - out < probe.size)) {return DECODE_NEED_MORE_SPACE;}
 	check(end - in >= 1, "not enough data for Sequences_Section_Header\n");
 	u32 num_seq = *in++;
