@@ -39,3 +39,9 @@ struct dwc3_state {
 	u64 ep0_buf_addr;
 	u32 ep0_buf_size;
 };
+
+void dwc3_submit_trb(volatile struct dwc3_regs *dwc3, u32 ep, struct xhci_trb *trb, u64 param, u32 status, u32 ctrl);
+void dwc3_post_depcmd(volatile struct dwc3_regs *dwc3, u32 ep, u32 cmd, u32 par0, u32 par1, u32 par2);
+void dwc3_wait_depcmd(volatile struct dwc3_regs *dwc3, u32 ep);
+void dwc3_new_configuration(volatile struct dwc3_regs *dwc3, u32 max_packet_size, u32 num_ep);
+void dwc3_configure_bulk_ep(volatile struct dwc3_regs *dwc3, u32 ep, u32 action, u32 max_packet_size);
