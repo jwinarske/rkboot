@@ -20,7 +20,7 @@
 PROC(gicv3_per_cpu_setup, 2)
 	msr DAIFSet, #3
 	ldr w1, [x0, #GICR_WAKER]
-	tbz w1, #2, abort
+	tbz w1, #2, call_abort
 	and w1, w1, #~GICR_WAKER_ProcessorSleep
 	str w1, [x0, #GICR_WAKER]
 wait_up:
@@ -47,7 +47,7 @@ ENDFUNC(gicv3_per_cpu_setup)
 PROC(gicv3_per_cpu_teardown, 2)
 	msr DAIFSet, #3
 	ldr w1, [x0, #GICR_WAKER]
-	tbnz w1, #2, abort
+	tbnz w1, #2, call_abort
 	orr w1, w1, #GICR_WAKER_ProcessorSleep
 	str w1, [x0, #GICR_WAKER]
 wait_down:
@@ -57,4 +57,7 @@ wait_down:
 
 	ret
 ENDFUNC(gicv3_per_cpu_teardown)
+
+call_abort:
+b abort
 
