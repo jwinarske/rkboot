@@ -36,8 +36,8 @@ read -p "enter a configuration number, or press enter to start from the beginnin
 if [ -z "$skip" -o "$skip" = "0" ]; then
 	echo "Configuration 0: wipe SPI ID block. Not needed if there is no bootloader in SPI, will require some kind of recovery button mechanism to get into mask ROM mode if there is."
 	"$src/configure.py"
-	ninja levinboot-usb.bin spi-flasher.bin
-	until prompt || echo -en "\\xff" | usbtool --call levinboot-usb.bin --load 4100000 spi-flasher.bin --dramcall 4100000 1000 --pload 0 -; do true; done
+	ninja levinboot-usb.bin usbstage.bin
+	until prompt || echo -en "\\xff" | usbtool --call levinboot-usb.bin --run usbstage.bin --flash 0 -; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "1" ]; then
@@ -80,11 +80,11 @@ if [ -z "$skip" -o "$skip" == "5" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == "6" ]; then
-	echo "Configuration 6: levinboot + brompatch + elfloader + kernel, mixed compression"
+	echo "Configuration 6: levinboot + usbstage + elfloader + kernel, mixed compression"
 	"$src/configure.py" --with-atf-headers "$atf" --elfloader-gzip --elfloader-lz4 --elfloader-zstd
-	ninja levinboot-usb.bin brompatch.bin elfloader.bin teststage.bin
+	ninja levinboot-usb.bin usbstage.bin elfloader.bin teststage.bin
 	until prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
-		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" | usbtool --call levinboot-usb.bin --load 4100000 brompatch.bin --dramcall 4100000 1000 --pload 4400000 - --pstart 4000000 elfloader.bin; do true; done
+		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" | usbtool --call levinboot-usb.bin --run usbstage.bin --load 4400000 - --load 4000000 elfloader.bin --start 4000000 4102000; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "7" ]; then
@@ -114,7 +114,7 @@ if [ -z "$skip" -o "$skip" == "10" ]; then
 	ninja levinboot-spi.img
 	echo "Image build successful, building flasher"
 	"$src/configure.py"
-	ninja levinboot-usb.bin spi-flasher.bin
-	until prompt || usbtool --call levinboot-usb.bin --load 4100000 spi-flasher.bin --dramcall 4100000 1000 --pload 0 levinboot-spi.img;do true; done
+	ninja levinboot-usb.bin usbstage.bin
+	until prompt || usbtool --call levinboot-usb.bin --run usbstage.bin --flash 0 levinboot-spi.img;do true; done
 	read -p "now reset the board to try it out (both boot from SD and SPI), press enter to continue"
 fi
