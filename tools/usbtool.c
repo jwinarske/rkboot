@@ -311,14 +311,14 @@ void bulk_mode(libusb_context *ctx, char **arg) {
 					exit(1);
 				}
 			}
-			size_t total_loaded = 0;
 			while (1) {
 				int size = read_file(fd, buf, buf_size);
+				if (!size) {break;}
 				if (size & 0x1ff) {
 					memset(buf + size, 0, 0x200 - (size & 0x1ff));
 					size = (size + 0x1ff) & ~(size_t)0x1ff;
 				}
-				printf("offset 0x%"PRIx64", loading 0x%x bytes to 0x%"PRIx64"\n", total_loaded, size, load_addr);
+				printf("loading 0x%x bytes to 0x%"PRIx64"\n", size, load_addr);
 				u8 header[512];
 				memset(header, 0, sizeof(header));
 				write_le32(header + 0, load ? CMD_LOAD : CMD_FLASH);
