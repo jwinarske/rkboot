@@ -4,6 +4,7 @@
 #include <aarch64.h>
 #include <inttypes.h>
 #include <die.h>
+#include <timer.h>
 
 enum dwmmc_clock {
 	DWMMC_CLOCK_400K = 0,
@@ -49,8 +50,6 @@ void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *bu
 static inline _Bool UNUSED dwmmc_wait_cmd(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	return dwmmc_wait_cmd_inner(dwmmc, cmd | DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG);
 }
-
-timestamp_t get_timestamp();
 
 static inline enum dwmmc_status UNUSED dwmmc_wait_cmd_done(volatile struct dwmmc_regs *dwmmc, u32 cmd, u32 arg, timestamp_t timeout) {
 	dwmmc->cmdarg = arg;
