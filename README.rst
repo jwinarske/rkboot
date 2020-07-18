@@ -110,7 +110,7 @@ Primary build targets are:
 
 - :output:`teststage.bin`: this is a simple EL2 payload. Currently it only dumps the passed FDT blob, if it is detected at :code:`*X0`.
 
-- :output:`brompatch.bin`: this binary patches the RK3399 mask ROM code to allow for faster USB transfers, speeding up iteration times in development.
+- :output:`usbstage.bin`: this binary re-initializes the OTG USB interface and connects as a device, providing a bulk-based interface better suited for transferring large payloads than the mask ROM control-based interface.
 
 :src:`release-test.sh` contains a number of configurations that are supposed to be kept working.
 
@@ -165,11 +165,12 @@ To do this:
 
     - levinboot and BL31 with a Linux kernel: this is basically the same as the previous command, just with your (uncompressed) kernel image instead of :output:`teststage.bin`.
 
-    - The loading step for the previous commands will take a while, because :command:`usbtool` uses the mask ROM code to transfer the files, which is anything but fast at receiving and verifying data sent over USB. Therefore, levinboot includes a hotpatch to the BROM that (by the magic of address translation) hooks into the BROM and replaces the verification and running stages to replace it with a more efficient format.
+    - The loading step for the previous commands will take a while, because :command:`usbtool` uses the mask ROM code to transfer the files, which is anything but fast at receiving and verifying data sent over USB. Therefore, levinboot includes a binary that offers a faster bulk-based interface to transfer commands and payloads.
 
-      To use it, build :output:`brompatch.bin` and run your configuration like so: :command:`usbtool --call levinboot-usb.bin --load 4100000 brompatch.bin --dramcall 4100000 1000 --pload 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --pstart 4000000 elfloader.bin` or similar with :output:`teststage.bin`.
+      To use it, build :output:`usbstage.bin` and run your configuration like so: :command:`usbtool --call levinboot-usb.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --load 4000000 elfloader.bin --start 4000000 4102000` or similar with :output:`teststage.bin`.
 
-    - compressed payloads: configure the build with :cmdargs:`--elfloader-lz4`, :cmdargs:`--elfloader-gzip` and/or :cmdargs:`--elfloader-zstd` (depending on your taste in compression format) and run :command:`usbtool --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4400000 path/to/payload-blob --jump 4000000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`. The same can be done with the BROM hotpatch like :command:`usbtool --call levinboot-usb.bin --load 4100000 brompatch.bin --dramcall 4100000 1000 --pload 4400000 path/to/payload-blob --pstart 4000000 elfloader.bin`
+    - compressed payloads: configure the build with :cmdargs:`--elfloader-lz4`, :cmdargs:`--elfloader-gzip` and/or :cmdargs:`--elfloader-zstd` (depending on your taste in compression format) and run :command:`usbtool --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4400000 path/to/payload-blob --jump 4000000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`.
+      The same can be done with :output:`usbstage.bin` like :command:`usbtool --call levinboot-usb.bin --run usbstage.bin --load 4400000 path/to/payload-blob --load 4000000 elfloader.bin --start 4000000 4102000`
 
 Booting from SPI
 ================
@@ -192,6 +193,13 @@ The "Recover" button on the RockPro64/Rock Pi 4 and inside the Pinebook Pro can 
 This button is checked very early in levinboot, allowing you to recover from SPI mis-flashes without hardware modification such as shorting the SPI clock, as long as a certain (small) part of levinboot is still intact.
 
 The recovery button function is built in all configurations of levinboot, even though it is mostly useful for SPI images, because unlike SD cards it cannot be removed and unlike eMMC it cannot be disabled using a button or switch.
+
+Flashing SPI
+------------
+
+You can write to SPI anytime you can boot via USB, as described above: :output:`usbstage.bin` implements a command to write a block of data (such as a levinboot image) to any erase-block-(typically 4k-)aligned address in SPI flash.
+To use this, configure and build levinboot without :cmdargs:`--embed-elfloader` and run :command:`usbtool --call levinboot-usb.bin --run usbstage.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
+Keep in mind that standalone images built without :cmdargs:`--embed-elfloader` will not work, so make sure to build :output:`usbtool.bin` and the image using different configurations. (TODO: make :cmdargs:`--embed-elfloader` unnecessary)
 
 Booting from SD
 ===============
