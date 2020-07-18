@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdatomic.h>
@@ -17,7 +18,7 @@
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
-	{.first = 0xf8000000, .last = 0xff8bffff, .flags = MEM_TYPE_DEV_nGnRnE},
+	{.first = 0xff1a0000, .last = 0xff1a0fff, .flags = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0xff8c0000, .last = 0xff8effff, .flags = MEM_TYPE_NORMAL},
 	{.first = 0xff8f0000, .last = 0xffffffff, .flags = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0, .last = 0, .flags = 0}
@@ -292,6 +293,7 @@ enum usbstage_command {
 	CMD_LOAD = 0,
 	CMD_CALL,
 	CMD_START,
+	CMD_FLASH,
 	NUM_CMD
 };
 
@@ -299,20 +301,26 @@ static struct stage_store store;
 void handoff(u64, u64, u64, u64, u64, u64, u64, u64);
 __asm__("handoff: add x8, sp, #0; add sp, x1, #0; stp x30, x8, [sp, #-16]!; blr x0;ldp x30, x8, [sp]; add sp, x8, #0");
 
+void usbstage_flash_spi(const u8 *buf, u64 start, u64 length);
+
 static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state *st) {
 	volatile struct dwc3_regs *dwc3 = setup->dwc3;
 	struct usbstage_bufs *bufs = (struct usbstage_bufs *)setup->bufs;
 
-	dump_mem(bufs->header, 64);
 	u64 *header = (u64 *)bufs->header;
+	if (st->expect_header) {invalidate_range(header, sizeof(bufs->header));}
+
+	dump_mem(bufs->header, 64);
+	u64 cmd = header[0];
 	if (st->expect_header) {
-		u64 cmd = header[0];
 		switch (cmd) {
+		case CMD_FLASH:
 		case CMD_LOAD:;
 			u64 size = header[1];
 			assert((size & 0xff0001ff) == 0);
-			u64 addr = header[2];
+			u64 addr = cmd == CMD_LOAD ?  header[2] : 0x100000;
 			dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, addr, size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+			st->expect_header = 0;
 			break;
 		case CMD_START:;
 			dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_RUN);
@@ -325,11 +333,22 @@ static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state 
 			FALLTHROUGH;
 		case CMD_CALL:;
 			handoff(header[1], header[2], header[3], header[4], header[5], header[6], header[7], header[8]);
+
+			flush_range(header, sizeof(bufs->header));
+			dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+			st->expect_header = 1;
 			break;
 		default:assert(UNREACHABLE);
 		}
-		st->expect_header = 0;
 	} else {
+		switch (cmd) {
+		case CMD_LOAD: break;
+		case CMD_FLASH:
+			usbstage_flash_spi((const u8 *)0x100000, header[2], header[1]);
+			break;
+		default: assert(UNREACHABLE);
+		}
+		flush_range(header, sizeof(bufs->header));
 		dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
 		st->expect_header = 1;
 	}
@@ -363,6 +382,12 @@ _Noreturn void main(u64 sctlr) {
 	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
+	/* map {PMU,}CRU, GRF */
+	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
+	/* map PMU{,SGRF,GRF} */
+	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
+
+	mmu_map_mmio_identity(0xfe800000, 0xfe80ffff);
 	volatile struct dwc3_regs *dwc3 = (volatile struct dwc3_regs *)0xfe80c100;
 	/* set DRAM as Non-Secure */
 	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;

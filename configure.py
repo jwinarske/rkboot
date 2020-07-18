@@ -242,9 +242,10 @@ if args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
     elfloader |= {'lib/dwmmc', 'lib/sd', 'lib/gicv2', 'rk3399_sdmmc'}
 spi_flasher = {'brompatch-spi', 'lib/rkspi', 'brompatch'}
-modules = lib | levinboot | elfloader | {'teststage', 'lib/dump_fdt', 'usbstage', 'lib/dwc3'}
+usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
+modules = lib | levinboot | elfloader | {'teststage', 'lib/dump_fdt'}
 if not args.embed_elfloader:
-    modules |= spi_flasher | {'memtest', 'brompatch-mem'}
+    modules |= usbstage | spi_flasher | {'memtest', 'brompatch-mem'}
 
 if args.full_debug:
     for f in modules:
@@ -264,6 +265,7 @@ print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 if args.excvec:
     lib |= {'exc_handlers'}
 spi_flasher |= {'exc_handlers'}
+usbstage |= {'exc_handlers'}
 if args.elfloader_spi or args.elfloader_sd:
     elfloader |= {'exc_handlers', 'gicv3'}
     print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
@@ -313,7 +315,7 @@ binary('levinboot-usb', levinboot, 'ff8c2000')
 binary('levinboot-img', levinboot, 'ff8c2004')
 if not args.embed_elfloader:
     binary('memtest', {'memtest'} | lib, 'ff8c2000')
-    binary('usbstage', {'usbstage', 'exc_handlers', 'lib/dwc3'} | lib, 'ff8c2000')
+    binary('usbstage', usbstage | lib, 'ff8c2000')
     binary('brompatch', {'brompatch-mem', 'brompatch', 'exc_handlers'} | lib, '04100000')
     binary('spi-flasher', spi_flasher | lib, '04100000')
 binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
