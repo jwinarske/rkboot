@@ -345,7 +345,6 @@ void ddrinit() {
 	u32 csmask = geo[0].csmask | geo[1].csmask << 2;
 	/* map CIC range, needed for frequency switch */
 	mmu_map_mmio_identity(0xff620000, 0xff62ffff);
-	freq_step(400, 0, 1, csmask, &odt_600mhz, &phy_400mhz);
 	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
 	logs("finished.\n");
 	mmu_unmap_range(0xff620000, 0xff62ffff);
