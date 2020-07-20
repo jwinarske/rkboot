@@ -264,7 +264,6 @@ _Bool parse_hex(const char **start, const char *end, u32 *out) {
 }
 
 void hex_blob(struct context *ctx) {
-	u32 mask = 0;
 	u32 reg_val = 0;
 	u16 reg = 0;
 	struct stack stack;
@@ -278,7 +277,6 @@ void hex_blob(struct context *ctx) {
 				printf("0x%08"PRIx32",\n", reg_val);
 			}
 			reg_val = 0;
-			mask = 0;
 			reg += 1;
 		}
 		size_t demuxed_len;
