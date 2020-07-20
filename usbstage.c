@@ -436,12 +436,13 @@ _Noreturn void main(u64 sctlr) {
 		udelay(1000);
 	}
 	dwc3->global_control |= DWC3_GCTL_CORE_SOFT_RESET;
+	udelay(10);
 	dwc3->phy_config |= DWC3_GUSB2PHYCFG_PHY_SOFT_RESET;
 	dwc3->pipe_control |= DWC3_GUSB2PHYCFG_PHY_SOFT_RESET;
-	udelay(100000);
+	udelay(1000);
 	dwc3->phy_config &= ~(u32)DWC3_GUSB2PHYCFG_PHY_SOFT_RESET;
 	dwc3->pipe_control &= ~(u32)DWC3_GUSB3PIPECTL_PHY_SOFT_RESET;
-	udelay(100000);
+	udelay(1000);
 	dwc3->global_status = 0x30;
 	dwc3->global_control &= ~(u32)DWC3_GCTL_CORE_SOFT_RESET
 		& ~(u32)DWC3_GCTL_DISABLE_SCRAMBLING
@@ -449,7 +450,7 @@ _Noreturn void main(u64 sctlr) {
 	debug("soft reset finished\n");
 	dwc3->user_control1 |= DWC3_GUCTL1_USB3_USE_USB2_CLOCK;
 	dwc3->pipe_control |= DWC3_GUSB3PIPECTL_SUSPEND_ENABLE;
-	udelay(100000);
+	udelay(10000);
 	u32 val = dwc3->phy_config;
 	val &= ~(u32)DWC3_GUSB2PHYCFG_ENABLE_SLEEP
 		& ~(u32)DWC3_GUSB2PHYCFG_SUSPEND_PHY
@@ -458,7 +459,7 @@ _Noreturn void main(u64 sctlr) {
 	val |= DWC3_GUSB2PHYCFG_PHY_INTERFACE
 		| DWC3_GUSB2PHYCFG_TURNAROUND(5);
 	dwc3->phy_config = val;
-	udelay(100000);
+	udelay(60000);
 	printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 
 	dwc3->global_control |= DWC3_GCTL_PORT_CAP_DEVICE;
