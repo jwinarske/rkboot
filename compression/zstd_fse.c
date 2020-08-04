@@ -15,7 +15,7 @@ static u32 trunc_cutoff(u32 range, u8 length) {
 	return (2 << length) - range;
 }
 
-const u8 *decode_fse_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 max_sym, u32 *weights) {
+const u8 *fse_decode_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 max_sym, u32 *weights) {
 	check(end - in >= 1, "not enough data for FSE accuracy value\n");
 	const u8 UNUSED *start = in;
 	u32 bits = *in++;
@@ -83,7 +83,7 @@ static void UNUSED dump_dectable(u8 log, u32 UNUSED *table) {
 	}
 }
 
-void build_fse_table(u8 log, u8 num_sym, const u32 *distribution, u32 *table) {
+void fse_build_table(u8 log, u8 num_sym, const u32 *distribution, u32 *table) {
 	assert(log >= 5 && log <= 20 && num_sym <= 64);
 	const u32 mask = (1 << log) - 1;
 	const u32 step = 5 << (log - 3) | 3;

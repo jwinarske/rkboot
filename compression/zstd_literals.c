@@ -14,11 +14,11 @@ const u8 *zstd_decode_tree_description(const u8 *in, const u8 *end, struct decta
 		u32 fse_weights[12];
 		const u8 *weights_end = in + header, *huff_start = weights_end;
 		u8 fse_log;
-		in = decode_fse_distribution(in, end, &fse_log, ARRAY_SIZE(fse_weights), fse_weights);
+		in = fse_decode_distribution(in, end, &fse_log, ARRAY_SIZE(fse_weights), fse_weights);
 		if (!in) {return 0;}
 		check(fse_log <= 6, "accuracy log of %"PRIu8" higher than allowed by spec\n", fse_log);
 		u32 fse_table[64];
-		build_fse_table(fse_log, ARRAY_SIZE(fse_weights), fse_weights, fse_table);
+		fse_build_table(fse_log, ARRAY_SIZE(fse_weights), fse_weights, fse_table);
 		check(end - in >= header, "not enough data for FSE-compressed Huffman weights\n");
 		check(header > 2, "not enough data to initialize Huffman weight states\n");
 		u32 bits = *--weights_end << 8;

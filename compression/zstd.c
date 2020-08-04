@@ -70,7 +70,7 @@ static const u8 *handle_decoding_table(const u8 *in, const u8 *end, u8 mode, u8 
 	case FSE_Compressed_Mode:
 		debug("FSE %s\n", settings->title);
 		assert(settings->sym <= 64);
-		in = decode_fse_distribution(in, end, log, settings->sym, weights);
+		in = fse_decode_distribution(in, end, log, settings->sym, weights);
 		if (!in) {return 0;}
 		break;
 	case Repeat_Mode:
@@ -80,7 +80,7 @@ static const u8 *handle_decoding_table(const u8 *in, const u8 *end, u8 mode, u8 
 	default:abort();
 	}
 	check(*log <= settings->max_log, "accuracy log too high\n");
-	build_fse_table(*log, settings->sym, weights, table);
+	fse_build_table(*log, settings->sym, weights, table);
 	return in;
 }
 
