@@ -1,4 +1,5 @@
 #include <unistd.h>
+#undef NDEBUG
 #include <assert.h>
 #include <fcntl.h>
 #include <string.h>
@@ -43,8 +44,7 @@ static void write_buf(int fd, const u8 *buf, size_t size) {
 	}
 }
 
-static void write_padding_blocks(int fd, u8 window_size_field) {
-	u64 window_left = (u64)(8 | (window_size_field & 7)) << 7 << (window_size_field >> 3);
+static void write_padding_blocks(int fd, u64 window_left) {
 	while (window_left) {
 		u64 padding = 128 << 10;
 		if (window_left < 128 << 10) {
@@ -54,23 +54,6 @@ static void write_padding_blocks(int fd, u8 window_size_field) {
 		write_buf(fd, block, 4);
 		window_left -= padding;
 	}
-}
-
-static void extract_full_block(const u8 *buf, const u8 *ptr, u32 block_header, u8 window_size_field) {
-	char name[32];
-	sprintf(name, "block%zx.zst", (size_t)(ptr - buf));
-	printf("%s\n", name);
-	int fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0744);
-	assert(fd > 0);
-	u8 header[6] = {0x28, 0xb5, 0x2f, 0xfd, 0, window_size_field};
-	write_buf(fd, header, sizeof(header));
-	write_padding_blocks(fd, window_size_field);
-	ptr += 3;
-	u8 new_header[3] = {(u8)(block_header | 1) , (u8)(block_header >> 8), (u8)(block_header >> 16)};
-	write_buf(fd, new_header, 3);
-	u32 compr_size = block_header >> 3;
-	write_buf(fd, ptr, compr_size);
-	close(fd);
 }
 
 int main(int UNUSED argc, char UNUSED **argv) {
@@ -89,20 +72,24 @@ int main(int UNUSED argc, char UNUSED **argv) {
 	}
 	u8 window_size_field = buf[5];
 	u8 *ptr = buf + 6 + fcs_size;
+	int fd = 0;
+	u64 padding = 0;
 	while (1) {
 		assert(ptr < buf_end - 3);
 		u32 block_header = ptr[0] | (u32)ptr[1] << 8 | (u32)ptr[2] << 16;
 		u32 block_size = block_header >> 3;
 		switch (block_header >> 1 & 3) {
 		case 0:
-			fprintf(stderr, "%"PRIu32"-byte raw block, skipping\n", block_size);
+			fprintf(stderr, "%"PRIu32"-byte raw block\n", block_size);
 			assert(buf_end - ptr >= block_size + 3);
 			ptr += block_size + 3;
+			padding += block_size;
 			continue;
 		case 1:
-			fprintf(stderr, "%"PRIu32"-byte RLE block, skipping\n", block_size);
+			fprintf(stderr, "%"PRIu32"-byte RLE block\n", block_size);
 			assert(buf_end - ptr >= 4);
 			ptr += 4;
+			padding += block_size;
 			continue;
 		case 2:
 			break;
@@ -116,9 +103,9 @@ int main(int UNUSED argc, char UNUSED **argv) {
 		struct literals_probe probe = zstd_probe_literals(ptr + 3, ptr + 3 + block_size);
 		if (probe.flags & ZSTD_TRUNCATED) {
 			fprintf(stderr, "literals section was truncated\n");
+			return 1;
 		}
 		u32 lit_size = probe.end - ptr - 3;
-		_Bool literals_available = !(probe.flags & ZSTD_TREELESS), literals_interesting = !(probe.flags & ZSTD_NON_HUFF_LITERALS_MASK);
 		fprintf(stderr, "%"PRIu32" (0x%"PRIx32") bytes literals section\n", lit_size, lit_size);
 		assert(block_size >= lit_size + 1);
 		u8 ssh0 = ptr[3 + lit_size];
@@ -133,52 +120,43 @@ int main(int UNUSED argc, char UNUSED **argv) {
 		assert(block_size >= lit_size + num_seq_size);
 		u8 scm = ptr[3 + lit_size + num_seq_size];
 		assert((scm & 3) == 0);
-		_Bool no_repeat_mode = (scm & scm >> 1 & 0x55) == 0;
-		if (no_repeat_mode && literals_available) {
-			extract_full_block(buf, ptr, block_header, window_size_field);
+		_Bool repeat_mode = (scm & scm >> 1 & 0x55) != 0;
+		if ((~probe.flags & ZSTD_TREELESS) && !repeat_mode) {
+			if (fd) {
+				u8 last_block[3] = {1, 0, 0};
+				write_buf(fd, last_block, sizeof(last_block));
+				if (close(fd)) {
+					perror("While closing file");
+					return 1;
+				}
+			}
+			char name[32];
+			sprintf(name, "block%zx.zst", (size_t)(ptr - buf));
+			printf("%s\n", name);
+			fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0744);
+			assert(fd > 0);
+			u8 header[6] = {0x28, 0xb5, 0x2f, 0xfd, 0, window_size_field};
+			write_buf(fd, header, sizeof(header));
+			write_padding_blocks(fd, (u64)(8 | (window_size_field & 7)) << 7 << (window_size_field >> 3));
+			padding = 0;
+		} else if (!fd) {
+			fprintf(stderr, "repeat mode or treeless literals in the first compressed block");
+			return 1;
 		} else {
-			if (literals_available && literals_interesting) {
-				char name[32];
-				sprintf(name, "lit%zx.zst", (size_t)(ptr - buf));
-				printf("%s\n", name);
-				int fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0744);
-				assert(fd > 0);
-				u8 header[12] = {
-					0x28, 0xb5, 0x2f, 0xfd,	/* magic number */
-					0xa0,	/* Frame Header Descriptor: single-segment, 4-byte frame content size */
-					probe.size & 0xff, probe.size >> 8 & 0xff, probe.size >> 16, 0,	/* frame content size */
-					(lit_size + 1) << 3 | 5, (lit_size + 1) >> 5 & 0xff, (lit_size + 1) >> 13,	/* block header */
-				};
-				write_buf(fd, header, sizeof(header));
-				write_buf(fd, ptr + 3, lit_size);
-				u8 zero = 0;
-				write_buf(fd, &zero, 1);	/* no sequences */
-				close(fd);
-			} else if (no_repeat_mode) {
-				char name[32];
-				sprintf(name, "seq%zx.zst", (size_t)(ptr - buf));
-				printf("%s\n", name);
-				int fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0744);
-				assert(fd > 0);
-				u32 seq_size = block_size - lit_size;
-				u32 out_size = seq_size + 3;
-				u8 header[6] = {
-					0x28, 0xb5, 0x2f, 0xfd,	/* magic number */
-					0, window_size_field,
-				};
-				write_buf(fd, header, sizeof(header));
-				write_padding_blocks(fd, window_size_field);
-				u8 header2[7] = {
-					out_size << 3 | 5, out_size >> 5 & 0xff, out_size >> 13,	/* block header */
-					probe.size << 4 | 0xd, probe.size >> 4 & 0xff, probe.size >> 12, '-',	/* literals section */
-				};
-				write_buf(fd, header2, sizeof(header2));
-				write_buf(fd, ptr + 3 + lit_size, seq_size);
-				close(fd);
+			fprintf(stderr, "appending\n");
+			if (fd) {
+				write_padding_blocks(fd, padding);
+				padding = 0;
 			}
 		}
+		write_buf(fd, ptr, block_size + 3);
 		fflush(stdout);
 		if (block_header & 1) {break;}
 		ptr += block_size + 3;
 	}
+	if (fd && close(fd)) {
+		perror("While closing last file");
+		return 1;
+	}
+	return 0;
 }
