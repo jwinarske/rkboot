@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
 		size_t min_size = state->out - out < ref_size ? state->out - out : ref_size;
 		size_t pos = 0;
 		while (pos < min_size && out[pos] == ref[pos]) {pos += 1;}
-		u8 a = 0, b = 0;
+		UNUSED u8 a = 0, b = 0;
 		if (pos < min_size) {a = out[pos]; b = ref[pos];}
 		if (pos == ref_size && ref_size == state->out - out) {
 			info("output matches\n");
