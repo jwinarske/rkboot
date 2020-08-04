@@ -4,7 +4,7 @@
 #include <inttypes.h>
 #include <assert.h>
 
-const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables *tables) {
+const u8 *zstd_decode_tree_description(const u8 *in, const u8 *end, struct dectables *tables) {
 	check(end - in >= 1, "not enough data for Huffman tree header\n");
 	u32 sum = 0, maxbits = 0;
 	u8 weights[256];
@@ -140,7 +140,7 @@ const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables 
 	return in;
 }
 
-static _Bool decompress_literal_stream(const u8 *in, const u8 *end, u8 *out, u8 *out_end, const struct huff_entry *table) {
+_Bool zstd_decompress_literal_stream(const u8 *in, const u8 *end, u8 *out, u8 *out_end, const struct huff_entry *table) {
 	assert(out < out_end);
 	check(end > in, "literal stream is empty");
 	u8 last_byte = *--end;
@@ -166,14 +166,7 @@ static _Bool decompress_literal_stream(const u8 *in, const u8 *end, u8 *out, u8 
 	return out;
 }
 
-enum {
-	Raw_Literals_Block = 0,
-	RLE_Literals_Block,
-	Compressed_Literals_Block,
-	Treeless_Literals_Block
-};
-
-_Bool decode_huff_4streams(const u8 *in, const u8 *end, u8 *out, u8 *out_end, const struct huff_entry *table) {
+_Bool zstd_decode_huff_4streams(const u8 *in, const u8 *end, u8 *out, u8 *out_end, const struct huff_entry *table) {
 	check(end - in >= 10, "not enough data for 4 Huffman streams\n");
 	u16 size1 = in[0] | (u16)in[1] << 8, size2 = in[2] | (u16)in[3] << 8, size3 = in[4] | (u16)in[5] << 8;
 	in += 6;
@@ -181,115 +174,17 @@ _Bool decode_huff_4streams(const u8 *in, const u8 *end, u8 *out, u8 *out_end, co
 	check((u32)size1 + size2 + size3 + 1 <= end - in, "4 Huffman streams go beyond input\n");
 	u32 regen_size = out_end - out;
 	u32 decomp_size123 = (regen_size + 3) / 4;
-	if (!decompress_literal_stream(in, in + size1, out, out + decomp_size123, table)) {return 0;}
+	if (!zstd_decompress_literal_stream(in, in + size1, out, out + decomp_size123, table)) {return 0;}
 	out += decomp_size123;
 	in += size1;
 	debug("stream 2\n");
-	if (!decompress_literal_stream(in, in + size2, out, out + decomp_size123, table)) {return 0;}
+	if (!zstd_decompress_literal_stream(in, in + size2, out, out + decomp_size123, table)) {return 0;}
 	out += decomp_size123;
 	in += size2;
 	debug("stream 3\n");
-	if (!decompress_literal_stream(in, in + size3, out, out + decomp_size123, table)) {return 0;}
+	if (!zstd_decompress_literal_stream(in, in + size3, out, out + decomp_size123, table)) {return 0;}
 	out += decomp_size123;
 	in += size3;
 	debug("stream 4\n");
-	return decompress_literal_stream(in, end, out, out_end, table);
-}
-
-#define DECODE_FUNC(lsh0) static _Bool decode_huff_##lsh0(const u8 *in, const u8 *end, u8 *out, u8 *out_end, struct dectables *tables) {\
-	debug("%s\n", __func__);\
-	u8 size_format = (lsh0) >> 2 & 3;\
-	u8 lsh_size = size_format == 0 ? 3 : 2 + size_format;\
-	debug("lsh_size%"PRIu8"\n", lsh_size);\
-	assert(end - in >= lsh_size + 2);\
-	in += lsh_size;\
-	if (((lsh0) & 3) == Treeless_Literals_Block) {\
-		check(tables->huff_depth != 0, "no previous Huffman table available for treeless literal block\n");\
-	} else {\
-		in = decode_tree_description(in, end, tables);\
-		if (!in) {return 0;}\
-	}\
-	if (size_format > 0) {\
-		return decode_huff_4streams(in, end, out, out_end, tables->huff_table);\
-	}\
-	return decompress_literal_stream(in, end, out, out_end, tables->huff_table);\
-}
-
-DECODE_FUNC(2)
-DECODE_FUNC(6)
-DECODE_FUNC(10)
-DECODE_FUNC(14)
-
-DECODE_FUNC(3)
-DECODE_FUNC(7)
-DECODE_FUNC(11)
-DECODE_FUNC(15)
-
-static const decode_func huff_funcs[8] = {
-	decode_huff_2, decode_huff_3, decode_huff_6, decode_huff_7,
-	decode_huff_10, decode_huff_11, decode_huff_14, decode_huff_15
-};
-
-static _Bool decode_rle(const u8 *in, const u8 *end, u8 *out, u8 *out_end, struct dectables UNUSED *tables) {
-	assert(end > in);
-	u8 fill = *--end;
-	if (out_end > out) {
-		*out++ = fill;
-		lzcommon_match_copy(out, 1, out_end - out);
-	}
-	return 1;
-}
-
-struct literals_probe probe_literals(const u8 *in, const u8 *end) {
-	struct literals_probe res;
-	res.end = 0;
-	u8 lsh0 = *in++;
-	u8 literals_block_type = lsh0 & 3;
-	debug("lsh0=%"PRIx8"\n", lsh0);
-	if (literals_block_type >= 2) { /* compressed literals */
-		u8 size_format = lsh0 >> 2 & 3;
-		if (end - in < 2) {return res;}
-		u32 regen_size = lsh0 >> 4 | (u32)*in++ << 4;
-		u32 comp_size;
-		if (size_format < 2) {
-			comp_size = regen_size >> 10 | (u32)*in++ << 2;
-			regen_size &= 0x3ff;
-		} else {
-			if (end - in < size_format) {return res;}
-			if (size_format == 2) {
-				regen_size |= (u32)in[0] << 12 & 0x3000;
-				comp_size = in[0] >> 2 | (u32)in[1] << 6;
-			} else {assert(size_format == 3);
-				regen_size |= (u32)in[0] << 12 & 0x3f000;
-				comp_size = in[0] >> 6 | (u32)in[1] << 2 | (u32)in[2] << 10;
-			}
-			in += size_format;
-		}
-		res.end = in + comp_size;
-		res.size = regen_size;
-		res.decode = huff_funcs[(lsh0 & 1) | size_format << 1];
-		return res;
-	} else {
-		if (~lsh0 & 4) {
-			res.size = lsh0 >> 3;
-		} else if (~lsh0 & 8) {
-			if (end - in < 1) {return res;}
-			res.size = lsh0 >> 4 | (u32)*in++ << 4;
-		} else {
-			if (end - in < 2) {return res;}
-			res.size = lsh0 >> 4 | (u32)*in << 4 | (u32)in[1] << 12;
-			in += 2;
-		}
-		if (lsh0 & 1) { /* RLE literals */
-			res.decode = decode_rle;
-			if (end - in < 1) {return res;}
-			res.end = in + 1;
-			return res;
-		} else { /* raw literals */
-			res.decode = 0;
-			if (end - in < res.size) {return res;}
-			res.end = in + res.size;
-			return res;
-		}
-	}
+	return zstd_decompress_literal_stream(in, end, out, out_end, table);
 }

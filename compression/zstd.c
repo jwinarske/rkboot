@@ -124,32 +124,49 @@ static const struct table_settings dist_settings = {
 	}
 };
 
+static _Bool decode_literals(const u8 *in, const u8 *end, u8 * out, u8 *out_end, u32 flags, const struct dectables *tables) {
+	if (flags & ZSTD_RAW_LITERALS) {
+		lzcommon_literal_copy(out, in, out_end - out);
+		return 1;
+	} else if (flags & ZSTD_RLE_LITERALS) {
+		memset(out, *in, out_end - out);
+		return 1;
+	} else if (flags & ZSTD_1STREAM) {
+		return zstd_decompress_literal_stream(in, end, out, out_end, tables->huff_table);
+	} else {
+		return zstd_decode_huff_4streams(in, end, out, out_end, tables->huff_table);
+	}
+}
+
 static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end, struct dectables *tables, u8 *window_start) {
 	u8 *out_start = out;
 	check(end - in >= 1, "not enough data for Literals_Section_Header\n");
-	const u8 *literal_start = in;
-	struct literals_probe probe = probe_literals(in, end);
-	check(probe.end, "not enough data for literal section\n");
+	struct literals_probe probe = zstd_probe_literals(in, end);
 	debug("%"PRIu32" (0x%"PRIx32") bytes of literals, %zu (0x%zx) compressed\n", probe.size, probe.size, probe.end - in, probe.end - in);
+	const u8 *literal_start = probe.start;
+	if (0 == (probe.flags & ZSTD_ABNORMAL_LITERAL_MASK)) {
+		literal_start = zstd_decode_tree_description(probe.start, probe.end, tables);
+	} else if (probe.flags & ZSTD_TREELESS) {
+		check(tables->huff_depth != 0, "no previous Huffman table available for treeless literal block\n");
+		debugs("treeless literals\n");
+	} else if (probe.flags & ZSTD_TRUNCATED) {
+		return DECODE_ERR;
+	}
 	in = probe.end;
 	if (unlikely(out_end - out < probe.size)) {return DECODE_NEED_MORE_SPACE;}
 	check(end - in >= 1, "not enough data for Sequences_Section_Header\n");
 	u32 num_seq = *in++;
 	if (!num_seq) {
-		if (!probe.decode) {
-			lzcommon_literal_copy(out, probe.end - probe.size, probe.size);
-		} else {
-			check(probe.decode(literal_start, probe.end, out, out + probe.size, tables), "failed to decode literals\n");
-		}
+		check(decode_literals(literal_start, probe.end, out, out + probe.size, probe.flags, tables), "failed to decode literals\n");
 		return NUM_DECODE_STATUS + probe.size;
 	}
 	const u8 *literal_ptr;
-	if (!probe.decode) {
+	if (probe.flags & ZSTD_RAW_LITERALS) {
 		debug("raw literals\n");
 		literal_ptr = probe.end - probe.size;
 	} else {
 		u8 *ptr = out_end + LZCOMMON_BLOCK - probe.size;
-		check(probe.decode(literal_start, probe.end, ptr, ptr + probe.size, tables), "failed to decode literals\n");
+		check(decode_literals(literal_start, probe.end, ptr, ptr + probe.size, probe.flags, tables), "failed to decode literals\n");
 		literal_ptr = ptr;
 	}
 	spew("%.*s", (int)probe.size, literal_ptr);

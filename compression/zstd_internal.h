@@ -20,13 +20,30 @@ struct dectables {
 	u32 dist_table[1 << 8];
 };
 
-typedef _Bool (*decode_func)(const u8 *in, const u8 *end, u8 *out, u8 *out_end, struct dectables *tables);
+#define DEFINE_LITERALS_FLAGS X(RAW_LITERALS) X(RLE_LITERALS) X(1STREAM) X(TREELESS) X(TRUNCATED)
+
+enum {
+#define X(name) ZSTD_##name##_BIT,
+	DEFINE_LITERALS_FLAGS
+#undef X
+	NUM_ZSTD_LITERAL_FLAGS
+};
+_Static_assert(NUM_ZSTD_LITERAL_FLAGS <= 32, "more than 32 literal flags");
+enum {
+#define X(name) ZSTD_##name = 1 << ZSTD_##name##_BIT,
+	DEFINE_LITERALS_FLAGS
+#undef X
+	/* flag definition (polarity and order) was chosen such that these generate nice code: they are masks of consecutive bits (good for A64) that does not cross a 16-bit boundary (good for PPC) */
+	ZSTD_ABNORMAL_LITERAL_MASK = ZSTD_RAW_LITERALS | ZSTD_RLE_LITERALS | ZSTD_1STREAM | ZSTD_TREELESS | ZSTD_TRUNCATED,
+	ZSTD_NON_HUFF_LITERALS_MASK = ZSTD_RAW_LITERALS | ZSTD_RLE_LITERALS,
+};
+
 
 struct literals_probe {
+	const u8 *start;
 	const u8 *end;
 	u32 size;
 	u32 flags;
-	decode_func decode;
 };
 
 struct sequences_state {
@@ -48,5 +65,8 @@ _Bool finish_sequences(struct sequences_state *state, const u8 *start, struct de
 
 const u8 *decode_fse_distribution(const u8 *in, const u8 *end, u8 *log, u8 max_sym, u32 *weights);
 void build_fse_table(u8 log, u8 num_sym, const u32 *distribution, u32 *table);
-const u8 *decode_tree_description(const u8 *in, const u8 *end, struct dectables *tables);
-struct literals_probe probe_literals(const u8 *in, const u8 *end);
+
+const u8 *zstd_decode_tree_description(const u8 *in, const u8 *end, struct dectables *tables);
+struct literals_probe zstd_probe_literals(const u8 *in, const u8 *end);
+_Bool zstd_decompress_literal_stream(const u8 *in, const u8 *end, u8 *out, u8 *out_end, const struct huff_entry *table);
+_Bool zstd_decode_huff_4streams(const u8 *in, const u8 *end, u8 *out, u8 *out_end, const struct huff_entry *table);

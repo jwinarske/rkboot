@@ -234,7 +234,7 @@ if elfloader_decompression:
         elfloader |= {'compression/inflate'}
     if args.elfloader_zstd:
         flags['elfloader'].append('-DHAVE_ZSTD')
-        elfloader |= {'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_sequences'}
+        elfloader |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
 if args.elfloader_spi:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader |= {'lib/rkspi', 'lib/gicv2', 'rk3399_spi'}

@@ -8,7 +8,7 @@ src=`realpath $0`
 src=`dirname $src`
 src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
 
-files="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_sequences"
+files="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_probe_literals zstd_sequences"
 
 cat >build.ninja <<END
 ninja_required_version = 1.3
@@ -34,5 +34,5 @@ for f in $files; do
 done
 echo >>build.ninja
 echo build zstdsplit.o: cc "$src/zstdsplit.c" >>build.ninja
-echo build zstdsplit: ld zstdsplit.o >>build.ninja
+echo build zstdsplit: ld zstdsplit.o zstd_probe_literals.o >>build.ninja
 echo default decompress zstdsplit >>build.ninja
