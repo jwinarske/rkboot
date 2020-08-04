@@ -1,5 +1,3 @@
-#include "../include/defs.h"
-#include "../include/log.h"
 #include <unistd.h>
 #include <assert.h>
 #include <fcntl.h>
@@ -7,6 +5,10 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <inttypes.h>
+
+#include "../include/defs.h"
+#include "../include/log.h"
+#include "zstd_internal.h"
 
 static u8 *read_file(int fd, size_t *size) {
 	size_t buf_size = 0, buf_cap = 128;
@@ -71,7 +73,7 @@ static void extract_full_block(const u8 *buf, const u8 *ptr, u32 block_header, u
 	close(fd);
 }
 
-int main(int argc, char **argv) {
+int main(int UNUSED argc, char UNUSED **argv) {
 	size_t buf_size;
 	u8 *buf = read_file(0, &buf_size);
 	if (!buf) {return 1;}
@@ -111,56 +113,12 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "%"PRIu32"-byte compressed block\n", block_size);
 		assert(block_size >= 1);
 		assert(buf_end - ptr >= block_size + 3);
-		u8 lsh0 = ptr[3];
-		u32 lit_size, regen_size;
-		_Bool literals_available = 1, literals_interesting = 0;
-		switch (lsh0 >> 1 & 3) {
-		case 0:	/* Raw/RLE literals, size format 0 */
-			regen_size = lsh0 >> 3;
-			lit_size = (lsh0 & 1 ? regen_size : 1) + 1;
-			break;
-		case 2:	/* Raw/RLE literals, size format 1/2 */
-			assert(block_size >= 2);
-			regen_size = lsh0 >> 4 | (u32)ptr[4] << 4;
-			u8 lsh_size = 2;
-			if (lsh0 & 8) {
-				lsh_size = 3;
-				assert(block_size >= 3);
-				regen_size |= (u32)ptr[5] << 12;
-			}
-			lit_size = (lsh0 & 1 ? regen_size : 1) + lsh_size;
-			break;
-		case 1:
-		case 3:
-			assert(block_size >= 3);
-			u8 size_format = lsh0 >> 2 & 3;
-			u32 lsh1 = ptr[4], lsh2 = ptr[5];
-			switch (size_format) {
-			case 0:
-			case 1:	/* these differ only in the number of streams, not relevant for splitting */
-				regen_size = lsh0 >> 4 | (lsh1 << 4 & 0x3f0);
-				lit_size = lsh1 >> 6 | lsh2 << 2;
-				lit_size += 3;
-				break;
-			case 2:
-				assert(block_size >= 4);
-				regen_size = lsh0 >> 4 | lsh1 << 4 | (lsh2 << 12 & 0x3000);
-				lit_size = lsh2 >> 2 | (u32)ptr[6] << 6;
-				lit_size += 4;
-				break;
-			case 3:
-				assert(block_size >= 4);
-				regen_size = lsh0 >> 4 | lsh1 << 4 | (lsh2 << 12 & 0x3f000);
-				lit_size = lsh2 >> 6 | (u32)ptr[6] << 2 | (u32)ptr[7] << 10;
-				lit_size += 5;
-				break;
-			}
-			literals_interesting = 1;
-			if (lsh0 & 1) {
-				fprintf(stderr, "block uses treeless literals, cannot extract out of context\n");
-				literals_available = 0;
-			}
+		struct literals_probe probe = zstd_probe_literals(ptr + 3, ptr + 3 + block_size);
+		if (probe.flags & ZSTD_TRUNCATED) {
+			fprintf(stderr, "literals section was truncated\n");
 		}
+		u32 lit_size = probe.end - ptr - 3;
+		_Bool literals_available = !(probe.flags & ZSTD_TREELESS), literals_interesting = !(probe.flags & ZSTD_NON_HUFF_LITERALS_MASK);
 		fprintf(stderr, "%"PRIu32" (0x%"PRIx32") bytes literals section\n", lit_size, lit_size);
 		assert(block_size >= lit_size + 1);
 		u8 ssh0 = ptr[3 + lit_size];
@@ -187,9 +145,9 @@ int main(int argc, char **argv) {
 				assert(fd > 0);
 				u8 header[12] = {
 					0x28, 0xb5, 0x2f, 0xfd,	/* magic number */
-					0xa0,	/* Frame Header Desclriptor: single-segment, 4-byte frame content size */
-					regen_size & 0xff, regen_size >> 8 & 0xff, regen_size >> 16, 0,
-					(lit_size + 1) << 3 | 5, (lit_size + 1) >> 5 & 0xff, (lit_size + 1) >> 13
+					0xa0,	/* Frame Header Descriptor: single-segment, 4-byte frame content size */
+					probe.size & 0xff, probe.size >> 8 & 0xff, probe.size >> 16, 0,	/* frame content size */
+					(lit_size + 1) << 3 | 5, (lit_size + 1) >> 5 & 0xff, (lit_size + 1) >> 13,	/* block header */
 				};
 				write_buf(fd, header, sizeof(header));
 				write_buf(fd, ptr + 3, lit_size);
@@ -210,9 +168,9 @@ int main(int argc, char **argv) {
 				};
 				write_buf(fd, header, sizeof(header));
 				write_padding_blocks(fd, window_size_field);
-				u8 header2[6] = {
-					out_size << 3 | 5, out_size >> 5 & 0xff, out_size >> 13,
-					regen_size << 4 | 0xd, regen_size >> 4 & 0xff, regen_size >> 12
+				u8 header2[7] = {
+					out_size << 3 | 5, out_size >> 5 & 0xff, out_size >> 13,	/* block header */
+					probe.size << 4 | 0xd, probe.size >> 4 & 0xff, probe.size >> 12, '-',	/* literals section */
 				};
 				write_buf(fd, header2, sizeof(header2));
 				write_buf(fd, ptr + 3 + lit_size, seq_size);
