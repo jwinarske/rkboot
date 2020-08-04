@@ -219,6 +219,7 @@ int main(int argc, char **argv) {
 				close(fd);
 			}
 		}
+		fflush(stdout);
 		if (block_header & 1) {break;}
 		ptr += block_size + 3;
 	}
