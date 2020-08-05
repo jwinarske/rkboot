@@ -61,55 +61,108 @@ static u8 *read_file(int fd, size_t *size) {
 	return buf;
 }
 
+/*static u8 *pump(int fd, u8 *buf, u8 *end) {
+	while (buf < end) {
+		ssize_t res = read(fd, buf, end - buf);
+		if (res >= )
+	}
+}*/
+
+u8 inbuf[4 << 20];
 u8 outbuf[16 << 20];
 
 int main(int argc, char **argv) {
-	fprintf(stderr, "reading input …");
-	size_t buf_size;
-	u8 *buf = read_file(0, &buf_size);
-	if (!buf) {
-		fprintf(stderr, "reading input failed\n");
-		return 1;
-	}
-	fprintf(stderr, "read %zu bytes\n", buf_size);
-	const u8 *buf_end = buf + buf_size, *ptr = buf;
+	_Bool overwrite = 0;
+	u8 *ptr = inbuf, *buf_end = ptr;
 	while (*++argv) {
-		if (**argv == '-') {
-			info("got option argument, but no options are implemented yet");
-			return 1;
+		if (**argv == '-' && (*argv)[1] != 0) {
+			char *ptr = *argv + 1;
+			while (*ptr) {
+				if (*ptr == '-') {
+					ptr += 1;
+					if (0 == strcmp(ptr, "overwrite")) {
+						overwrite = 1;
+					} else {
+						fprintf(stderr, "unknown long-form option %s\n", ptr);
+						return 1;
+					}
+					break;
+				} else if (*ptr == 'f') {
+					overwrite = 1;
+				} else {
+					fprintf(stderr, "unknown short-form option %s\n", ptr);
+				}
+			}
 		} else {
 			info("decompressing to \"%s\"\n", *argv);
-			int fd = open(*argv, O_WRONLY | O_CREAT | O_EXCL, 0744);
-			if (fd < 0) {
-				perror("While opening file");
-				return 1;
+			int fd;
+			if (**argv == '-' && (*argv)[1] == 0) {
+				fd = 1;
+			} else {
+				int flags = O_WRONLY | O_CREAT;
+				if (!overwrite) {flags |= O_EXCL;}
+				overwrite = 0;
+				fd = open(*argv, flags, 0744);
+				if (fd < 0) {
+					perror("While opening file");
+					return 1;
+				}
 			}
 			const struct decompressor *decomp = 0;
 			size_t size;
 			for_array(i, formats) {
-				enum compr_probe_status res = formats[i].decomp->probe(ptr, buf_end, &size);
-				if (res <= COMPR_PROBE_LAST_SUCCESS) {
-					info("%s probed\n", formats[i].name);
-					decomp = formats[i].decomp;
-					break;
-				} else if (res != COMPR_PROBE_WRONG_MAGIC) {
+				enum compr_probe_status res;
+				do {
+					res = formats[i].decomp->probe(ptr, buf_end, &size);
+					if (res <= COMPR_PROBE_LAST_SUCCESS) {
+						info("%s probed\n", formats[i].name);
+						decomp = formats[i].decomp;
+						goto probed;
+					} else if (res == COMPR_PROBE_NOT_ENOUGH_DATA) {
+						size_t size = buf_end - ptr;
+						if (ptr != inbuf) {
+							memmove(inbuf, ptr, buf_end - ptr);
+							buf_end = inbuf + size;
+							ptr = inbuf;
+						} else if (size == sizeof(inbuf)) {
+							fprintf(stderr, "Probing %s needed more than %zu (0x%zx) bytes of input buffer\n", formats[i].name, size, size);
+						}
+						ssize_t read_res = read(0, buf_end, sizeof(inbuf) - size);
+						debug("read %zd (%zx) bytes while probing\n", read_res, read_res);
+						if (read_res > 0) {
+							assert(read_res <= sizeof(inbuf) - size);
+							buf_end += read_res;
+							continue;
+						}
+						if (read_res < 0) {
+							int e = errno;
+							if (e != EINTR && e != EAGAIN && e != EWOULDBLOCK) {
+								perror("While reading input");
+								return 1;
+							}
+							continue;	/* if the decoder isn't horribly broken, will try again */
+						}
+						/* EOF case: NOT_ENOUGH_DATA is final, fall through */
+						info("EOF\n");
+					}
+				} while (0);
+				if (res != COMPR_PROBE_WRONG_MAGIC) {
 					fprintf(stderr, "failed to probe %s: %s\n", formats[i].name, compr_probe_status_msg[res]);
 				} else {
 					debug("wrong magic for %s\n", formats[i].name);
 				}
 			}
-			if (!decomp) {
-				fprintf(stderr, "failed to probe any of: ");
-				for_array(i, formats) {fprintf(stderr, " %s", formats[i].name);}
-				fputs("\n", stderr);
-				return 1;
-			}
+			fprintf(stderr, "failed to probe any of: ");
+			for_array(i, formats) {fprintf(stderr, " %s", formats[i].name);}
+			fputs("\n", stderr);
+			return 1;
+			probed:;
 			struct decompressor_state *state = malloc(decomp->state_size);
 			if (!state) {
 				fprintf(stderr, "failed to allocate %zu byte decompressor state\n", decomp->state_size);
 				return 1;
 			}
-			ptr = decomp->init(state, ptr, buf_end);
+			ptr = inbuf + (decomp->init(state, ptr, buf_end) - inbuf);
 			if (!ptr) {
 				fprintf(stderr, "failed to initialize the decompressor\n");
 				return 1;
@@ -119,6 +172,32 @@ int main(int argc, char **argv) {
 			u8 *last_out = outbuf;
 			while (state->decode) {
 				size_t res = state->decode(state, ptr, buf_end);
+				if (res == DECODE_NEED_MORE_DATA) {
+					size_t size = buf_end - ptr;
+					if (ptr != inbuf) {
+						memmove(inbuf, ptr, buf_end - ptr);
+						buf_end = inbuf + size;
+						ptr = inbuf;
+					} else if (size == sizeof(inbuf)) {
+						fprintf(stderr, "Decoder needed more than %zu (0x%zx) bytes of input buffer\n", size, size);
+					}
+					ssize_t res = read(0, buf_end, sizeof(inbuf) - size);
+					debug("read %zd (%zx) bytes while decompressing\n", res, res);
+					if (res > 0) {
+						assert(res <= sizeof(inbuf) - size);
+						buf_end += res;
+						continue;
+					}
+					if (res < 0) {
+						int e = errno;
+						if (e != EINTR && e != EAGAIN && e != EWOULDBLOCK) {
+							perror("While reading input");
+							return 1;
+						}
+						continue;	/* if the decoder isn't horribly broken, will try again */
+					}
+					/* EOF case: NEED_MORE_DATA is final, fall through */
+				}
 				if (res < NUM_DECODE_STATUS) {
 					fprintf(stderr, "failed to decompress: %s", decode_status_msg[res]);
 					return 1;

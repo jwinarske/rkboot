@@ -11,30 +11,6 @@
 #include "../include/log.h"
 #include "zstd_internal.h"
 
-static u8 *read_file(int fd, size_t *size) {
-	size_t buf_size = 0, buf_cap = 128;
-	u8 *buf = malloc(buf_cap);
-	assert(buf);
-	while (1) {
-		if (buf_cap - buf_size < 128) {
-			buf = realloc(buf, buf_cap *= 2);
-			assert(buf);
-		}
-		ssize_t res = read(fd, buf + buf_size, buf_cap - buf_size);
-		if (res > 0) {
-			buf_size += res;
-		} else if (!res) {
-			break;
-		} else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
-			perror("While reading input file");
-			return 0;
-		}
-	}
-	info("read %zu bytes\n", buf_size);
-	*size = buf_size;
-	return buf;
-}
-
 static void write_buf(int fd, const u8 *buf, size_t size) {
 	const u8 *end = buf + size;
 	while (buf < end) {
@@ -56,39 +32,85 @@ static void write_padding_blocks(int fd, u64 window_left) {
 	}
 }
 
+u8 inbuf[4 << 20];
+
 int main(int UNUSED argc, char UNUSED **argv) {
-	size_t buf_size;
-	u8 *buf = read_file(0, &buf_size);
-	if (!buf) {return 1;}
-	u8 *buf_end = buf + buf_size;
-	assert(buf_size >= 9);
+	u8 *buf_end = inbuf;
+	while (buf_end < inbuf + sizeof(inbuf)) {
+		ssize_t res = read(0, buf_end, inbuf + sizeof(inbuf) - buf_end);
+		info("initial read %zd (0x%zx) bytes\n", res, res);
+		if (res == 0) {break;}
+		if (res < 0) {
+			int e = errno;
+			if (e != EINTR && e != EWOULDBLOCK && e != EAGAIN) {
+				perror("during initial read");
+				return 1;
+			}
+			continue;
+		}
+		buf_end += res;
+	}
+	assert(buf_end - inbuf >= 9);
 	static const u8 magic[4] = {0x28, 0xb5, 0x2f, 0xfd};
-	assert(!memcmp(magic, buf, 4));
-	u8 frame_header_desc = buf[4];
+	assert(!memcmp(magic, inbuf, 4));
+	u8 frame_header_desc = inbuf[4];
 	assert(~frame_header_desc & 0x20);
 	u8 fcs_size = 1 << (frame_header_desc >> 6);
 	if (fcs_size == 1) {
 		fcs_size = 0;
 	}
-	u8 window_size_field = buf[5];
-	u8 *ptr = buf + 6 + fcs_size;
+	u8 window_size_field = inbuf[5];
+	u64 pos = 6 + fcs_size;
+	u8 *ptr = inbuf + pos;
 	int fd = 0;
 	u64 padding = 0;
 	while (1) {
 		assert(ptr < buf_end - 3);
 		u32 block_header = ptr[0] | (u32)ptr[1] << 8 | (u32)ptr[2] << 16;
 		u32 block_size = block_header >> 3;
+		u32 input_required = block_size + 3;
+		if ((block_header >> 1 & 3) == 1) {input_required = 4;}
+		if ((block_header & 1) == 0) {input_required += 3;}
+		assert(input_required <= sizeof(inbuf));
+		size_t available_input = buf_end - ptr;
+		if (available_input < input_required) {
+			if (ptr != inbuf) {
+				memmove(inbuf, ptr, available_input);
+				ptr = inbuf;
+				buf_end = inbuf + available_input;
+			}
+			ssize_t res = read(0, buf_end, sizeof(inbuf) - available_input);
+			info("read %zd (0x%zx) bytes\n", res, res);
+			if (res > 0) {
+				buf_end += res;
+				continue;
+			}
+			if (res < 0) {
+				int e = errno;
+				if (e != EINTR && e != EWOULDBLOCK && e != EAGAIN) {
+					perror("while reading");
+					return 1;
+				}
+				continue;
+			}
+			fprintf(stderr, "unexpected EOF\n");
+			return 1;
+		}
+		assert(available_input >= input_required);
 		switch (block_header >> 1 & 3) {
 		case 0:
 			fprintf(stderr, "%"PRIu32"-byte raw block\n", block_size);
+			assert(block_size < sizeof(inbuf));
 			assert(buf_end - ptr >= block_size + 3);
 			ptr += block_size + 3;
+			pos += block_size + 3;
 			padding += block_size;
 			continue;
 		case 1:
 			fprintf(stderr, "%"PRIu32"-byte RLE block\n", block_size);
 			assert(buf_end - ptr >= 4);
 			ptr += 4;
+			pos += 4;
 			padding += block_size;
 			continue;
 		case 2:
@@ -131,7 +153,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 				}
 			}
 			char name[32];
-			sprintf(name, "block%zx.zst", (size_t)(ptr - buf));
+			sprintf(name, "block%"PRIx64".zst", pos);
 			printf("%s\n", name);
 			fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0744);
 			assert(fd > 0);
@@ -153,6 +175,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 		fflush(stdout);
 		if (block_header & 1) {break;}
 		ptr += block_size + 3;
+		pos += block_size + 3;
 	}
 	if (fd && close(fd)) {
 		perror("While closing last file");
