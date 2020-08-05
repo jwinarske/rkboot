@@ -142,9 +142,12 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 	u8 *out_start = out;
 	check(end - in >= 1, "not enough data for Literals_Section_Header\n");
 	struct literals_probe probe = zstd_probe_literals(in, end);
-	debug("%"PRIu32" (0x%"PRIx32") bytes of literals, %zu (0x%zx) compressed\n", probe.size, probe.size, probe.end - in, probe.end - in);
+	debug("%"PRIu32" (0x%"PRIx32") bytes of literals, %zu (0x%zx) compressed; flags: 0x%"PRIx32"\n",
+	      probe.size, probe.size, probe.end - in, probe.end - in, probe.flags
+	);
 	const u8 *literal_start = probe.start;
-	if (0 == (probe.flags & ZSTD_ABNORMAL_LITERAL_MASK)) {
+	if (0 == (probe.flags & ZSTD_NO_TREE_DESC_MASK)) {
+		debugs("reading tree description\n");
 		literal_start = zstd_decode_tree_description(probe.start, probe.end, tables);
 	} else if (probe.flags & ZSTD_TREELESS) {
 		check(tables->huff_depth != 0, "no previous Huffman table available for treeless literal block\n");

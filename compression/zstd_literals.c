@@ -163,6 +163,7 @@ _Bool zstd_decompress_literal_stream(const u8 *in, const u8 *end, u8 *out, u8 *o
 		shift += len; bits <<= len;
 		*out++ = entry->sym;
 	} while (out < out_end);
+	check(end == in && shift == 32, "literal stream not fully consumed\n");
 	return out;
 }
 
