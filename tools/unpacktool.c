@@ -199,6 +199,18 @@ int main(int argc, char **argv) {
 						continue;	/* if the decoder isn't horribly broken, will try again */
 					}
 					/* EOF case: NEED_MORE_DATA is final, fall through */
+				} else if (res == DECODE_NEED_MORE_SPACE) {
+					if (state->window_start == outbuf) {
+						fprintf(stderr, "ran out of output buffer\n");
+						return 1;
+					}
+					assert(state->out > state->window_start);
+					size_t window_size = state->out - state->window_start;
+					debug("moving %zu-byte window by %zu bytes\n", window_size, state->window_start - outbuf);
+					memmove(outbuf, state->window_start, window_size);
+					state->window_start = outbuf;
+					last_out = state->out = outbuf + window_size;
+					continue;
 				}
 				if (res < NUM_DECODE_STATUS) {
 					fprintf(stderr, "failed to decompress: %s\n", decode_status_msg[res]);
@@ -219,14 +231,6 @@ int main(int argc, char **argv) {
 					}
 					debug("wrote %zd bytes\n", res);
 					last_out += res;
-				}
-				if (state->window_start > outbuf) {
-					assert(state->out > state->window_start);
-					size_t window_size = state->out - state->window_start;
-					debug("moving %zu-byte window by %zu bytes\n", window_size, state->window_start - outbuf);
-					memmove(outbuf, state->window_start, window_size);
-					state->window_start = outbuf;
-					last_out = state->out = outbuf + window_size;
 				}
 			}
 			if (0 != close(fd)) {
