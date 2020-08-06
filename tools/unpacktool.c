@@ -112,7 +112,8 @@ int main(int argc, char **argv) {
 			size_t size;
 			for_array(i, formats) {
 				enum compr_probe_status res;
-				do {
+				while (1) {
+					debug("probing %s: ", formats[i].name);
 					res = formats[i].decomp->probe(ptr, buf_end, &size);
 					if (res <= COMPR_PROBE_LAST_SUCCESS) {
 						info("%s probed\n", formats[i].name);
@@ -132,6 +133,7 @@ int main(int argc, char **argv) {
 						if (read_res > 0) {
 							assert(read_res <= sizeof(inbuf) - size);
 							buf_end += read_res;
+							debugs("retrying\n");
 							continue;
 						}
 						if (read_res < 0) {
@@ -144,8 +146,8 @@ int main(int argc, char **argv) {
 						}
 						/* EOF case: NOT_ENOUGH_DATA is final, fall through */
 						info("EOF\n");
-					}
-				} while (0);
+					} else {break;}
+				}
 				if (res != COMPR_PROBE_WRONG_MAGIC) {
 					fprintf(stderr, "failed to probe %s: %s\n", formats[i].name, compr_probe_status_msg[res]);
 				} else {
