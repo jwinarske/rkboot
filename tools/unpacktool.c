@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
 					/* EOF case: NEED_MORE_DATA is final, fall through */
 				}
 				if (res < NUM_DECODE_STATUS) {
-					fprintf(stderr, "failed to decompress: %s", decode_status_msg[res]);
+					fprintf(stderr, "failed to decompress: %s\n", decode_status_msg[res]);
 					return 1;
 				}
 				debug("consumed %zu bytes\n", res - NUM_DECODE_STATUS);

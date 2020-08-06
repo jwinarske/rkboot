@@ -197,12 +197,12 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 	if (!in) {return 0;}
 
 	struct sequences_state seqstate;
-	check(init_sequences(&seqstate, in, end, tables), "sequence decoding initialization failed");
+	check(init_sequences(&seqstate, in, end, tables), "sequence decoding initialization failed\n");
 	u64 sequence_buffer[128];
 	while (num_seq) {
 		u32 seq_this_round = ARRAY_SIZE(sequence_buffer);
 		if (num_seq < seq_this_round) {seq_this_round = num_seq;}
-		check(decode_sequences(&seqstate, in, seq_this_round, sequence_buffer, tables), "sequence decoding failed");
+		check(decode_sequences(&seqstate, in, seq_this_round, sequence_buffer, tables), "sequence decoding failed\n");
 		for_range(i, 0, seq_this_round) {
 			u64 sequence = sequence_buffer[i];
 			u32 copy = sequence & 0x1ffff, length = (u32)(sequence >> 17 & 0x1ffff) + 3;
