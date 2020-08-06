@@ -227,6 +227,9 @@ int main(int argc, char **argv) {
 					last_out = state->out = outbuf + window_size;
 				}
 			}
+			if (0 != close(fd)) {
+				perror("while closing the file");
+			}
 			info("decompression finished successfully\n");
 		}
 	}
