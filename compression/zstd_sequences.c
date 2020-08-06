@@ -84,7 +84,7 @@ _Bool init_sequences(struct sequences_state *state, const u8 *start, const u8 *p
 	return 1;
 }
 
-static inline u64 pack_sequence(struct sequences_state *state, u32 copy, u32 length, u32 dist) {
+static inline u64 pack_sequence(struct sequences_state *state, u32 copy, u32 length, u32 dist, u64 *out) {
 	u32 used_dist;
 	if (dist > 3) {
 		state->dist3 = state->dist2;
@@ -116,10 +116,12 @@ static inline u64 pack_sequence(struct sequences_state *state, u32 copy, u32 len
 			state->dist2 = state->dist1;
 		}
 	}
+	check(used_dist, "repeat offset underflow\n");
 	state->dist1 = used_dist;
 	spew("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32"\n", copy, length + 3, used_dist);
 	assert(copy < 0x20000 && length < 0x20000);
-	return copy | (u64)length << 17 | (u64)used_dist << 34;
+	*out =  copy | (u64)length << 17 | (u64)(used_dist - 1) << 34;
+	return 1;
 }
 
 _Bool decode_sequences(struct sequences_state *state, const u8 *start, size_t num_seq, u64 *out, const struct dectables *tables) {
@@ -147,7 +149,7 @@ _Bool decode_sequences(struct sequences_state *state, const u8 *start, size_t nu
 		extra_dist += (u32)1 << sym_dist;
 		extra_copy += const_copy & 0xffffff;
 		extra_length += const_length & 0xffffff;
-		*out++ = pack_sequence(state, extra_copy, extra_length, extra_dist);
+		if (!pack_sequence(state, extra_copy, extra_length, extra_dist, out++)) {return 0;}
 	} while (--num_seq);
 	state->entry_copy = entry_copy; state->entry_length = entry_length; state->entry_dist = entry_dist;
 	state->bits = bits; state->num_bits = num_bits; state->ptr = ptr;
