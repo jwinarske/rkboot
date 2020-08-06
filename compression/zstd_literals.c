@@ -6,7 +6,7 @@
 
 const u8 *zstd_decode_tree_description(const u8 *in, const u8 *end, struct dectables *tables) {
 	check(end - in >= 1, "not enough data for Huffman tree header\n");
-	u32 sum = 0, maxbits = 0;
+	u32 sum = 0;
 	u8 weights[256];
 	u8 header = *in++, num;
 	if (header < 128) {
@@ -99,9 +99,9 @@ const u8 *zstd_decode_tree_description(const u8 *in, const u8 *end, struct decta
 	debug("adding implied weight %"PRIu8", now sum=%"PRIu32"\n", lastweight, sum);
 	weights[num] = lastweight;
 	for_range(i, (u32)num + 1, 256) {weights[i] = 0;}
-	maxbits = lastweight + 1;
+	u32 maxbits = lastweight;
 	while (sum > (1 << maxbits)) {maxbits += 1;}
-	check(sum == 1 << maxbits, "Huffman tree not complete\n");
+	check(sum == 1 << maxbits, "Huffman tree not complete (sum %"PRIu32")\n", sum);
 	debug("tree depth=%"PRIu8"\n", maxbits);
 	check(maxbits <= 11, "Huffman tree is more than 11-deep\n");
 	u8 order[256];
