@@ -64,6 +64,7 @@ int main(int UNUSED argc, char UNUSED **argv) {
 	u8 *ptr = inbuf + pos;
 	int fd = 0;
 	u64 padding = 0;
+	char name[32];
 	while (1) {
 		assert(ptr < buf_end - 3);
 		u32 block_header = ptr[0] | (u32)ptr[1] << 8 | (u32)ptr[2] << 16;
@@ -151,10 +152,10 @@ int main(int UNUSED argc, char UNUSED **argv) {
 					perror("While closing file");
 					return 1;
 				}
+				printf("%s\n", name);
+				fflush(stdout);
 			}
-			char name[32];
 			sprintf(name, "block%"PRIx64".zst", pos);
-			printf("%s\n", name);
 			fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0744);
 			assert(fd > 0);
 			u8 header[6] = {0x28, 0xb5, 0x2f, 0xfd, 0, window_size_field};
@@ -172,7 +173,6 @@ int main(int UNUSED argc, char UNUSED **argv) {
 			}
 		}
 		write_buf(fd, ptr, block_size + 3);
-		fflush(stdout);
 		if (block_header & 1) {break;}
 		ptr += block_size + 3;
 		pos += block_size + 3;
@@ -181,5 +181,6 @@ int main(int UNUSED argc, char UNUSED **argv) {
 		perror("While closing last file");
 		return 1;
 	}
+	printf("%s\n", name);
 	return 0;
 }
