@@ -424,9 +424,17 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	u8 num_bits_save;
 	size_t res;
 	REFILL_LOOP;
-	debug("huffman block\n");
+	debug("huffman block");
+	for (size_t i = 0; i < 2048; i += 4) {
+		spew("%4zu: %04"PRIx16" %04"PRIx16" %04"PRIx16" %04"PRIx16"\n",
+			i,
+			st->dectable_lit[i], st->dectable_lit[i + 1],
+			st->dectable_lit[i + 2], st->dectable_lit[i + 3]
+		);
+	}
 
 	while (1) {
+		debug("have %zu (0x%zx) bytes\n", end - ptr, end - ptr);
 		ptr_save = ptr; bits_save = bits; num_bits_save = num_bits;
 		_Static_assert(GUARANTEED_BITS >= 15 + 5, "bits container too small");
 		u16 val = st->dectable_lit[bits & 0x7ff], len = val & 0xf;
@@ -650,11 +658,13 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			};
 			for_range(i, 0, 512) {
 				u16 rev = (i << 8 & 0x100) | bitrev_nibble[i >> 1 & 15] << 4 | bitrev_nibble[i >> 5 & 15];
-				st->dectable_lit[i] = rev < 0x5f ? ((rev >> 2) + 256) << 4 | 7
+				u16 val = rev < 0x5f ? ((rev >> 2) + 256) << 4 | 7
 					: rev < 0x17f ? ((rev >> 1) - 0x30) << 4 | 8
 					: rev < 0x18b ? ((rev >> 1) - 0xc0 + 280) << 4 | 8
 					: rev < 0x18f ? 10
 					: (rev - 0x190 + 144) << 4 | 9;
+				st->dectable_lit[i] = st->dectable_lit[i + 512] = val;
+				st->dectable_lit[i + 1024] = st->dectable_lit[i + 1536] = val;
 			}
 			for_array(i, st->lit_oloff) {st->lit_oloff[i] = 0;}
 			assert(st->dectable_lit[0] == 0x1007);
@@ -665,7 +675,9 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 
 			for_range(i, 0, 512) {
 				u16 rev = (i << 4 & 0x10) | bitrev_nibble[i >> 1 & 15];
-				st->dectable_dist[i] = rev < 30 ? rev << 4 | 5 : 10;
+				u16 val = rev < 30 ? rev << 4 | 5 : 10;
+				st->dectable_dist[i] = st->dectable_dist[i + 512] = val;
+				st->dectable_dist[i + 1024] = st->dectable_dist[i + 1536] = val;
 			}
 			for_array(i, st->dist_oloff) {st->dist_oloff[i] = 0;}
 		}
