@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include "../include/log.h"
 #include "../compression/compression.h"
 
@@ -85,6 +86,16 @@ int main(int argc, char **argv) {
 					ptr += 1;
 					if (0 == strcmp(ptr, "overwrite")) {
 						overwrite = 1;
+					} else if (0 == strcmp(ptr, "output-limit")) {
+						if (!*++argv) {
+							fprintf(stderr, "--%s needs a parameter\n", ptr);
+							return 1;
+						}
+						if (1 != sscanf(*argv, "%"SCNu64, &limit_pos)) {
+							fprintf(stderr, "could not parse argument: --%s %s\n", ptr, *argv);
+							return 1;
+						}
+						output_limit = 1;
 					} else {
 						fprintf(stderr, "unknown long-form option %s\n", ptr);
 						return 1;
@@ -172,8 +183,9 @@ int main(int argc, char **argv) {
 				fprintf(stderr, "failed to initialize the decompressor\n");
 				return 1;
 			}
+			u64 buffer_pos = 0;
 			state->window_start = state->out = outbuf;
-			state->out_end = outbuf + sizeof(outbuf);
+			state->out_end = outbuf + (output_limit && limit_pos < sizeof(outbuf) ? limit_pos : sizeof(outbuf));
 			u8 *last_out = outbuf;
 			while (state->decode) {
 				size_t res = state->decode(state, ptr, buf_end);
@@ -209,7 +221,13 @@ int main(int argc, char **argv) {
 					}
 					assert(state->out > state->window_start);
 					size_t window_size = state->out - state->window_start;
-					debug("moving %zu-byte window by %zu bytes\n", window_size, state->window_start - outbuf);
+					size_t move_amount = state->window_start - outbuf;
+					buffer_pos += move_amount;
+					debug("moving %zu-byte window by %zu bytes\n", window_size, move_amount);
+					if (output_limit && limit_pos - buffer_pos < sizeof(outbuf)) {
+						info("enforcing output limit\n");
+						state->out_end = outbuf + (limit_pos - buffer_pos);
+					}
 					memmove(outbuf, state->window_start, window_size);
 					state->window_start = outbuf;
 					last_out = state->out = outbuf + window_size;
