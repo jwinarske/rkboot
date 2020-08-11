@@ -331,8 +331,7 @@ struct gzip_dec_state {
 
 	u32 crc;
 	u32 isize;
-	u32 bits;
-	u8 num_bits;
+	u8 skip_bits;
 	_Bool last_block;
 	u8 lit_lengths[286], dist_lengths[30];
 	u16 lit_codes[286], dist_codes[30];
@@ -346,6 +345,8 @@ struct gzip_dec_state {
 static size_t trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 
+	if (unlikely(end == in)) {return DECODE_NEED_MORE_DATA;}
+	if (st->skip_bits) {in += 1;}
 	if (unlikely(end - in < 8)) {return DECODE_NEED_MORE_DATA;}
 	u32 crc_read = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
 	u32 crc = st->crc ^ 0xffffffff;
@@ -415,8 +416,8 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
 	const u8 *ptr = in;
-	bits_t bits = st->bits;
-	u8 num_bits = st->num_bits;
+	bits_t bits = 0;
+	u8 num_bits = 0;
 	assert(num_bits < 8);
 	u8 *out = st->st.out, *out_start = out, *out_end = st->st.out_end;
 	const u8 *ptr_save;
@@ -424,6 +425,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	u8 num_bits_save;
 	size_t res;
 	REFILL_LOOP;
+	bits >>= st->skip_bits; num_bits -= st->skip_bits;
 	debug("huffman block\n");
 
 	while (1) {
@@ -540,22 +542,24 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			}
 		} else {
 			st->st.decode = !st->last_block ? block_start : trailer;
-			st->num_bits = num_bits % 8;
-			st->bits = bits;
-			res = NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
+			res = NUM_DECODE_STATUS + (ptr - in - (num_bits + 7) / 8);
 			goto end;
 		}
 		REFILL;
 	}
 	interrupted:;
-	if (out > out_start) {res = NUM_DECODE_STATUS + (ptr_save - in - num_bits_save / 8);}
-	st->num_bits = num_bits_save % 8;
-	st->bits = bits_save;
+	ptr = ptr_save;
+	bits = bits_save;
+	num_bits = num_bits_save;
+	spew("0x%"PRIx32"/%"PRIu8" %zu left, interrupted %zu\n", bits_save, num_bits_save, end - ptr_save, res);
+	if (out > out_start) {
+		res = NUM_DECODE_STATUS + (ptr - in - (num_bits + 7) / 8);
+	}
 	end:;
+	st->skip_bits = (unsigned)(8 - num_bits) % 8;
 	st->st.out = out;
 	st->isize += out - out_start;
 	st->crc = crc;
-	assert(st->num_bits < 8);
 	if (out - st->st.window_start > 32768) {
 		st->st.window_start = out - 32768;
 	}
@@ -564,14 +568,15 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 
 static size_t block_start(struct decompressor_state *state, const u8 *in, const u8 *end) {
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
-	bits_t bits = st->bits;
-	u8 num_bits = st->num_bits;
 	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
 	const u8 *ptr = in;
 
-	assert(num_bits < 8);
-	debug("block header: 0x%"PRIx32"/%"PRIu8"\n", bits & ((1 << num_bits) - 1), num_bits);
+	bits_t bits = 0;
+	u8 num_bits = 0;
 	REFILL_LOOP;
+	debug("skip_bits%"PRIu8"\n", st->skip_bits);
+	bits >>= st->skip_bits; num_bits -= st->skip_bits;
+	debug("block header: 0x%"PRIx32"/%"PRIu8"\n", bits & ((1 << num_bits) - 1), num_bits);
 	_Static_assert(GUARANTEED_BITS >= 3, "bit container too small");
 	if (unlikely(num_bits < 3)) {return DECODE_NEED_MORE_DATA;}
 	u8 block_header = bits & 7;
@@ -580,8 +585,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 	st->last_block = block_header & 1;
 	if ((block_header >> 1) == BTYPE_UNCOMPRESSED) {
 		st->st.decode = raw_block;
-		st->bits = 0;
-		st->num_bits = 0;
+		st->skip_bits = 0;
 		return NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
 	} else {
 		check((block_header >> 1) <= 2, "reserved block type used\n");
@@ -675,8 +679,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 			for_array(i, st->dist_oloff) {st->dist_oloff[i] = 0;}
 		}
 		st->st.decode = huff_block;
-		st->bits = bits;
-		st->num_bits = num_bits % 8;
+		st->skip_bits = (unsigned)(8 - num_bits) % 8;
 		for (size_t i = 0; i < 2048; i += 4) {
 			spew("%4zu: %04"PRIx16" %04"PRIx16" %04"PRIx16" %04"PRIx16"\n",
 				i,
@@ -684,7 +687,7 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 				st->dectable_lit[i + 2], st->dectable_lit[i + 3]
 			);
 		}
-		return NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
+		return NUM_DECODE_STATUS + (ptr - in - (num_bits + 7) / 8);
 	}
 }
 
@@ -741,8 +744,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 		st->dist_base[i] = base;
 		base += 1 << dist_extra[i];
 	}
-	st->bits = 0;
-	st->num_bits = 0;
+	st->skip_bits = 0;
 	st->last_block = 0;
 	st->isize = 0;
 	st->crc = ~(u32)0;
