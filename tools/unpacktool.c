@@ -70,9 +70,12 @@ static u8 *read_file(int fd, size_t *size) {
 
 u8 inbuf[4 << 20];
 u8 outbuf[16 << 20];
+char stderrbuf[1 << 16];
 
 int main(int argc, char **argv) {
-	_Bool overwrite = 0;
+	setvbuf(stderr, stderrbuf, _IOFBF, sizeof(stderrbuf));
+	_Bool overwrite = 0, output_limit = 0;
+	u64 limit_pos = 0;
 	u8 *ptr = inbuf, *buf_end = ptr;
 	while (*++argv) {
 		if (**argv == '-' && (*argv)[1] != 0) {
@@ -224,6 +227,7 @@ int main(int argc, char **argv) {
 					size_t out_bytes = state->out - last_out;
 					assert(out_bytes <= sizeof(outbuf));
 					debug("writing %zu bytes … ", out_bytes);
+					fflush(stderr);
 					ssize_t res = write(fd, last_out, out_bytes);
 					if (res < 0) {
 						perror("While writing decompressed data");
@@ -232,11 +236,14 @@ int main(int argc, char **argv) {
 					debug("wrote %zd bytes\n", res);
 					last_out += res;
 				}
+				fflush(stderr);
 			}
 			if (0 != close(fd)) {
 				perror("while closing the file");
+				return 1;
 			}
 			info("decompression finished successfully\n");
+			fflush(stderr);
 		}
 	}
 	return 0;
