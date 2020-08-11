@@ -7,20 +7,38 @@ src=`realpath $0`
 src=`dirname $src`
 src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
 
+compression_src="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_probe_literals zstd_sequences"
+
 cat >build.ninja <<END
 ninja_required_version = 1.3
 cflags = -Wall $CFLAGS
+flags = -c
 rule cc
     depfile = \$out.d
     deps = gcc
     command = $CC -MD -MF \$out.d \$cflags \$flags \$in -o \$out
 
+rule ld
+    command = $CC \$in -o \$out
+
 build usbtool: cc $src/usbtool.c
     flags =  `pkg-config --libs --cflags libusb-1.0`
 build idbtool: cc $src/idbtool.c
+    flags =
 build regtool: cc $src/regtool.c $src/regtool_rpn.c
-build unpacktool: cc $src/unpacktool.c $src/../compression/lz4.c $src/../compression/inflate.c $src/../compression/zstd.c $src/../compression/zstd_sequences.c $src/../compression/zstd_literals.c $src/../compression/zstd_probe_literals.c $src/../compression/zstd_fse.c $src/../compression/lzcommon.c
-    flags = -DHAVE_LZ4 -DHAVE_GZIP -DHAVE_ZSTD
-
-default usbtool idbtool regtool unpacktool
+    flags =
 END
+for f in $compression_src; do
+	echo build $f.o: cc "$src/../compression/$f.c" >>build.ninja
+done
+
+echo build unpacktool.o: cc "$src/unpacktool.c" >>build.ninja
+echo "    flags" = -c  -DHAVE_LZ4 -DHAVE_GZIP -DHAVE_ZSTD >>build.ninja
+
+echo -n build unpacktool: ld unpacktool.o >>build.ninja
+for f in $compression_src; do
+	echo -n " $f.o" >>build.ninja
+done
+echo >>build.ninja
+
+echo default usbtool idbtool regtool unpacktool >>build.ninja
