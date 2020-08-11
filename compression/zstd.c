@@ -453,6 +453,7 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 	in += 3;
 	size_t total_size = block_size + 3, decomp_size;
 	u8 *out = st->st.out;
+	if (unlikely(st->st.out_end - out <= LZCOMMON_BLOCK)) {return DECODE_NEED_MORE_SPACE;}
 	switch (block_header0 >> 1 & 3) {
 	case Raw_Block:
 		debug("%"PRIu32"-byte Raw_Block\n", block_size);
@@ -476,7 +477,7 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 	case Compressed_Block:
 		debug("%"PRIu32"-byte compressed block\n", block_size);
 		if (end - in < block_size) {return DECODE_NEED_MORE_DATA;}
-		size_t res = decompress_block(in, in + block_size, out, st->st.out_end, &st->tables, st->st.window_start);
+		size_t res = decompress_block(in, in + block_size, out, st->st.out_end - LZCOMMON_BLOCK, &st->tables, st->st.window_start);
 		if (res < NUM_DECODE_STATUS) {return res;}
 		decomp_size = res - NUM_DECODE_STATUS;
 		break;
