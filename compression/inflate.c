@@ -401,12 +401,11 @@ static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8
 	u8 read_bits = 32 - num_bits, read_bytes = read_bits / 8;\
 	if (unlikely(ptr == end)) {break;}\
 	read_bytes = end - ptr >= read_bytes ? read_bytes : end - ptr;\
-	spew("0x%"PRIx32"/%"PRIu8" read %"PRIu8" bytes\n", bits, num_bits, read_bytes);\
 	num_bits += 8*read_bytes;\
 	ptr += read_bytes;\
 	LDU32LEU_END(bits, ptr);\
 	bits >>= 32 - num_bits;\
-	spew("0x%"PRIx32"/%"PRIu8"\n", bits, num_bits);\
+	spew("read %"PRIu8" bytes 0x%"PRIx32"/%"PRIu8"\n", read_bytes, bits, num_bits);\
 } while (0)
 #else
 #define REFILL REFILL_LOOP
@@ -429,7 +428,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	debug("huffman block\n");
 
 	while (1) {
-		debug("have %zu (0x%zx) bytes\n", end - ptr, end - ptr);
+		spew("0x%"PRIx32"/%"PRIu8" %zu left\n", bits, num_bits, end - ptr);
 		ptr_save = ptr; bits_save = bits; num_bits_save = num_bits;
 		_Static_assert(GUARANTEED_BITS >= 15 + 5, "bits container too small");
 		u16 val = st->dectable_lit[bits & 0x7ff], len = val & 0xf;
@@ -470,15 +469,15 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			u32 length = lit - 257 + 3;
 			if (length >= 11) {	/* TODO: fold this into the decoding table */
 				u8 num_extra = lit_extra[length - 11];
-				spew("%"PRIu8" extra bits\n", num_extra);
-				length = st->lit_base[length - 11] + (bits & ((1 << num_extra) - 1));
+				u16 base = st->lit_base[length - 11];
+				spew("len%"PRIu16"+%"PRIu8"b ", base, num_extra);
+				length = base + (bits & ((1 << num_extra) - 1));
 				if (unlikely(num_extra > num_bits)) {
 					res = DECODE_NEED_MORE_DATA;
 					goto interrupted;
 				}
 				bits >>= num_extra; num_bits -= num_extra;
 			}
-			spew("match length=%u ", length);
 			REFILL;
 
 			_Static_assert(GUARANTEED_BITS >= 15, "Bit container is not big enough");
@@ -510,10 +509,11 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 			bits >>= len; num_bits -= len;
 			u32 dist = sym + 1;
 			if (dist >= 5) {	/* TODO: fold this into the decoding table */
-				REFILL;
 				u8 num_extra = dist_extra[dist - 5];
-				spew("%"PRIu8" extra bits\n", num_extra);
-				dist = st->dist_base[dist - 5] + (bits & ((1 << num_extra) - 1));
+				u16 base = st->dist_base[dist - 5];
+				spew("dist%"PRIu16"+%"PRIu8"b ", base, num_extra);
+				REFILL;
+				dist = base + (bits & ((1 << num_extra) - 1));
 				if (unlikely(num_extra > num_bits)) {
 					res = DECODE_NEED_MORE_DATA;
 					goto interrupted;
@@ -525,7 +525,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 				check(length != 258, "file used literal/length symbol 284 with 5 1-bits, which is specced invalid (without it being specially noted no less, WTF)\n");
 				length = 258;
 			}
-			spew(" dist=%"PRIu32" %.*s…\n", dist, length < dist ? (int)length : (int)dist, out - dist);
+			spew("match len%"PRIu32" dist%"PRIu32" %.*s%s\n", length, dist, length < dist ? (int)length : (int)dist, out - dist, length <= dist ? "←" : "…");
 			if (unlikely(out_end - out < length)) {
 				res = DECODE_NEED_MORE_SPACE;
 				goto interrupted;
