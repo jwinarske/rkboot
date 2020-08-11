@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <string.h>
+#include <stdlib.h>
 
 enum {LZCOMMON_BLOCK = 8};
 
@@ -128,6 +130,7 @@ static void copy(u8 *dest, const u8 *src, u32 length) {
 /* this function does not assume that dest and src can be subtracted, but it must behave safely (correctly copy `length` bytes, while possibly writing garbage until the next LZCOMMON_BLOCK boundary) as long as `dest` is not within `src` and `src+length` (used in zstd decompression) */
 void lzcommon_literal_copy(u8 *dest, const u8 *src, u32 length) {
 	if (length < LZCOMMON_BLOCK) {
+		length = LZCOMMON_BLOCK;
 		while (length--) {*dest++ = *src++;}
 	} else {
 		copy(dest, src, length);
@@ -136,12 +139,12 @@ void lzcommon_literal_copy(u8 *dest, const u8 *src, u32 length) {
 
 void lzcommon_match_copy(u8 *dest, u32 dist, u32 length) {
 	const u8 *src = dest - dist;
-	if (length < LZCOMMON_BLOCK || dest - src < LZCOMMON_BLOCK) {
-		while (length--) {
-			debug("copy 0x%02x %c\n", (unsigned)*src, *src >= 0x20 && *src <= 0x7e ? (char)*src : '.');
-			*dest++ = *src++;
-		}
+	if (dist >= length) {
+		lzcommon_literal_copy(dest, src, length);
+		return;
+	} else if (dist == 1) {
+		memset(dest, *src, length);
 	} else {
-		copy(dest, src, length);
+		while (length--) {*dest++ = *src++;}
 	}
 }

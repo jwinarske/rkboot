@@ -312,23 +312,23 @@ static const u64 xxh64_primes[5] = {
 	U64(2870177450012600261)
 };
 
-u64 xxh64_step(u64 state) {
+static u64 xxh64_step(u64 state) {
 	return (state << 31 | state >> 33) * xxh64_primes[0];
 }
 
-u64 xxh64_shuffle(u64 val) {
+static u64 xxh64_shuffle(u64 val) {
 	return xxh64_step(val * xxh64_primes[1]);
 }
 
-u64 xxh64_round(u64 state, u64 val) {
+static u64 xxh64_round(u64 state, u64 val) {
 	return xxh64_step(state + (val * xxh64_primes[1]));
 }
 
-u64 xxh64_mergestep(u64 state) {
+static u64 xxh64_mergestep(u64 state) {
 	return state * xxh64_primes[0] + xxh64_primes[3];
 }
 
-u64 xxh64_merge(u64 state, u64 val) {
+static u64 xxh64_merge(u64 state, u64 val) {
 	return xxh64_mergestep(state ^ xxh64_shuffle(val));
 }
 
