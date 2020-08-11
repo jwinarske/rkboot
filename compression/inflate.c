@@ -424,14 +424,7 @@ static size_t huff_block(struct decompressor_state *state, const u8 *in, const u
 	u8 num_bits_save;
 	size_t res;
 	REFILL_LOOP;
-	debug("huffman block");
-	for (size_t i = 0; i < 2048; i += 4) {
-		spew("%4zu: %04"PRIx16" %04"PRIx16" %04"PRIx16" %04"PRIx16"\n",
-			i,
-			st->dectable_lit[i], st->dectable_lit[i + 1],
-			st->dectable_lit[i + 2], st->dectable_lit[i + 3]
-		);
-	}
+	debug("huffman block\n");
 
 	while (1) {
 		debug("have %zu (0x%zx) bytes\n", end - ptr, end - ptr);
@@ -684,6 +677,13 @@ static size_t block_start(struct decompressor_state *state, const u8 *in, const 
 		st->st.decode = huff_block;
 		st->bits = bits;
 		st->num_bits = num_bits % 8;
+		for (size_t i = 0; i < 2048; i += 4) {
+			spew("%4zu: %04"PRIx16" %04"PRIx16" %04"PRIx16" %04"PRIx16"\n",
+				i,
+				st->dectable_lit[i], st->dectable_lit[i + 1],
+				st->dectable_lit[i + 2], st->dectable_lit[i + 3]
+			);
+		}
 		return NUM_DECODE_STATUS + (ptr - in - num_bits / 8);
 	}
 }
