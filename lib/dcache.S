@@ -56,8 +56,9 @@ ENDFUNC(invalidate_dcache_set_sctlr)
 PROC(set_sctlr_flush_dcache, 2)
 	msr sctlr_el3, x0
 	isb
-PROC(flush_dcache, 2)
+flush_dcache:
+	.global flush_dcache
 	apply_all_dcache cacheop=cisw
 	ret
-ENDFUNC(set_sctlr_flush_dcache)
+ENDFUNC_NESTED(set_sctlr_flush_dcache)
 ENDFUNC(flush_dcache)
