@@ -43,6 +43,8 @@ void sync_exc_handler() {
 void ddrinit_configure();
 _Bool ddrinit_finish();
 
+_Atomic(size_t) rk3399_init_flags = 0;
+
 int32_t NO_ASAN main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;

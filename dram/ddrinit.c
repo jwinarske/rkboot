@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <stdatomic.h>
+
 #include <main.h>
 #include <rk3399.h>
 #include <mmu.h>
@@ -295,6 +297,7 @@ static _Bool finish(struct dram_cfg *cfg) {
 		if (ch == 1) { /* restore reset drive strength */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, cfg->regs.phy.PHY_GLOBAL(937) & 0xff);
 		}
+		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0 << ch, memory_order_release);
 		log("channel %u initialized\n", ch);
 	}
 	return 1;
@@ -364,5 +367,6 @@ _Bool ddrinit_finish() {
 	}
 	mmu_unmap_range(0, 0xf7ffffff);
 	mmu_unmap_range(0xffa80000, 0xffa8ffff);
+	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_READY, memory_order_release);
 	return 1;
 }
