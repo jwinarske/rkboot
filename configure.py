@@ -32,8 +32,9 @@ def cesc(s): return s.replace('"', '\\"')
 
 srcdir = path.dirname(sys.argv[0])
 flags = defaultdict(list)
-for x in ('brompatch-mem', 'brompatch-spi'):
-    flags[x].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK'))
+
+for x in ('main', 'memtest', 'elfloader', 'brompatch-mem', 'brompatch-spi'):
+    flags[x].extend(('-DCONFIG_EXC_VEC=1', '-DCONFIG_EXC_STACK=1'))
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
@@ -47,12 +48,6 @@ parser.add_argument(
     action='store_true',
     dest='full_debug',
     help='add full debug message output'
-)
-parser.add_argument(
-    '--exception-vectors',
-    action='store_true',
-    dest='excvec',
-    help='set up exception vectors at the beginning of each stage'
 )
 parser.add_argument(
     '--crc',
@@ -130,9 +125,6 @@ parser.add_argument(
 args = parser.parse_args()
 if args.atf_headers:
     flags['elfloader'].append(shesc('-DATF_HEADER_PATH="'+cesc(path.join(args.atf_headers, "common/bl_common_exp.h"))+'"'))
-if args.excvec:
-    for x in ('main', 'memtest', 'elfloader'):
-        flags[x].extend(('-DCONFIG_EXC_VEC=1', '-DCONFIG_EXC_STACK=1'))
 if args.crc:
     flags['main'].append('-DCONFIG_CRC')
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
@@ -150,8 +142,6 @@ if (args.elfloader_spi or args.elfloader_initcpio) and not elfloader_decompressi
     args.elfloader_zstd = True
 
 use_irq = not args.elfloader_poll and (args.elfloader_spi or args.elfloader_sd)
-if use_irq:
-    flags['elfloader'].extend(('-DCONFIG_EXC_VEC', '-DCONFIG_EXC_STACK=1'))
 for m in ('elfloader', 'rk3399_sdmmc', 'rk3399_spi'):
     flags[m].append('-DCONFIG_ELFLOADER_IRQ='+('1' if use_irq else '0'))
 
@@ -218,7 +208,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
     genld=esc(genld)
 ))
 
-lib = {'lib/error', 'lib/uart', 'lib/mmu'}
+lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2'}
 levinboot = {'main', 'pll'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
 if args.embed_elfloader:
     levinboot |= {'compression/lzcommon', 'compression/lz4'}
@@ -237,10 +227,10 @@ if elfloader_decompression:
         elfloader |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
 if args.elfloader_spi:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
-    elfloader |= {'lib/rkspi', 'lib/gicv2', 'rk3399_spi'}
+    elfloader |= {'lib/rkspi', 'rk3399_spi'}
 if args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
-    elfloader |= {'lib/dwmmc', 'lib/sd', 'lib/gicv2', 'rk3399_sdmmc'}
+    elfloader |= {'lib/dwmmc', 'lib/sd', 'rk3399_sdmmc'}
 spi_flasher = {'brompatch-spi', 'lib/rkspi', 'brompatch'}
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
 modules = lib | levinboot | elfloader | {'teststage', 'lib/dump_fdt'}
@@ -258,17 +248,13 @@ for f in modules:
     print(build(base+'.o', 'cc', src, **build_flags))
 
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
+print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
+print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
-lib |= {'dcache', 'entry'}
-print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
-if args.excvec:
-    lib |= {'exc_handlers'}
+lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3'}
 spi_flasher |= {'exc_handlers'}
 usbstage |= {'exc_handlers'}
-if args.elfloader_spi or args.elfloader_sd:
-    elfloader |= {'exc_handlers', 'gicv3'}
-    print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
 regtool_targets = {

@@ -357,7 +357,6 @@ _Noreturn u32 main(u64 sctlr) {
 #if CONFIG_ELFLOADER_IRQ
 	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
 	dsb_ishst();
-	gicv2_global_setup(gic500d);
 	gicv3_per_cpu_setup(gic500r);
 	u64 xfer_start = get_timestamp();
 #endif

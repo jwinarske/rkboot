@@ -9,6 +9,7 @@
 #include <rkpll.h>
 #include <rksaradc_regs.h>
 #include <rkgpio_regs.h>
+#include <gic.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY_SRAM,
@@ -127,10 +128,22 @@ int32_t NO_ASAN main(u64 sctlr) {
 	}
 	debugs("PLLs enabled\n");
 
-	logs("jumping to ddrinit");
+	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
+	dsb_ishst();
+	gicv2_global_setup(gic500d);
+	gicv3_per_cpu_setup(gic500r);
+	static const u16 intids[] = {};
+	for_array(i, intids) {
+		gicv2_setup_spi(gic500d, intids[i], 0x80, 1, IGROUP_0 | INTR_LEVEL);
+	}
+
 	logs("jumping to ddrinit");
 	ddrinit_configure();
 	assert_msg(ddrinit_finish(), "DRAM initialization failed");
+
+	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i]);}
+	gicv3_per_cpu_teardown(gic500r);
+
 #ifdef CONFIG_EMBED_ELFLOADER
 	void *loadaddr = (void *)0x4000000;
 	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_NORMAL);
