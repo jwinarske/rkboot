@@ -19,7 +19,7 @@ struct stage_store {
 	u64 scr;
 };
 
-static _Alignas(16) u8 exc_stack[4096];
+static UNINITIALIZED _Alignas(16) u8 exc_stack[4096];
 
 static inline void UNUSED stage_setup(struct stage_store *store) {
 	u64 vbar,  scr;

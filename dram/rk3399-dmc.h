@@ -138,6 +138,44 @@ struct sdram_geometry {
 	u8 cs0_row, cs1_row;
 };
 
+#define DEFINE_PCTL_INTERRUPTS0\
+	X(UNKNOWN0) X(UNKNOWN1) X(UNKNOWN2) X(INIT_DONE)\
+	X(UNKNOWN4) X(UNKNOWN5) X(UNKNOWN6) X(UNKNOWN7)\
+	X(UNKNOWN8) X(UNKNOWN9) X(UNKNOWN10) X(UNKNOWN11)\
+	X(MRR_ERROR) X(UNKNOWN13) X(UNKNOWN14) X(UNKNOWN15)\
+	X(UNKNOWN16) X(UNKNOWN17) X(UNKNOWN18) X(UNKNOWN19)\
+	X(UNKNOWN20) X(MRR_DONE) X(UNKNOWN22) X(UNKNOWN23)\
+	X(UNKNOWN24) X(UNKNOWN25) X(UNKNOWN26) X(UNKNOWN27)\
+	X(UNKNOWN28) X(UNKNOWN29) X(UNKNOWN30) X(UNKNOWN31)
+#define DEFINE_PCTL_INTERRUPTS1\
+	X(UNKNOWN32) X(SUMMARY)
+
+enum {
+#define X(name) PCTL_INT0_##name##_BIT,
+	DEFINE_PCTL_INTERRUPTS0
+#undef X
+	NUM_PCTL_INT0
+};
+_Static_assert(NUM_PCTL_INT0 == 32, "miscounted");
+enum {
+#define X(name) PCTL_INT0_##name = (u32)1 << PCTL_INT0_##name##_BIT,
+	DEFINE_PCTL_INTERRUPTS0
+#undef X
+};
+
+enum {
+#define X(name) PCTL_INT1_##name##_BIT,
+	DEFINE_PCTL_INTERRUPTS1
+#undef X
+	NUM_PCTL_INT1
+};
+_Static_assert(NUM_PCTL_INT1 == 2, "miscounted");
+enum {
+#define X(name) PCTL_INT1_##name = (u32)1 << PCTL_INT1_##name##_BIT,
+	DEFINE_PCTL_INTERRUPTS1
+#undef X
+};
+
 enum {
 	PCTL_DRAM_CLASS = 0,
 	PCTL_MRR_ERROR_STATUS = 17,
@@ -145,7 +183,8 @@ enum {
 	PCTL_PERIPHERAL_MRR_DATA = 119,
 	PCTL_CONTROLLER_BUSY = 200,
 	PCTL_INT_STATUS = 203,
-	PCTL_INT_ACK = 205
+	PCTL_INT_ACK = 205,
+	PCTL_INT_MASK = 207,
 };
 /*enum {};
 enum {};*/
@@ -205,6 +244,22 @@ extern struct dram_cfg init_cfg;
 extern const struct phy_update phy_400mhz;
 extern const struct phy_update phy_800mhz;
 
+#define DEFINE_CHANNEL_STATES\
+	X(UNINIT) X(CONFIGURED)\
+	X(INIT) X(CS0_MR5) X(READY) X(SWITCHED)\
+	X(CALVL) X(WRLVL) X(GTLVL) X(RDLVL) X(WDQLVL)\
+	X(TRAINED)
+
+enum channel_state {
+#define X(name) CHAN_ST_##name,
+	DEFINE_CHANNEL_STATES
+#undef X
+	NUM_CHAN_ST
+};
+extern const char chan_state_names[NUM_CHAN_ST][12];
+extern enum channel_state ch_states[2];
+extern struct sdram_geometry ch_geo[2];
+
 struct mr_adjustments;
 void mr_adjust(volatile u32 *pctl, volatile u32 *pi, const struct mr_adjustments *adj, u32 regset, u32 val);
 extern const struct mr_adjustments dq_odt_adj, ca_odt_adj, mr3_adj, mr12_adj, mr14_adj;
@@ -226,3 +281,17 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 _Bool test_mirror(u32 addr, u32 bit);
 void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch, const struct msch_config *msch_cfg, struct sdram_geometry *geo);
 void encode_dram_size(const struct sdram_geometry *geo);
+
+enum {MC_NUM_CHANNELS = 2, MC_CHANNEL_STRIDE = 0x8000, MC_NUM_FREQUENCIES = 3};
+HEADER_FUNC volatile struct phy_regs *phy_for(u32 channel) {
+	return (volatile struct phy_regs *)(0xffa82000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+}
+HEADER_FUNC volatile u32 *pctl_base_for(u32 channel) {
+	return (volatile u32 *)(0xffa80000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+}
+HEADER_FUNC volatile u32 *pi_base_for(u32 channel) {
+	return (volatile u32 *)(0xffa80800 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+}
+HEADER_FUNC volatile u32 *msch_base_for(u32 channel) {
+	return (volatile u32 *)(0xffa84000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+}

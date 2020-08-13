@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <stdatomic.h>
+#include <inttypes.h>
 
 #include <main.h>
 #include <rk3399.h>
@@ -18,20 +19,6 @@ const struct phy_layout cfg_layout = {
 	.global_diff = 0,
 	.ca_offs = 512
 };
-
-enum {MC_NUM_CHANNELS = 2, MC_CHANNEL_STRIDE = 0x8000, MC_NUM_FREQUENCIES = 3};
-static inline volatile struct phy_regs *phy_for(u32 channel) {
-	return (volatile struct phy_regs *)(0xffa82000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
-}
-static inline volatile u32 *pctl_base_for(u32 channel) {
-	return (volatile u32 *)(0xffa80000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
-}
-static inline volatile u32 *pi_base_for(u32 channel) {
-	return (volatile u32 *)(0xffa80800 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
-}
-static inline volatile u32 *msch_base_for(u32 channel) {
-	return (volatile u32 *)(0xffa84000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
-}
 
 static void set_ddr_reset_request(_Bool controller, _Bool phy) {
 	cru[CRU_SOFTRST_CON + 4] = 0x33000000 | (controller << 12) | (controller << 8) | (phy << 13) | (phy << 9);
@@ -57,16 +44,19 @@ const struct regshift speed_regs[8] = {
 void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op) {
 	u32 mask = op >> 32, val = (u32)op;
 	for_range(i, 0, count) {
-		debug("reg %u (delta %u) mask %x val %x shift %u\n", (u32)regs[i].reg, delta, mask, val, regs[i].shift);
+		spew("reg %u (delta %u) mask %x val %x shift %u\n", (u32)regs[i].reg, delta, mask, val, regs[i].shift);
 		clrset32(base + (regs[i].reg - delta), mask << regs[i].shift, val << regs[i].shift);
 	}
+}
+
+static u32 mrr_cmd(u8 mr, u8 cs) {
+	return ((u32)mr | ((u32)cs << 8) | (1 << 16)) << 8;
 }
 
 enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
 
 enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
-	u32 cmd = (u32)mr | ((u32)cs << 8) | (1 << 16);
-	pctl[PCTL_READ_MODEREG] = cmd << 8;
+	pctl[PCTL_READ_MODEREG] = mrr_cmd(mr, cs);
 	u32 status;
 	u64 start_time = get_timestamp();
 	while (!((status = pctl[PCTL_INT_STATUS]) & 0x00201000)) {
@@ -84,21 +74,18 @@ enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
 	return MRR_OK;
 }
 
-void dump_mrs() {
+static void dump_mrs(volatile u32 *pctl) {
 #ifdef DEBUG_MSG
-	for_channel(ch) {
-		printf("channel %u\n", ch);
-		for_range(cs, 0, 2) {
-			printf("CS=%u\n", cs);
-			for_range(mr, 0, 26) {
-				if (!((1 << mr) & 0x30c51f1)) {continue;}
-				u32 mr_value; enum mrrresult res;
-				if ((res = read_mr(pctl_base_for(ch), mr, cs, &mr_value))) {
-					if (res == MRR_TIMEOUT) {printf("MRR timeout for mr%u\n", mr);}
-					else {printf("MRR error %x for MR%u\n", mr_value, mr);}
-				} else {
-					printf("MR%u = %x\n", mr, mr_value);
-				}
+	for_range(cs, 0, 2) {
+		printf("CS=%u\n", cs);
+		for_range(mr, 0, 26) {
+			if (!((1 << mr) & 0x30c51f1)) {continue;}
+			u32 mr_value; enum mrrresult res;
+			if ((res = read_mr(pctl, mr, cs, &mr_value))) {
+				if (res == MRR_TIMEOUT) {printf("MRR timeout for mr%u\n", mr);}
+				else {printf("MRR error %x for MR%u\n", mr_value, mr);}
+			} else {
+				printf("MR%u = %x\n", mr, mr_value);
 			}
 		}
 	}
@@ -171,7 +158,7 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
 }
 
-void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, u32 csmask, const struct odt_preset *preset, const struct phy_update *phy_upd) {
+void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
 	log("switching to %u MHz … ", mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
@@ -195,13 +182,6 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, u32 csmask, const struct 
 	puts("ready … ");
 	fast_freq_switch(ctl_freqset, mhz);
 	puts("switched … ");
-	_Bool training_fail = 0;
-	for_channel(ch) {
-		volatile struct phy_regs *phy = phy_for(ch);
-		volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
-		training_fail |= !train_channel(ch, (csmask >> (ch*2)) & 3, pctl, pi, phy);
-	}
-	if (!training_fail) {puts("trained.\n");}
 }
 
 void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
@@ -219,12 +199,19 @@ void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 	}
 }
 
+const char chan_state_names[NUM_CHAN_ST][12] = {
+#define X(name) #name,
+	DEFINE_CHANNEL_STATES
+#undef X
+};
+
+enum channel_state ch_states[2] = {CHAN_ST_UNINIT, CHAN_ST_UNINIT};
+
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
 static void configure(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 	u32 sref_save[MC_NUM_CHANNELS];
-	softreset_memory_controller();
 	for_channel(ch) {
 		if (!((1 << ch) & chmask)) {continue;}
 		volatile u32 *pctl = pctl_base_for(ch);
@@ -267,43 +254,18 @@ static void configure(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 			/* workaround 366 ball reset */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
 		}
+
+		ch_states[ch] = CHAN_ST_CONFIGURED;
 	}
 	for_channel(ch) {
 		if (!(chmask & (1 << ch))) {continue;}
+
 		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
 		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
 	}
 }
 
-static _Bool finish(struct dram_cfg *cfg) {
-	u64 start_ts = get_timestamp();
-	while (1) {
-		u32 ch0_status = pctl_base_for(0)[PCTL_INT_STATUS];
-		u32 ch1_status = pctl_base_for(1)[PCTL_INT_STATUS];
-		if (ch0_status & ch1_status & 8) {break;}
-		if (get_timestamp() - start_ts > CYCLES_PER_MICROSECOND * 100000) {
-			log("init fail for channel(s): %c%c, start %zu\n", ch0_status & 8 ? ' ' : '0', ch1_status & 8 ? ' ' : '1', start_ts);
-			return 0;
-		}
-		udelay(1);
-	}
-	for_channel(ch) {
-		volatile struct phy_regs *phy = phy_for(ch);
-		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 1) << 8;
-		for_dslice(i) {
-			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
-			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
-		}
-		if (ch == 1) { /* restore reset drive strength */
-			clrset32(&phy->PHY_GLOBAL(937), 0xff, cfg->regs.phy.PHY_GLOBAL(937) & 0xff);
-		}
-		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0 << ch, memory_order_release);
-		log("channel %u initialized\n", ch);
-	}
-	return 1;
-}
-
-static void set_channel_stride(u32 val) {
+void ddrinit_set_channel_stride(u32 val) {
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities) */
 	pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
 }
@@ -317,7 +279,7 @@ void ddrinit_configure() {
 	odt.flags |= ODT_SET_RST_DRIVE;
 	lpddr4_modify_config(init_cfg.regs.pctl, init_cfg.regs.pi, &init_cfg.regs.phy, &odt);
 
-	udelay(1000);
+	softreset_memory_controller();
 	logs("initializing DRAM\n");
 
 	/* not doing this will make the CPU hang */
@@ -329,44 +291,85 @@ void ddrinit_configure() {
 	configure(3, &init_cfg, 50);
 }
 
-_Bool ddrinit_finish() {
-	if (!finish(&init_cfg)) {return 0;}
-	dump_mrs();
-	/* map DRAM region as MMIO; needed for geometry detection */
-	mmu_map_mmio_identity(0, 0xf7ffffff);
-	struct sdram_geometry geo[2];
-	for_channel(ch) {
-		geo[ch].csmask = 0;
-		geo[ch].width = 1;
-		geo[ch].col = geo[ch].bank = geo[ch].cs0_row = geo[ch].cs1_row = 0;
-		for_range(cs, 0, 2) {
-			u32 mr_value;
-			if (read_mr(pctl_base_for(ch), 5, cs, &mr_value) != MRR_OK) {continue;}
-			if (mr_value) {
-				geo[ch].csmask |= 1 << cs;
-				if (mr_value & 0xffff0000) {geo[ch].width = 2;}
-			}
-		}
-		volatile u32 *msch = msch_base_for(ch), *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
-		set_channel_stride(0x17+ch); /* map only this channel */
-		printf("channel %u: ", ch);
-		channel_post_init(pctl, pi, msch, &init_cfg.msch, &geo[ch]);
-	}
-	u32 csmask = geo[0].csmask | geo[1].csmask << 2;
+struct sdram_geometry ch_geo[2] = {};
+
+static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
+	if (!mr_value) {return;}
+	geo->csmask |= 1 << cs;
+	if (mr_value >> 16) {geo->width = 2;}
+}
+
+static void both_channels_ready() {
+	encode_dram_size(ch_geo);
 	/* map CIC range, needed for frequency switch */
 	mmu_map_mmio_identity(0xff620000, 0xff62ffff);
-	freq_step(800, 1, 0, csmask, &odt_933mhz, &phy_800mhz);
-	logs("finished.\n");
-	mmu_unmap_range(0xff620000, 0xff62ffff);
-	encode_dram_size(&geo[0]);
-	/* 256B interleaving */
-	set_channel_stride(0xd);
-	__asm__ volatile("dsb ish");
-	for_range(bit, 10, 32) {
-		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
+	dsb_ishst();
+	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
+	for_channel(c) {
+		volatile u32 *pctl = pctl_base_for(c);
+		pctl[PCTL_INT_ACK]  = 0x24000000;
+		pctl[PCTL_INT_MASK] = 0x08002800;
+		ch_states[c] = CHAN_ST_SWITCHED;
 	}
-	mmu_unmap_range(0, 0xf7ffffff);
-	mmu_unmap_range(0xffa80000, 0xffa8ffff);
-	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_READY, memory_order_release);
-	return 1;
+	mmu_unmap_range(0xff620000, 0xff62ffff);
+	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_TRAINING, memory_order_release);
+}
+
+void ddrinit_irq(u32 ch) {
+	enum channel_state chan_st = ch_states[ch];
+	assert(chan_st < NUM_CHAN_ST);
+	volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
+	volatile struct phy_regs *phy = phy_for(ch);
+	u32 int_status = pctl[PCTL_INT_STATUS];
+	debug("DDRC%"PRIu32" status=0x%01"PRIx32"%08"PRIx32" chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, chan_state_names[chan_st]);
+	switch (chan_st) {
+	case CHAN_ST_CONFIGURED:
+		if (~int_status & PCTL_INT0_INIT_DONE) {break;}
+		pctl[PCTL_INT_ACK] = PCTL_INT0_INIT_DONE;
+		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 1) << 8;
+		for_dslice(i) {
+			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
+			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);
+		}
+		if (ch == 1) { /* restore reset drive strength */
+			clrset32(&phy->PHY_GLOBAL(937), 0xff, init_cfg.regs.phy.PHY_GLOBAL(937) & 0xff);
+		}
+		dump_mrs(pctl);
+		struct sdram_geometry *geo = ch_geo + ch;
+		geo->csmask = 0;
+		geo->width = 1;
+		geo->col = geo->bank = geo->cs0_row = geo->cs1_row = 0;
+		pctl[PCTL_READ_MODEREG] = mrr_cmd(5, 0);
+		ch_states[ch] = CHAN_ST_INIT;
+		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_INIT << ch, memory_order_release);
+		log("channel %u initialized\n", ch);
+		return;
+	case CHAN_ST_INIT:
+		if (~int_status & PCTL_INT0_MRR_DONE) {break;}
+		pctl[PCTL_INT_ACK] = PCTL_INT0_MRR_DONE;
+		set_width(ch_geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 0);
+		pctl[PCTL_READ_MODEREG] = mrr_cmd(5, 1);
+		ch_states[ch] = CHAN_ST_CS0_MR5;
+		return;
+	case CHAN_ST_CS0_MR5:
+		if (~int_status & PCTL_INT0_MRR_DONE) {break;}
+		pctl[PCTL_INT_ACK] = PCTL_INT0_MRR_DONE;
+		geo = ch_geo + ch;
+		set_width(ch_geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 1);
+		ddrinit_set_channel_stride(0x17+ch); /* map only this channel */
+		for_channel(c) {if (ch_states[c] >= CHAN_ST_READY) {goto already_mapped;}}
+		/* map DRAM region as MMIO; needed for geometry detection; unmapped after training */
+		mmu_map_mmio_identity(0, 0xf7ffffff);
+		already_mapped:;
+		printf("channel %u: ", ch);
+		channel_post_init(pctl, pi, msch_base_for(ch), &init_cfg.msch, geo);
+		ch_states[ch] = CHAN_ST_READY;
+		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_READY << ch, memory_order_release);
+
+		for_channel(c) {if (ch_states[c] < CHAN_ST_READY) {return;}}
+		both_channels_ready();
+		return;
+	default: break;
+	}
+	die("unexpected DDRC%"PRIu32" interrupt: status=0x%01"PRIx32"%08"PRIx32"  chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, chan_state_names[chan_st]);
 }

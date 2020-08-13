@@ -1,9 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <stdatomic.h>
+#include <inttypes.h>
+
 #include <main.h>
 #include <rk3399.h>
 #include "rk3399-dmc.h"
 
 void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
+	debug("training idx %"PRIu32"\n", rank);
 	if (phy->dslice[0][84] & (1 << 16)) {
 		debugs("set per-cs training\n");
 		for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, rank) << 24);}
@@ -109,6 +113,9 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 	for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, 1) << 16);}
 	for_dslice(i) {apply32v(&phy->dslice[i][63], SET_BITS32(16, 0x0200) << 16);}
 	phy->PHY_GLOBAL(896) &= ~(u32)1;
+	udelay(100);
+	puts("test\n");
+	udelay(100);
 	pctl[200] |= 1 << 8;
 	apply32v(pi + 60, SET_BITS32(2, 0) << 8);
 
@@ -153,4 +160,22 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 
 	phy->PHY_GLOBAL(927) &= ~(1 << 22);
 	return !training_fail;
+}
+
+void ddrinit_set_channel_stride(u32 val);
+
+void ddrinit_train() {
+	for_channel(ch) {
+		assert_msg(train_channel(ch, ch_geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
+	}
+	logs("finished.\n");
+	/* 256B interleaving */
+	ddrinit_set_channel_stride(0xd);
+	__asm__ volatile("dsb ish");
+	mmu_unmap_range(0xffa80000, 0xffa8ffff);
+	for_range(bit, 10, 32) {
+		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
+	}
+	mmu_unmap_range(0, 0xf7ffffff);
+	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_READY, memory_order_release);
 }

@@ -78,7 +78,10 @@ static volatile u32 *const cru = (volatile u32 *)0xff760000;
 static volatile u32 *const pmucru = (volatile u32 *)0xff750000;
 static volatile u32 *const grf = (volatile u32 *)0xff770000;
 
-#define DEFINE_RK3399_INIT_FLAGS X(DDRC0, 30) X(DDRC1, 30) X(DRAM_READY, 50)
+#define DEFINE_RK3399_INIT_FLAGS\
+	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\
+	X(DDRC0_READY, 30) X(DDRC1_READY, 30)\
+	X(DRAM_TRAINING, 40) X(DRAM_READY, 50)
 enum {
 #define X(name, timeout) RK3399_INIT_##name##_BIT,
 	DEFINE_RK3399_INIT_FLAGS
@@ -110,4 +113,5 @@ struct dwmmc_regs;
 static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
 
 struct rktimer_regs;
+static volatile struct rktimer_regs *const stimer0 = (volatile struct rktimer_regs *)0xff860000;
 static volatile struct rktimer_regs *const stimer6 = (volatile struct rktimer_regs *)0xff868000;

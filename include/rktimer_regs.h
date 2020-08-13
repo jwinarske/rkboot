@@ -13,3 +13,9 @@ struct rktimer_regs {
 	u32 control;
 };
 _Static_assert(sizeof(struct rktimer_regs) == 32, "wrong size for timer struct");
+
+enum {
+	RKTIMER_ENABLE = 1,
+	RKTIMER_STOP_MODE = 2,
+	RKTIMER_INT_EN = 4,
+};
