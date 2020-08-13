@@ -33,13 +33,11 @@ __asm__("jump: add sp, x5, #0; br x4");
 _Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
 #endif
 
-#if CONFIG_EXC_STACK
 void sync_exc_handler() {
 	u64 esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3" : "=r"(esr), "=r"(far));
 	die("sync exc: ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", esr, far);
 }
-#endif
 
 void ddrinit_configure();
 _Bool ddrinit_finish();
@@ -55,9 +53,13 @@ int32_t NO_ASAN main(u64 sctlr) {
 	gpio0->port |= 1 << 2;
 	gpio0->direction |= 1 << 2;
 
-#ifdef CONFIG_EXC_STACK
+	stimer0[0].control = 0;
+	stimer0[0].load_count2 = stimer0[0].load_count3 = stimer0[0].load_count0 = 0;
+	stimer0[0].load_count0 = 24000;
+	stimer0[0].interrupt_status = 1;
+	stimer0[0].control = RKTIMER_ENABLE | RKTIMER_INT_EN;
+
 	sync_exc_handler_spx = sync_exc_handler;
-#endif
 	mmu_setup(initial_mappings, critical_ranges);
 	/* map {PMU,}CRU, GRF */
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);

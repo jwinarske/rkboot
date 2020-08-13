@@ -248,13 +248,11 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 }
 #endif
 
-#if CONFIG_EXC_STACK
 void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	u64 elr, esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
 }
-#endif
 
 void rk3399_spi_setup();
 
@@ -306,9 +304,7 @@ _Noreturn u32 main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
-#ifdef CONFIG_EXC_STACK
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-#endif
 	mmu_setup(initial_mappings, critical_ranges);
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);	/* {PMU,}CRU, GRF */
 	mmu_map_mmio_identity(0xff310000, 0xff33ffff);	/* PMU{,SGRF,GRF} */

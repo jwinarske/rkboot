@@ -33,9 +33,6 @@ def cesc(s): return s.replace('"', '\\"')
 srcdir = path.dirname(sys.argv[0])
 flags = defaultdict(list)
 
-for x in ('main', 'memtest', 'elfloader', 'brompatch-mem', 'brompatch-spi'):
-    flags[x].extend(('-DCONFIG_EXC_VEC=1', '-DCONFIG_EXC_STACK=1'))
-
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
     '--with-atf-headers',
