@@ -49,7 +49,7 @@ static struct ddrinit_state ddrinit_st;
 
 void irq_handler(struct exc_state_save UNUSED *save) {
 	u64 grp0_intid;
-	__asm__ volatile("mrs %0, "ICC_IAR0_EL1 : "=r"(grp0_intid));
+	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
 	atomic_signal_fence(memory_order_acquire);
 	switch (grp0_intid) {
 	case 35:
@@ -163,9 +163,9 @@ int32_t NO_ASAN main(u64 sctlr) {
 		u8 targets;
 		u32 flags;
 	} intids[] = {
-		{35, 0x80, 1, IGROUP_0 | INTR_LEVEL},
-		{36, 0x80, 1, IGROUP_0 | INTR_LEVEL},
-		{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},
+		{35, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* ddrc0 */
+		{36, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* ddrc1 */
+		{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
 	};
 	for_array(i, intids) {
 		gicv2_setup_spi(gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
@@ -183,6 +183,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 	ddrinit_configure(&ddrinit_st);
 	size_t flags, reported = 0, last = 0;
 	while (1) {
+		irq_save_t irq = irq_save_mask();
 		flags = atomic_load_explicit(&rk3399_init_flags, memory_order_acquire);
 		if (flags & RK3399_INIT_DRAM_READY) {break;}
 		timestamp_t now = get_timestamp();
@@ -211,6 +212,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 			ddrinit_train(&ddrinit_st);
 		}
 		asm("wfi");
+		irq_restore(irq);
 	}
 
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
