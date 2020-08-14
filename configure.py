@@ -206,7 +206,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 ))
 
 lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2'}
-levinboot = {'main', 'pll'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
+levinboot = {'main', 'pll', 'sramstage/pmu_cru'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
 if args.embed_elfloader:
     levinboot |= {'compression/lzcommon', 'compression/lz4'}
 elfloader = {'elfloader', 'transform_fdt', 'lib/rki2c'}
