@@ -15,6 +15,7 @@
 #include <xhci_regs.h>
 #include <usb.h>
 #include <dump_mem.h>
+#include <runqueue.h>
 
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
@@ -30,6 +31,8 @@ const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
+static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
+struct sched_runqueue *get_runqueue() {return &runqueue;}
 
 static const u32 num_ep = 13;
 

@@ -25,6 +25,7 @@
 #endif
 #include "fdt.h"
 #include ATF_HEADER_PATH
+#include <runqueue.h>
 
 static image_info_t bl33_image = {
 	.image_base = 0x00600000,
@@ -298,6 +299,10 @@ static void init_payload_desc(struct payload_desc *payload) {
 	payload->initcpio_end = (u8 *)(DRAM_START + dram_size());
 #endif
 }
+
+static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
+
+struct sched_runqueue *get_runqueue() {return &runqueue;}
 
 _Noreturn u32 main(u64 sctlr) {
 	puts("elfloader\n");

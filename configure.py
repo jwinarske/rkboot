@@ -205,7 +205,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
     genld=esc(genld)
 ))
 
-lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2'}
+lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 levinboot = {'main', 'pll', 'sramstage/pmu_cru'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
 if args.embed_elfloader:
     levinboot |= {'compression/lzcommon', 'compression/lz4'}
@@ -247,9 +247,10 @@ for f in modules:
 print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
 print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
+print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
-lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3'}
+lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'sched_aarch64'}
 spi_flasher |= {'exc_handlers'}
 usbstage |= {'exc_handlers'}
 
