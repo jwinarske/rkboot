@@ -128,7 +128,7 @@ static void dpll_wait() {
 		if (get_timestamp() - start > 100 * TICKS_PER_MICROSECOND) {
 			die("failed to lock-on DPLL\n");
 		}
-		__asm__("yield");
+		sched_yield();
 	}
 }
 
@@ -136,31 +136,34 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
 	pmu[PMU_NOC_AUTO_ENA] |= 0x180;
 	pmu[PMU_BUS_IDLE_REQ] |= 3 << 18;
-	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {debugs("waiting for bus idle\n");}
+	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {
+		debugs("waiting for bus idle\n");
+		sched_yield();
+	}
 	cic[0] = (SET_BITS16(2, freqset) << 4) | (SET_BITS16(1, 1) << 2) | SET_BITS16(1, 1);
-	while (!(cic[CIC_STATUS] & 4)) {debugs("waiting for CIC ready\n");}
+	while (!(cic[CIC_STATUS] & 4)) {
+		debugs("waiting for CIC ready\n");
+		/* yielding here seems to cause system hangs, so just busy-wait */
+	}
 	rkpll_configure(cru + CRU_DPLL_CON, freq);
 	dpll_wait();
 	cic[0] = SET_BITS16(1, 1) << 1;
 	debugs("waiting for CIC finish … ");
-	u32 status;
-	for (size_t i = 0; i < 100000; i += 1) {
-		status = cic[CIC_STATUS];
+	while (1) {
+		u32 status = cic[CIC_STATUS];
 		if (status & 2) {
-			puts("fail");
-			halt_and_catch_fire();
+			die("fail");
 		} else if (status & 1) {
 			break;
 		}
-		udelay(1);
-	}
-	if (!(status & 1)) {
-		puts("timeout\n");
-		halt_and_catch_fire();
+		sched_yield();
 	}
 	debugs("done\n");
 	pmu[PMU_BUS_IDLE_REQ] &= ~((u32)3 << 18);
-	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != 0) {debugs("waiting for bus un-idle\n");}
+	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != 0) {
+		debugs("waiting for bus un-idle\n");
+		sched_yield();
+	}
 	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
 }
 
