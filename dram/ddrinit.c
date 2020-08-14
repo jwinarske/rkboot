@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include "ddrinit.h"
+
 #include <stdatomic.h>
 #include <inttypes.h>
 
@@ -74,7 +76,7 @@ enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
 	return MRR_OK;
 }
 
-static void dump_mrs(volatile u32 *pctl) {
+static void dump_mrs(volatile u32 UNUSED *pctl) {
 #ifdef DEBUG_MSG
 	for_range(cs, 0, 2) {
 		printf("CS=%u\n", cs);
@@ -199,21 +201,19 @@ void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 	}
 }
 
-const char chan_state_names[NUM_CHAN_ST][12] = {
+const char ddrinit_chan_state_names[NUM_CHAN_ST][12] = {
 #define X(name) #name,
 	DEFINE_CHANNEL_STATES
 #undef X
 };
 
-enum channel_state ch_states[2] = {CHAN_ST_UNINIT, CHAN_ST_UNINIT};
-
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
-static void configure(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
+static void configure(struct ddrinit_state *st, struct dram_cfg *cfg, u32 mhz) {
 	u32 sref_save[MC_NUM_CHANNELS];
 	for_channel(ch) {
-		if (!((1 << ch) & chmask)) {continue;}
+		if (st->chan_st[ch] != CHAN_ST_UNINIT) {continue;}
 		volatile u32 *pctl = pctl_base_for(ch);
 		volatile u32 *pi = pi_base_for(ch);
 		volatile struct phy_regs *phy = phy_for(ch);
@@ -226,7 +226,7 @@ static void configure(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 		/* must happen after setting NO_PHY_IND_TRAIN_INT in the transfer above */
 		pctl[PCTL_DRAM_CLASS] = cfg->regs.pctl[PCTL_DRAM_CLASS];
 
-		if (chmask == 3 && ch == 1) {
+		if (ch == 1 && st->chan_st[ch] != CHAN_ST_INACTIVE) {
 			/* delay ZQ calibration */
 			pctl[14] += mhz * 1000;
 		}
@@ -255,10 +255,10 @@ static void configure(u32 chmask, struct dram_cfg *cfg, u32 mhz) {
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
 		}
 
-		ch_states[ch] = CHAN_ST_CONFIGURED;
+		st->chan_st[ch] = CHAN_ST_CONFIGURED;
 	}
 	for_channel(ch) {
-		if (!(chmask & (1 << ch))) {continue;}
+		if (st->chan_st[ch] != CHAN_ST_CONFIGURED) {continue;}
 
 		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
 		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
@@ -272,7 +272,7 @@ void ddrinit_set_channel_stride(u32 val) {
 
 void memtest(u64);
 
-void ddrinit_configure() {
+void ddrinit_configure(struct ddrinit_state *st) {
 	debugs("ddrinit() reached\n");
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
@@ -288,10 +288,9 @@ void ddrinit_configure() {
 	/* map memory controller ranges */
 	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
 	dsb_ishst();
-	configure(3, &init_cfg, 50);
+	st->chan_st[0] = st->chan_st[1] = CHAN_ST_UNINIT;
+	configure(st, &init_cfg, 50);
 }
-
-struct sdram_geometry ch_geo[2] = {};
 
 static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
 	if (!mr_value) {return;}
@@ -299,29 +298,32 @@ static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
 	if (mr_value >> 16) {geo->width = 2;}
 }
 
-static void both_channels_ready() {
-	encode_dram_size(ch_geo);
+static void both_channels_ready(struct ddrinit_state *st) {
+	encode_dram_size(st->geo);
 	/* map CIC range, needed for frequency switch */
 	mmu_map_mmio_identity(0xff620000, 0xff62ffff);
 	dsb_ishst();
 	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
+	u32 flags = 0;
+	if (phy_800mhz.dslice_update[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
+	st->training_flags = flags;
 	for_channel(c) {
 		volatile u32 *pctl = pctl_base_for(c);
 		pctl[PCTL_INT_ACK]  = 0x24000000;
 		pctl[PCTL_INT_MASK] = 0x08002800;
-		ch_states[c] = CHAN_ST_SWITCHED;
+		st->chan_st[c] = CHAN_ST_SWITCHED;
 	}
 	mmu_unmap_range(0xff620000, 0xff62ffff);
 	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_TRAINING, memory_order_release);
 }
 
-void ddrinit_irq(u32 ch) {
-	enum channel_state chan_st = ch_states[ch];
+void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
+	enum channel_state chan_st = st->chan_st[ch];
 	assert(chan_st < NUM_CHAN_ST);
 	volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
 	volatile struct phy_regs *phy = phy_for(ch);
 	u32 int_status = pctl[PCTL_INT_STATUS];
-	debug("DDRC%"PRIu32" status=0x%01"PRIx32"%08"PRIx32" chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, chan_state_names[chan_st]);
+	debug("DDRC%"PRIu32" status=0x%01"PRIx32"%08"PRIx32" chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, ddrinit_chan_state_names[chan_st]);
 	switch (chan_st) {
 	case CHAN_ST_CONFIGURED:
 		if (~int_status & PCTL_INT0_INIT_DONE) {break;}
@@ -335,41 +337,41 @@ void ddrinit_irq(u32 ch) {
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, init_cfg.regs.phy.PHY_GLOBAL(937) & 0xff);
 		}
 		dump_mrs(pctl);
-		struct sdram_geometry *geo = ch_geo + ch;
+		struct sdram_geometry *geo = st->geo + ch;
 		geo->csmask = 0;
 		geo->width = 1;
 		geo->col = geo->bank = geo->cs0_row = geo->cs1_row = 0;
 		pctl[PCTL_READ_MODEREG] = mrr_cmd(5, 0);
-		ch_states[ch] = CHAN_ST_INIT;
+		st->chan_st[ch] = CHAN_ST_INIT;
 		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_INIT << ch, memory_order_release);
 		log("channel %u initialized\n", ch);
 		return;
 	case CHAN_ST_INIT:
 		if (~int_status & PCTL_INT0_MRR_DONE) {break;}
 		pctl[PCTL_INT_ACK] = PCTL_INT0_MRR_DONE;
-		set_width(ch_geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 0);
+		set_width(st->geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 0);
 		pctl[PCTL_READ_MODEREG] = mrr_cmd(5, 1);
-		ch_states[ch] = CHAN_ST_CS0_MR5;
+		st->chan_st[ch] = CHAN_ST_CS0_MR5;
 		return;
 	case CHAN_ST_CS0_MR5:
 		if (~int_status & PCTL_INT0_MRR_DONE) {break;}
 		pctl[PCTL_INT_ACK] = PCTL_INT0_MRR_DONE;
-		geo = ch_geo + ch;
-		set_width(ch_geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 1);
+		geo = st->geo + ch;
+		set_width(st->geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 1);
 		ddrinit_set_channel_stride(0x17+ch); /* map only this channel */
-		for_channel(c) {if (ch_states[c] >= CHAN_ST_READY) {goto already_mapped;}}
+		for_channel(c) {if (st->chan_st[c] >= CHAN_ST_READY) {goto already_mapped;}}
 		/* map DRAM region as MMIO; needed for geometry detection; unmapped after training */
 		mmu_map_mmio_identity(0, 0xf7ffffff);
 		already_mapped:;
 		printf("channel %u: ", ch);
 		channel_post_init(pctl, pi, msch_base_for(ch), &init_cfg.msch, geo);
-		ch_states[ch] = CHAN_ST_READY;
+		st->chan_st[ch] = CHAN_ST_READY;
 		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_READY << ch, memory_order_release);
 
-		for_channel(c) {if (ch_states[c] < CHAN_ST_READY) {return;}}
-		both_channels_ready();
+		for_channel(c) {if (st->chan_st[c] < CHAN_ST_READY) {return;}}
+		both_channels_ready(st);
 		return;
 	default: break;
 	}
-	die("unexpected DDRC%"PRIu32" interrupt: status=0x%01"PRIx32"%08"PRIx32"  chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, chan_state_names[chan_st]);
+	die("unexpected DDRC%"PRIu32" interrupt: status=0x%01"PRIx32"%08"PRIx32"  chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, ddrinit_chan_state_names[chan_st]);
 }

@@ -5,6 +5,7 @@
 #include <main.h>
 #include <rk3399.h>
 #include "rk3399-dmc.h"
+#include "ddrinit.h"
 
 void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
 	debug("training idx %"PRIu32"\n", rank);
@@ -164,9 +165,9 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 
 void ddrinit_set_channel_stride(u32 val);
 
-void ddrinit_train() {
+void ddrinit_train(struct ddrinit_state *st) {
 	for_channel(ch) {
-		assert_msg(train_channel(ch, ch_geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
+		assert_msg(train_channel(ch, st->geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
 	}
 	logs("finished.\n");
 	/* 256B interleaving */

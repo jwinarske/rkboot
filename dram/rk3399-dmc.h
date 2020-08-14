@@ -130,14 +130,6 @@ struct dram_cfg {
 	struct dram_regs_cfg regs;
 };
 
-struct sdram_geometry {
-	u8 csmask;
-	u8 width;
-	u8 col;
-	u8 bank;
-	u8 cs0_row, cs1_row;
-};
-
 #define DEFINE_PCTL_INTERRUPTS0\
 	X(UNKNOWN0) X(UNKNOWN1) X(UNKNOWN2) X(INIT_DONE)\
 	X(UNKNOWN4) X(UNKNOWN5) X(UNKNOWN6) X(UNKNOWN7)\
@@ -176,6 +168,26 @@ enum {
 #undef X
 };
 
+#define DEFINE_PI_INTERRUPTS\
+	X(UNKNOWN0) X(UNKNOWN1) X(RDLVL_ERR) X(GTLVL_ERR)\
+	X(WRLVL_ERR) X(CALVL_ERR) X(WDQLVL_ERR) X(UNKNOWN7)\
+	X(RDLVL_DONE) X(GTLVL_DONE) X(WRLVL_DONE) X(CALVL_DONE)\
+	X(WDQLVL_DONE) X(SWLVL_DONE) X(UNKNOWN14) X(UNKNOWN15)\
+	 X(UNKNOWN16)
+
+enum {
+#define X(name) PI_INT_##name##_BIT,
+	DEFINE_PI_INTERRUPTS
+#undef X
+	NUM_PI_INT
+};
+_Static_assert(NUM_PI_INT == 17, "miscounted");
+enum {
+#define X(name) PI_INT_##name = (u32)1 << PI_INT_##name##_BIT,
+	DEFINE_PI_INTERRUPTS
+#undef X
+};
+
 enum {
 	PCTL_DRAM_CLASS = 0,
 	PCTL_MRR_ERROR_STATUS = 17,
@@ -192,6 +204,12 @@ enum {
 	PCTL_LP_CMD = 93,
 	PCTL_LP_STATE = 100,
 	PCTL_READ_MODEREG = 118,
+};
+
+enum {
+	PI_INT_ST = 174,	/* caution: the bit positions are shifed to the left by 8 here */
+	PI_INT_ACK = 175,
+	PI_INT_MASK = 176,
 };
 
 enum {
@@ -244,22 +262,6 @@ extern struct dram_cfg init_cfg;
 extern const struct phy_update phy_400mhz;
 extern const struct phy_update phy_800mhz;
 
-#define DEFINE_CHANNEL_STATES\
-	X(UNINIT) X(CONFIGURED)\
-	X(INIT) X(CS0_MR5) X(READY) X(SWITCHED)\
-	X(CALVL) X(WRLVL) X(GTLVL) X(RDLVL) X(WDQLVL)\
-	X(TRAINED)
-
-enum channel_state {
-#define X(name) CHAN_ST_##name,
-	DEFINE_CHANNEL_STATES
-#undef X
-	NUM_CHAN_ST
-};
-extern const char chan_state_names[NUM_CHAN_ST][12];
-extern enum channel_state ch_states[2];
-extern struct sdram_geometry ch_geo[2];
-
 struct mr_adjustments;
 void mr_adjust(volatile u32 *pctl, volatile u32 *pi, const struct mr_adjustments *adj, u32 regset, u32 val);
 extern const struct mr_adjustments dq_odt_adj, ca_odt_adj, mr3_adj, mr12_adj, mr14_adj;
@@ -279,6 +281,7 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 #define MIRROR_TEST_ADDR 0x100
 
 _Bool test_mirror(u32 addr, u32 bit);
+struct sdram_geometry;
 void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch, const struct msch_config *msch_cfg, struct sdram_geometry *geo);
 void encode_dram_size(const struct sdram_geometry *geo);
 

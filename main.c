@@ -15,6 +15,7 @@
 #include <gic_regs.h>
 #include <rktimer_regs.h>
 #include <irq.h>
+#include "dram/ddrinit.h"
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY_SRAM,
@@ -44,7 +45,7 @@ void sync_exc_handler() {
 	die("sync exc: ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", esr, far);
 }
 
-void ddrinit_irq(u32 channel);
+static struct ddrinit_state ddrinit_st;
 
 void irq_handler(struct exc_state_save UNUSED *save) {
 	u64 grp0_intid;
@@ -53,7 +54,7 @@ void irq_handler(struct exc_state_save UNUSED *save) {
 	switch (grp0_intid) {
 	case 35:
 	case 36:
-		ddrinit_irq(grp0_intid - 35);
+		ddrinit_irq(&ddrinit_st, grp0_intid - 35);
 		break;
 	case 101:	/* stimer0 */
 		stimer0[0].interrupt_status = 1;
@@ -69,9 +70,6 @@ void irq_handler(struct exc_state_save UNUSED *save) {
 	atomic_signal_fence(memory_order_release);
 	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
 }
-
-void ddrinit_configure();
-void ddrinit_train();
 
 _Atomic(size_t) rk3399_init_flags = 0;
 
@@ -182,7 +180,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 	stimer0[0].control = RKTIMER_ENABLE | RKTIMER_INT_EN;
 
 	logs("jumping to ddrinit");
-	ddrinit_configure();
+	ddrinit_configure(&ddrinit_st);
 	size_t flags, reported = 0, last = 0;
 	while (1) {
 		flags = atomic_load_explicit(&rk3399_init_flags, memory_order_acquire);
@@ -210,7 +208,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 			}
 		}
 		if (new_bits & RK3399_INIT_DRAM_TRAINING) {
-			ddrinit_train();
+			ddrinit_train(&ddrinit_st);
 		}
 		asm("wfi");
 	}
