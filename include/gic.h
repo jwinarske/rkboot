@@ -19,4 +19,7 @@ void gicv3_per_cpu_teardown(volatile struct gic_redistributor *redist);
 
 void gicv2_global_setup(volatile struct gic_distributor *dist);
 void gicv2_setup_spi(volatile struct gic_distributor *dist, u16 intid, u8 priority, u8 targets, u32 flags);
+
 void gicv2_disable_spi(volatile struct gic_distributor *dist, u16 intid);
+void gicv2_enable_spi(volatile struct gic_distributor *dist, u16 intid);
+void gicv2_wait_disabled(volatile struct gic_distributor *dist);

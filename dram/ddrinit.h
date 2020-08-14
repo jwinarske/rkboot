@@ -34,6 +34,7 @@ struct ddrinit_state {
 	struct sdram_geometry geo[2];
 	u8 training_idx[2];
 	u32 training_flags;
+	_Atomic(size_t) sync;
 };
 
 void ddrinit_configure(struct ddrinit_state *st);

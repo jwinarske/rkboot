@@ -5,6 +5,8 @@
 #include <main.h>
 #include <rk3399.h>
 #include <runqueue.h>
+#include <sched_aarch64.h>
+#include <rk3399/sramstage.h>
 #include "rk3399-dmc.h"
 #include "ddrinit.h"
 
@@ -171,10 +173,15 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 
 void ddrinit_set_channel_stride(u32 val);
 
-void ddrinit_train(struct ddrinit_state *st) {
-	for_channel(ch) {
-		assert_msg(train_channel(ch, st->geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
-	}
+
+
+static void training_task(struct ddrinit_state *st, u32 ch) {
+	puts("training started\n");
+	assert_msg(train_channel(ch, st->geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
+	size_t bit = 1 << ch;
+	size_t res = atomic_fetch_or_explicit(&st->sync, bit, memory_order_seq_cst) | bit;
+	printf("sync%zu\n", res);
+	if (res != 3) {return;}
 	logs("finished.\n");
 	/* 256B interleaving */
 	ddrinit_set_channel_stride(0xd);
@@ -185,4 +192,16 @@ void ddrinit_train(struct ddrinit_state *st) {
 	}
 	mmu_unmap_range(0, 0xf7ffffff);
 	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_READY, memory_order_release);
+}
+
+void ddrinit_train(struct ddrinit_state *st) {
+	struct sched_thread_start thread_start = {
+		.runnable = {.next = 0, .run = sched_start_thread},
+		.pc = (u64)training_task,
+		.pad = 0,
+		.args = {(u64)st, 1},
+	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_DDRC1) - sizeof(struct sched_thread_start));
+	*runnable = thread_start;
+	sched_queue((struct sched_runnable *)runnable);
+	training_task(st, 0);
 }

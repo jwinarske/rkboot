@@ -8,7 +8,11 @@
 #include <rk3399.h>
 #include <mmu.h>
 #include <rkpll.h>
+#include <runqueue.h>
+#include <sched_aarch64.h>
+#include <rk3399/sramstage.h>
 #include "rk3399-dmc.h"
+#include <gic.h>
 
 const struct phy_layout cfg_layout = {
 	.dslice = 0,
@@ -300,6 +304,13 @@ static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
 
 static void both_channels_ready(struct ddrinit_state *st) {
 	encode_dram_size(st->geo);
+
+	/* disable DDRC interrupts during switch, since the handler will try to read from registers behind an idled bus */
+	gicv2_disable_spi(gic500d, 35);
+	gicv2_disable_spi(gic500d, 36);
+	gicv2_wait_disabled(gic500d);
+	atomic_signal_fence(memory_order_acquire);
+
 	/* map CIC range, needed for frequency switch */
 	mmu_map_mmio_identity(0xff620000, 0xff62ffff);
 	dsb_ishst();
@@ -313,8 +324,13 @@ static void both_channels_ready(struct ddrinit_state *st) {
 		pctl[PCTL_INT_MASK] = 0x08002800;
 		st->chan_st[c] = CHAN_ST_SWITCHED;
 	}
+	atomic_signal_fence(memory_order_release);
+	gicv2_enable_spi(gic500d, 35);
+	gicv2_enable_spi(gic500d, 36);
+
 	mmu_unmap_range(0xff620000, 0xff62ffff);
 	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_TRAINING, memory_order_release);
+	ddrinit_train(st);
 }
 
 void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
@@ -369,7 +385,14 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_READY << ch, memory_order_release);
 
 		for_channel(c) {if (st->chan_st[c] < CHAN_ST_READY) {return;}}
-		both_channels_ready(st);
+		struct sched_thread_start thread_start = {
+			.runnable = {.next = 0, .run = sched_start_thread},
+			.pc = (u64)both_channels_ready,
+			.pad = 0,
+			.args = {(u64)st, },
+		}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_DDRC0) - sizeof(struct sched_thread_start));
+		*runnable = thread_start;
+		sched_queue((struct sched_runnable *)runnable);
 		return;
 	default: break;
 	}

@@ -42,3 +42,7 @@ void gicv2_setup_spi(volatile struct gic_distributor *dist, u16 intr, u8 priorit
 void gicv2_disable_spi(volatile struct gic_distributor *dist, u16 intid) {
 	dist->disable[intid / 32] = 1 << (intid % 32);
 }
+
+void gicv2_enable_spi(volatile struct gic_distributor *dist, u16 intid) {
+	dist->enable[intid / 32] = 1 << (intid % 32);
+}
