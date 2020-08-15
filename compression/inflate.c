@@ -343,6 +343,7 @@ struct gzip_dec_state {
 };
 
 static size_t trailer(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	const u8 *in_start = in;
 	struct gzip_dec_state *st = (struct gzip_dec_state *)state;
 
 	if (unlikely(end == in)) {return DECODE_NEED_MORE_DATA;}
@@ -357,7 +358,7 @@ static size_t trailer(struct decompressor_state *state, const u8 *in, const u8 *
 	in += 4;
 	check(st->isize == isize, "compressed size mismatch, read %08x, decompressed %08x (mod 1 << 32)\n", isize, st->isize);
 	st->st.decode = 0;
-	return NUM_DECODE_STATUS + 8;
+	return NUM_DECODE_STATUS + (in - in_start);
 }
 
 static decompress_func block_start;
