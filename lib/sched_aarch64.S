@@ -32,12 +32,12 @@ PROC(sched_yield, 2)
 	.cfi_offset x27, -16
 	.cfi_offset x28, -8
 
-	add x0, x29, #16
+	add x1, x29, #16
 	bl sched_queue
 	b sched_next
 ENDFUNC(sched_yield)
 PROC(sched_resume, 2)
-	.cfi_def_cfa x1, 96
+	.cfi_def_cfa x0, 96
 	.cfi_offset x19, -80
 	.cfi_offset x20, -72
 	.cfi_offset x21, -64
@@ -81,22 +81,20 @@ ENDFUNC(sched_resume)
 
 .section .text.asm.sched_start_thread
 PROC(sched_start_thread, 2)
-	.cfi_def_cfa x1, 80
+	.cfi_def_cfa x0, 80
 	.cfi_undefined x30	// a newly-started thread has no return address
 	// set up the stack
-	add sp, x1, #80
+	add sp, x0, #80
 	.cfi_def_cfa sp, 0
 
-	mov x19, x0	// save runqueue address
-	ldp x20, x21, [x1, #16]
-	ldp x2, x3, [x1, #48]
-	ldp x4, x5, [x1, #64]
-	ldp x6, x7, [x1, #80]
-	ldp x0, x1, [x1, #32]
+	ldp x20, x21, [x0, #16]
+	ldp x2, x3, [x0, #48]
+	ldp x4, x5, [x0, #64]
+	ldp x6, x7, [x0, #80]
+	ldp x0, x1, [x0, #32]
 
 	stp xzr, xzr, [sp]	// bottom of the frame chain
 	add x29, sp, #0
 	blr x20
-	mov x0, x19
 	b sched_next
 ENDFUNC(sched_start_thread)

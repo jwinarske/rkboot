@@ -10,4 +10,4 @@ struct sched_thread_start {
 	u64 args[8];
 };
 
-_Noreturn NORETURN_ATTR void sched_start_thread(struct sched_runqueue *, struct sched_runnable *);
+_Noreturn NORETURN_ATTR void sched_start_thread(struct sched_runnable *);

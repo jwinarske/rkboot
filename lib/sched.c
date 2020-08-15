@@ -1,16 +1,25 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <stdatomic.h>
 #include <irq.h>
 #include <runqueue.h>
 #include <log.h>
 #include <plat/sched.h>
 
-void sched_queue(struct sched_runnable *runnable) {
-	runnable->next = 0;
-	{irq_save_t irq = irq_save_mask();
-		struct sched_runqueue *rq = get_runqueue();
-		*rq->tail = runnable;
-		rq->tail = &runnable->next;
-	irq_restore(irq);}
+#ifndef ATOMIC_POINTER_LOCK_FREE
+#error atomic pointers are not lock-free
+#endif
+_Static_assert(sizeof(void *) == sizeof(_Atomic(void*)), "atomic pointers have different size");
+
+void sched_queue(struct sched_runnable_list *list, struct sched_runnable *runnable) {
+	if (list == CURRENT_RUNQUEUE) {
+		irq_save_t irq = irq_save_mask();
+		list = &get_runqueue()->fresh;
+		irq_restore(irq);
+	}
+	struct sched_runnable *next = atomic_load_explicit(&list->head, memory_order_acquire);
+	do {
+		runnable->next = next;
+	} while(!atomic_compare_exchange_weak_explicit(&list->head, &next, runnable, memory_order_release, memory_order_acquire));
 }
 
 /* this function is entered in an atomic context */
@@ -25,10 +34,25 @@ static void cpuidle() {
 #endif
 }
 
-_Noreturn void sched_next(struct sched_runqueue *rq) {
+_Noreturn void sched_next() {
 	struct sched_runnable *runnable;
 	do {
 		{irq_mask();
+			struct sched_runqueue *rq = get_runqueue();
+			struct sched_runnable *fresh = atomic_exchange_explicit(&rq->fresh.head, 0, memory_order_acquire);
+			if (fresh) {	/* add fresh entries in reverse order */
+				struct sched_runnable **old_tail = rq->tail;
+				if (!rq->tail) {old_tail = &rq->head;}
+				rq->tail = &fresh->next;
+				struct sched_runnable *next = 0;
+				do {
+					struct sched_runnable *tmp = fresh->next;
+					fresh->next = next;
+					next = fresh;
+					fresh = tmp;
+				} while (fresh);
+				*old_tail = next;
+			}
 			runnable = rq->head;
 			if (runnable) {
 				if (!(rq->head = runnable->next)) {
@@ -39,5 +63,5 @@ _Noreturn void sched_next(struct sched_runqueue *rq) {
 			}
 		irq_unmask();}
 	} while (!runnable);
-	runnable->run(rq, runnable);
+	runnable->run(runnable);
 }

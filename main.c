@@ -78,7 +78,7 @@ _Atomic(size_t) rk3399_init_flags = 0;
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_SRAMSTAGE_VSTACK][4096];
 
-static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
+static struct sched_runqueue runqueue = {};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
@@ -162,7 +162,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 				printf("%s ready after %"PRIu64"μs\n", flags_data[i].name, now / TICKS_PER_MICROSECOND);
 			}
 		}
-		sched_yield();
+		sched_yield(CURRENT_RUNQUEUE);
 	}
 
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}

@@ -3,27 +3,30 @@
 #include <sched_aarch64.h>
 #include <stdio.h>
 
-void thread(struct sched_runqueue *rq) {
+void thread() {
 	puts("thread\n");
-	sched_yield(rq);
+	sched_yield(CURRENT_RUNQUEUE);
 	puts("thread after yield\n");
 }
 
 _Alignas(4096) char stack[4096];
 
+struct sched_runqueue rq = {};
+struct sched_runqueue *get_runqueue() {return &rq;}
+
 int main() {
-	struct sched_runqueue rq = {.head = 0, .tail = &rq.head};
 	puts("main\n");
 	struct sched_thread_start thread_start = {
 		.runnable = {.next = 0, .run = sched_start_thread},
 		.pc = (u64)thread,
 		.pad = 0,
-		.args = {(u64)&rq, },
+		.args = {},
 	}, *runnable = (struct sched_thread_start *)(stack + sizeof(stack) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
-	sched_yield(sched_queue(&rq, (struct sched_runnable *)runnable));
+	sched_queue(CURRENT_RUNQUEUE, (struct sched_runnable *)runnable);
+	sched_yield(CURRENT_RUNQUEUE);
 	puts("main after yield");
-	sched_yield(&rq);
+	sched_yield(CURRENT_RUNQUEUE);
 	puts("main end");
 	return 0;
 }

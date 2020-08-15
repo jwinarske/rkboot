@@ -4,6 +4,15 @@
 #include <stdatomic.h>
 
 typedef u64 irq_save_t;
+static const irq_save_t IRQ_SAVE_CLEAR = 0;
+
+HEADER_FUNC irq_save_t irq_save() {
+	u64 daif = 0;
+#if !__STDC_HOSTED__
+	asm volatile("mrs %0, DAIF" : "=r"(daif));
+#endif
+	return daif;
+}
 
 HEADER_FUNC void irq_mask() {
 #if !__STDC_HOSTED__
@@ -13,12 +22,9 @@ HEADER_FUNC void irq_mask() {
 }
 
 HEADER_FUNC irq_save_t irq_save_mask() {
-	u64 daif = 0;
-#if !__STDC_HOSTED__
-	asm volatile("mrs %0, DAIF");
-#endif
+	irq_save_t irq = irq_save();
 	irq_mask();
-	return daif;
+	return irq;
 }
 
 HEADER_FUNC void irq_restore(irq_save_t daif) {

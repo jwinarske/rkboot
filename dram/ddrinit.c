@@ -128,7 +128,7 @@ static void dpll_wait() {
 		if (get_timestamp() - start > 100 * TICKS_PER_MICROSECOND) {
 			die("failed to lock-on DPLL\n");
 		}
-		sched_yield();
+		sched_yield(CURRENT_RUNQUEUE);
 	}
 }
 
@@ -138,7 +138,7 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	pmu[PMU_BUS_IDLE_REQ] |= 3 << 18;
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {
 		debugs("waiting for bus idle\n");
-		sched_yield();
+		sched_yield(CURRENT_RUNQUEUE);
 	}
 	cic[0] = (SET_BITS16(2, freqset) << 4) | (SET_BITS16(1, 1) << 2) | SET_BITS16(1, 1);
 	while (!(cic[CIC_STATUS] & 4)) {
@@ -156,13 +156,13 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 		} else if (status & 1) {
 			break;
 		}
-		sched_yield();
+		sched_yield(CURRENT_RUNQUEUE);
 	}
 	debugs("done\n");
 	pmu[PMU_BUS_IDLE_REQ] &= ~((u32)3 << 18);
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != 0) {
 		debugs("waiting for bus un-idle\n");
-		sched_yield();
+		sched_yield(CURRENT_RUNQUEUE);
 	}
 	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
 }
@@ -395,7 +395,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 			.args = {(u64)st, },
 		}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_DDRC0) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
-		sched_queue(&runnable->runnable);
+		sched_queue(CURRENT_RUNQUEUE, &runnable->runnable);
 		return;
 	default: break;
 	}
