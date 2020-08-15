@@ -28,7 +28,7 @@ static void cpuidle() {
 _Noreturn void sched_next(struct sched_runqueue *rq) {
 	struct sched_runnable *runnable;
 	do {
-		{irq_save_t irq = irq_save_mask();
+		{irq_mask();
 			runnable = rq->head;
 			if (runnable) {
 				if (!(rq->head = runnable->next)) {
@@ -37,7 +37,7 @@ _Noreturn void sched_next(struct sched_runqueue *rq) {
 			} else {
 				cpuidle();
 			}
-		irq_restore(irq);}
+		irq_unmask();}
 	} while (!runnable);
 	runnable->run(rq, runnable);
 }
