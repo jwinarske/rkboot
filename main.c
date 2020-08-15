@@ -82,6 +82,10 @@ static struct sched_runqueue runqueue = {};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
+void rk3399_set_init_flags(size_t flags) {
+	atomic_fetch_or_explicit(&rk3399_init_flags, flags, memory_order_release);
+}
+
 int32_t NO_ASAN main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;

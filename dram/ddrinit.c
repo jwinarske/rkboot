@@ -362,7 +362,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		geo->col = geo->bank = geo->cs0_row = geo->cs1_row = 0;
 		pctl[PCTL_READ_MODEREG] = mrr_cmd(5, 0);
 		st->chan_st[ch] = CHAN_ST_INIT;
-		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_INIT << ch, memory_order_release);
+		rk3399_set_init_flags(RK3399_INIT_DDRC0_INIT << ch);
 		log("channel %u initialized\n", ch);
 		return;
 	case CHAN_ST_INIT:
@@ -385,7 +385,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		printf("channel %u: ", ch);
 		channel_post_init(pctl, pi, msch_base_for(ch), &init_cfg.msch, geo);
 		st->chan_st[ch] = CHAN_ST_READY;
-		atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DDRC0_READY << ch, memory_order_release);
+		rk3399_set_init_flags(RK3399_INIT_DDRC0_READY << ch);
 
 		for_channel(c) {if (st->chan_st[c] < CHAN_ST_READY) {return;}}
 		struct sched_thread_start thread_start = {

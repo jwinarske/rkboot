@@ -191,7 +191,7 @@ static void training_task(struct ddrinit_state *st, u32 ch) {
 		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
 	}
 	mmu_unmap_range(0, 0xf7ffffff);
-	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_READY, memory_order_release);
+	rk3399_set_init_flags(RK3399_INIT_DRAM_READY);
 }
 
 void ddrinit_train(struct ddrinit_state *st) {

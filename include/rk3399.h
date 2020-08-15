@@ -96,6 +96,7 @@ enum {
 };
 _Static_assert(sizeof(size_t) == sizeof(_Atomic(size_t)), "atomic size_t has differing size");
 extern _Atomic(size_t) rk3399_init_flags;
+void rk3399_set_init_flags(size_t);
 
 struct rkspi_regs;
 static volatile struct rkspi_regs *const spi1 = (volatile struct rkspi_regs*)0xff1d0000;
