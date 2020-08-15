@@ -2,16 +2,8 @@
 #include <asm.h>
 
 .section .text.asm.sched_yield
-PROC(sched_yield, 2)
-	// create stack frame
-	stp x29, x30, [sp, #-112]!
-	.cfi_def_cfa sp, 112
-	.cfi_offset x29, -112
-	.cfi_offset x30, -104
-	add x29, sp, #0
-	.cfi_def_cfa x29, 112
-
-	// write sched_runnable
+create_runnable:
+	.cfi_startproc
 	adr x2, sched_resume
 	stp xzr, x2, [x29, #16]
 
@@ -21,6 +13,13 @@ PROC(sched_yield, 2)
 	stp x23, x24, [x29, #64]
 	stp x25, x26, [x29, #80]
 	stp x27, x28, [x29, #96]
+	ret
+	.cfi_endproc
+
+PROC(sched_yield_test, 2)
+	create_stackframe 112
+
+	bl create_runnable
 	.cfi_offset x19, -80
 	.cfi_offset x20, -72
 	.cfi_offset x21, -64
@@ -32,8 +31,37 @@ PROC(sched_yield, 2)
 	.cfi_offset x27, -16
 	.cfi_offset x28, -8
 
+	mov x19, x1
+	mov x20, x0
+	mov x21, x2
+	mov x22, x3
+
 	add x1, x29, #16
-	bl sched_queue
+	bl sched_queue_single
+
+	mov x0, x20
+	mov x1, x21
+	mov x2, x22
+	br x19
+ENDFUNC(sched_yield_test)
+PROC(sched_yield, 2)
+	create_stackframe 112
+
+	bl create_runnable
+	.cfi_offset x19, -80
+	.cfi_offset x20, -72
+	.cfi_offset x21, -64
+	.cfi_offset x22, -56
+	.cfi_offset x23, -48
+	.cfi_offset x24, -40
+	.cfi_offset x25, -32
+	.cfi_offset x26, -24
+	.cfi_offset x27, -16
+	.cfi_offset x28, -8
+
+	mov x0, #0
+	add x1, x29, #16
+	bl sched_queue_single
 	b sched_next
 ENDFUNC(sched_yield)
 PROC(sched_resume, 2)

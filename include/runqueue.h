@@ -8,6 +8,7 @@ struct sched_runnable {
 	NORETURN_ATTR void (*run)(struct sched_runnable*);
 };
 
+/* the entries in a runnable_list are usually stored in reverse, because adding at the beginning is simple to do atomically */
 struct sched_runnable_list {
 	_Atomic(struct sched_runnable *) head;
 };
@@ -20,6 +21,16 @@ struct sched_runqueue {
 	struct sched_runnable **tail;
 };
 
-void sched_queue(struct sched_runnable_list *, struct sched_runnable *);
+void sched_queue_single(struct sched_runnable_list *, struct sched_runnable *);
+/* keep in mind the reversed nature of runnable_lists */
+void sched_queue_many(struct sched_runnable_list *, struct sched_runnable *first, struct sched_runnable *last);
+/** atomically takes from src (which must not be CURRENT_RUNQUEUE) and then atomically adds the contents to dest (which may be CURRENT_RUNQUEUE) */
+void sched_queue_list(struct sched_runnable_list *dest, struct sched_runnable_list *src);
+
+/** abandons the current stack by taking the next entry from the current runqueue and running it */
 _Noreturn void sched_next();
-void sched_yield(struct sched_runnable_list *);
+
+/** saves the current execution state as a runnable, queues it in `list` (which must not be CURRENT_RUNQUEUE) and then runs the callback with the supplied parameters */
+void sched_yield_call(struct sched_runnable_list *list, _Bool NORETURN_ATTR (*call)(struct sched_runnable_list *list, ureg_t, ureg_t), ureg_t, ureg_t);
+/** saves the current execution state and queues it as a runnable, then calls sched_next */
+void sched_yield();

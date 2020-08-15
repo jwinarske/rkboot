@@ -7,6 +7,7 @@ typedef unsigned char u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+typedef u64 ureg_t;
 typedef u64 timestamp_t;
 #define TICKS_PER_MICROSECOND 24
 

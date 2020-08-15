@@ -5,12 +5,10 @@
 #include <log.h>
 #include <plat/sched.h>
 
-#ifndef ATOMIC_POINTER_LOCK_FREE
-#error atomic pointers are not lock-free
-#endif
+_Static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "atomic pointers are not lock-free");
 _Static_assert(sizeof(void *) == sizeof(_Atomic(void*)), "atomic pointers have different size");
 
-void sched_queue(struct sched_runnable_list *list, struct sched_runnable *runnable) {
+void sched_queue_many(struct sched_runnable_list *list, struct sched_runnable *first, struct sched_runnable *last) {
 	if (list == CURRENT_RUNQUEUE) {
 		irq_save_t irq = irq_save_mask();
 		list = &get_runqueue()->fresh;
@@ -18,8 +16,21 @@ void sched_queue(struct sched_runnable_list *list, struct sched_runnable *runnab
 	}
 	struct sched_runnable *next = atomic_load_explicit(&list->head, memory_order_acquire);
 	do {
-		runnable->next = next;
-	} while(!atomic_compare_exchange_weak_explicit(&list->head, &next, runnable, memory_order_release, memory_order_acquire));
+		last->next = next;
+	} while(!atomic_compare_exchange_weak_explicit(&list->head, &next, first, memory_order_release, memory_order_acquire));
+}
+
+void sched_queue_single(struct sched_runnable_list *list, struct sched_runnable *runnable) {
+	sched_queue_many(list, runnable, runnable);
+}
+
+void sched_queue_list(struct sched_runnable_list *dest, struct sched_runnable_list *src) {
+	/* we use memory_order_acq_rel here (instead of just memory_order_acquire, which is all that is required to guarantee the list's integrity) to allow for sound locks/condvars using runnable_lists: in case that the waiting thread reads the null written in this atomic_exchange by the notifying thread, the waiting thread will have synchronized-with the notifying thread, guaranteeing the visibility of the lock/condvar value that was written. */
+	struct sched_runnable *head = atomic_exchange_explicit(&src->head, 0, memory_order_acq_rel);
+	if (!head) {return;}
+	struct sched_runnable *last = head;
+	while (last->next) {last = last->next;}
+	sched_queue_many(dest, head, last);
 }
 
 /* this function is entered in an atomic context */
