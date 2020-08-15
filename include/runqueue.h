@@ -30,7 +30,7 @@ void sched_queue_list(struct sched_runnable_list *dest, struct sched_runnable_li
 /** abandons the current stack by taking the next entry from the current runqueue and running it */
 _Noreturn void sched_next();
 
-/** saves the current execution state as a runnable, queues it in `list` (which must not be CURRENT_RUNQUEUE) and then runs the callback with the supplied parameters */
-void sched_yield_call(struct sched_runnable_list *list, _Bool NORETURN_ATTR (*call)(struct sched_runnable_list *list, ureg_t, ureg_t), ureg_t, ureg_t);
 /** saves the current execution state and queues it as a runnable, then calls sched_next */
 void sched_yield();
+
+void call_cc(void NORETURN_ATTR (*callback)(struct sched_runnable *));

@@ -5,7 +5,7 @@
 
 void thread() {
 	puts("thread\n");
-	sched_yield(CURRENT_RUNQUEUE);
+	sched_yield();
 	puts("thread after yield\n");
 }
 
@@ -23,10 +23,10 @@ int main() {
 		.args = {},
 	}, *runnable = (struct sched_thread_start *)(stack + sizeof(stack) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
-	sched_queue(CURRENT_RUNQUEUE, (struct sched_runnable *)runnable);
-	sched_yield(CURRENT_RUNQUEUE);
+	sched_queue_single(CURRENT_RUNQUEUE, (struct sched_runnable *)runnable);
+	sched_yield();
 	puts("main after yield");
-	sched_yield(CURRENT_RUNQUEUE);
+	sched_yield();
 	puts("main end");
 	return 0;
 }

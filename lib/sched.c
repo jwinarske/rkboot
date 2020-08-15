@@ -76,3 +76,28 @@ _Noreturn void sched_next() {
 	} while (!runnable);
 	runnable->run(runnable);
 }
+
+static _Noreturn NORETURN_ATTR void yield_finish(struct sched_runnable *continuation) {
+	sched_queue_single(CURRENT_RUNQUEUE, continuation);
+	sched_next();
+}
+
+void sched_yield() {
+	call_cc(yield_finish);
+}
+
+static _Noreturn NORETURN_ATTR void lock_finish(struct sched_runnable *continuation, atomic_flag *flag, struct sched_runnable_list *list) {
+	sched_queue_single(list, continuation);
+	if (!atomic_flag_test_and_set_explicit(flag, memory_order_acquire)) {
+		sched_queue_list(CURRENT_RUNQUEUE, list);
+	}
+	sched_next();
+}
+
+void call_cc_flag_runnablelist(void NORETURN_ATTR (*callback)(struct sched_runnable *, atomic_flag *, struct sched_runnable_list *), atomic_flag *, struct sched_runnable_list *);
+
+void sched_lock(struct sched_runnable_list *list, atomic_flag *flag) {
+	while (atomic_flag_test_and_set_explicit(flag, memory_order_acquire)) {
+		call_cc_flag_runnablelist(lock_finish, flag, list);
+	}
+}

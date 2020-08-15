@@ -2,10 +2,12 @@
 #include <asm.h>
 
 .section .text.asm.sched_yield
-create_runnable:
-	.cfi_startproc
-	adr x2, sched_resume
-	stp xzr, x2, [x29, #16]
+PROC(call_cc, 2)
+call_cc_flag_runnablelist: .global call_cc_flag_runnablelist
+	create_stackframe 112
+
+	adr x10, sched_resume
+	stp xzr, x10, [x29, #16]
 
 	// save non-volatile GPRs
 	stp x19, x20, [x29, #32]
@@ -13,13 +15,6 @@ create_runnable:
 	stp x23, x24, [x29, #64]
 	stp x25, x26, [x29, #80]
 	stp x27, x28, [x29, #96]
-	ret
-	.cfi_endproc
-
-PROC(sched_yield_test, 2)
-	create_stackframe 112
-
-	bl create_runnable
 	.cfi_offset x19, -80
 	.cfi_offset x20, -72
 	.cfi_offset x21, -64
@@ -31,39 +26,10 @@ PROC(sched_yield_test, 2)
 	.cfi_offset x27, -16
 	.cfi_offset x28, -8
 
-	mov x19, x1
-	mov x20, x0
-	mov x21, x2
-	mov x22, x3
-
-	add x1, x29, #16
-	bl sched_queue_single
-
-	mov x0, x20
-	mov x1, x21
-	mov x2, x22
-	br x19
-ENDFUNC(sched_yield_test)
-PROC(sched_yield, 2)
-	create_stackframe 112
-
-	bl create_runnable
-	.cfi_offset x19, -80
-	.cfi_offset x20, -72
-	.cfi_offset x21, -64
-	.cfi_offset x22, -56
-	.cfi_offset x23, -48
-	.cfi_offset x24, -40
-	.cfi_offset x25, -32
-	.cfi_offset x26, -24
-	.cfi_offset x27, -16
-	.cfi_offset x28, -8
-
-	mov x0, #0
-	add x1, x29, #16
-	bl sched_queue_single
-	b sched_next
-ENDFUNC(sched_yield)
+	mov x10, x0
+	add x0, x29, #16
+	br x10
+ENDFUNC(call_cc)
 PROC(sched_resume, 2)
 	.cfi_def_cfa x0, 96
 	.cfi_offset x19, -80
