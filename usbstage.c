@@ -31,6 +31,8 @@ const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
+UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
+
 static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 

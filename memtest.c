@@ -145,6 +145,8 @@ static void timed_flush() {
 #endif
 }
 
+UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
+
 _Bool memtest(u64 salt) {
 	_Bool res = 1;
 	for_range(block, 0, 31) {

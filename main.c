@@ -84,6 +84,7 @@ static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT;
 
 _Atomic(size_t) rk3399_init_flags = start_flags;
 
+UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_SRAMSTAGE_VSTACK][4096];
 
 static struct sched_runqueue runqueue = {};
