@@ -40,7 +40,6 @@ static u64 *alloc_page_table() {
 	return &pagetables[next_pagetable++][0];
 }
 
-#ifdef DEBUG_MSG
 static void UNUSED dump_page_tables() {
 	for_range(table, 0, next_pagetable) {
 		for (u32 i = 0; i < ARRAY_SIZE(pagetables[table]); i += 4) {
@@ -48,7 +47,6 @@ static void UNUSED dump_page_tables() {
 		}
 	}
 }
-#endif
 
 #define MASK64(n) (((u64)1 << (n)) - 1)
 
@@ -151,7 +149,7 @@ static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags) {
 	map_range(pagetables[0], first, last, paddr, flags);
-#ifdef DEBUG_MSG
+#ifdef SPEW_MSG
 	dump_page_tables();
 #endif
 }
@@ -202,7 +200,7 @@ void mmu_setup(const struct mapping *initial_mappings, const struct address_rang
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
 		map_range(pagetables[0], map->first, map->last, map->first, map->flags);
 	}
-#ifdef DEBUG_MSG
+#ifdef SPEW_MSG
 	dump_page_tables();
 #endif
 #ifndef NDEBUG
