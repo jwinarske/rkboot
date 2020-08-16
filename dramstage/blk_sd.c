@@ -3,10 +3,13 @@
 
 #include <mmu.h>
 #include <log.h>
+#include <die.h>
 #include <exc_handler.h>
 #include <gic.h>
 #include <gic_regs.h>
 #include <dwmmc.h>
+#include <dwmmc_dma.h>
+#include <dwmmc_helpers.h>
 
 #include <rk3399.h>
 #include "../elfloader.h"

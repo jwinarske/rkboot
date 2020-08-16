@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <dwmmc.h>
+#include <dwmmc_helpers.h>
+#include <dwmmc_dma.h>
 
 #include <inttypes.h>
 #include <assert.h>
