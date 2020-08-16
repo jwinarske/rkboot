@@ -4,6 +4,7 @@
 #include <rk3399.h>
 #include <stage.h>
 #include <uart.h>
+#include <runqueue.h>
 
 #define MEMTEST_CHACHAISH
 #ifdef MEMTEST_SPLITTABLE
@@ -146,6 +147,8 @@ static void timed_flush() {
 }
 
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
+static struct sched_runqueue runqueue = {};
+struct sched_runqueue *get_runqueue() {return &runqueue;}
 
 _Bool memtest(u64 salt) {
 	_Bool res = 1;
