@@ -139,10 +139,10 @@ if (args.elfloader_spi or args.elfloader_initcpio) and not elfloader_decompressi
     args.elfloader_zstd = True
 
 use_irq = not args.elfloader_poll and (args.elfloader_spi or args.elfloader_sd)
-for m in ('elfloader', 'rk3399_sdmmc', 'rk3399_spi'):
+for m in ('elfloader', 'dramstage/blk_sd', 'rk3399_spi'):
     flags[m].append('-DCONFIG_ELFLOADER_IRQ='+('1' if use_irq else '0'))
 
-flags['rk3399_sdmmc'].append("-DCONFIG_ELFLOADER_DMA=1")
+flags['dramstage/blk_sd'].append("-DCONFIG_ELFLOADER_DMA=1")
 
 if elfloader_decompression and not args.elfloader_spi and not args.elfloader_sd:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_MEMORY=1')
@@ -226,8 +226,11 @@ if args.elfloader_spi:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader |= {'lib/rkspi', 'rk3399_spi'}
 if args.elfloader_sd:
+    sdmmc_modules = {'lib/dwmmc', 'lib/sd'}
+    levinboot |= sdmmc_modules | {'rk3399_sdmmc'}
+    flags['main'].append('-DCONFIG_SD=1')
+    elfloader |= sdmmc_modules | {'dramstage/blk_sd'}
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
-    elfloader |= {'lib/dwmmc', 'lib/sd', 'rk3399_sdmmc'}
 spi_flasher = {'brompatch-spi', 'lib/rkspi', 'brompatch'}
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
 modules = lib | levinboot | elfloader | {'teststage', 'lib/dump_fdt'}
@@ -240,7 +243,7 @@ if args.full_debug:
 
 for f in modules:
     d, sep, base = f.rpartition("/")
-    build_flags = {'flags': " ".join(flags[base])} if base in flags else {}
+    build_flags = {'flags': " ".join(flags[f])} if f in flags else {}
     src = path.join(srcdir, f+'.c')
     print(build(base+'.o', 'cc', src, **build_flags))
 

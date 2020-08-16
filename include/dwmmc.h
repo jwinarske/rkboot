@@ -25,10 +25,16 @@ struct dwmmc_signal_services {
 	u8 voltages_supported;
 };
 
-_Bool dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd);enum dwmmc_status {
-	DWMMC_ST_OK = 0,
-	DWMMC_ST_TIMEOUT = 1,
-	DWMMC_ST_ERROR = 2,
+_Bool dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd);
+
+#define DEFINE_DWMMC_ST\
+	X(OK) X(CMD_TIMEOUT) X(TIMEOUT) X(ERROR)
+
+enum dwmmc_status {
+#define X(name) DWMMC_ST_##name,
+	DEFINE_DWMMC_ST
+#undef X
+	NUM_DWMMC_ST
 };
 enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout);
 timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout);

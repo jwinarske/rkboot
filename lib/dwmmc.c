@@ -6,16 +6,23 @@
 #include <inttypes.h>
 #include <sd.h>
 #include <assert.h>
+#include <runqueue.h>
+
+static const char cmd_status_names[NUM_DWMMC_ST][16] = {
+#define X(name) #name,
+	DEFINE_DWMMC_ST
+#undef X
+};
 
 _Bool dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	spew("starting command %08"PRIx32"\n", cmd);
 	dwmmc->cmd = cmd;
 	timestamp_t start = get_timestamp();
 	while (dwmmc->cmd & DWMMC_CMD_START) {
-		__asm__("yield");
 		if (get_timestamp() - start > 100 * CYCLES_PER_MICROSECOND) {
 			return 0;
 		}
+		sched_yield();
 	}
 	return 1;
 }
@@ -23,9 +30,10 @@ enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, t
 	timestamp_t start = get_timestamp();
 	u32 status;
 	while (~(status = dwmmc->rintsts) & DWMMC_INT_CMD_DONE) {
-		__asm__("yield");
+		sched_yield();
 		if (get_timestamp() - start > raw_timeout) {
-			die("timed out waiting for command completion, rintsts=0x%"PRIx32" status=0x%"PRIx32"\n", dwmmc->rintsts, dwmmc->status);
+			info("timed out waiting for command completion, rintsts=0x%"PRIx32" status=0x%"PRIx32"\n", dwmmc->rintsts, dwmmc->status);
+			return DWMMC_ST_CMD_TIMEOUT;
 		}
 	}
 	if (status & DWMMC_ERROR_INT_MASK) {return DWMMC_ST_ERROR;}
@@ -35,13 +43,13 @@ enum dwmmc_status dwmmc_wait_cmd_done_inner(volatile struct dwmmc_regs *dwmmc, t
 }
 
 void dwmmc_print_status(volatile struct dwmmc_regs *dwmmc, const char *context) {
-	info("%sresp0=0x%08"PRIx32" status=0x%08"PRIx32" rintsts=0x%04"PRIx32"\n", context, dwmmc->resp[0], dwmmc->status, dwmmc->rintsts);
+	log("%sresp0=0x%08"PRIx32" status=0x%08"PRIx32" rintsts=0x%04"PRIx32"\n", context, dwmmc->resp[0], dwmmc->status, dwmmc->rintsts);
 }
 
 timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t raw_timeout) {
 	timestamp_t start = get_timestamp(), cur = start;
 	while (dwmmc->status & 1 << 9) {
-		__asm__("yield");
+		sched_yield();
 		if ((cur = get_timestamp()) - start > raw_timeout) {
 			dwmmc_print_status(dwmmc, "idle timeout");
 			return raw_timeout + 1;
@@ -50,7 +58,6 @@ timestamp_t dwmmc_wait_not_busy(volatile struct dwmmc_regs *dwmmc, timestamp_t r
 	return cur - start;
 }
 
-void udelay(u32 usecs);
 void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3);
 
 /* WARNING: does not read from the FIFO, so only use for short results that are read later */
@@ -130,7 +137,7 @@ _Bool dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services
 	assert(svc->voltages_supported & 1 << DWMMC_SIGNAL_3V3);
 	svc->set_clock(svc, DWMMC_CLOCK_400K);
 	dwmmc->pwren = 1;
-	udelay(1000);
+	usleep(1000);
 	dwmmc->rintsts = ~(u32)0;
 	dwmmc->intmask = 0;
 	dwmmc->fifoth = 0x307f0080;
@@ -139,30 +146,29 @@ _Bool dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services
 	{
 		timestamp_t start = get_timestamp();
 		while (dwmmc->ctrl & 3) {
-			__asm__("yield");
-			if (get_timestamp() - start > 100 * CYCLES_PER_MICROSECOND) {
-				die("reset timeout, ctrl=%08"PRIx32"\n", dwmmc->ctrl);
+			sched_yield();
+			if (get_timestamp() - start > 1000 * CYCLES_PER_MICROSECOND) {
+				info("reset timeout, ctrl=%08"PRIx32"\n", dwmmc->ctrl);
+				return 0;
 			}
 		}
 	}
 	info("SDMMC reset successful. HCON=%08"PRIx32"\n", dwmmc->hcon);
 	dwmmc->rst_n = 1;
-	udelay(5);
+	usleep(5);
 	dwmmc->rst_n = 0;
 	dwmmc->ctype = 0;
 	dwmmc->clkdiv[0] = 0;
 	dsb_st();
 	if (!set_clock_enable(dwmmc, 1)) {return 0;}
-	info("clock enabled\n");
-	udelay(500);
+	debugs("clock enabled\n");
 	enum dwmmc_status st = dwmmc_wait_cmd_done(dwmmc, 0 | DWMMC_CMD_SEND_INITIALIZATION | DWMMC_CMD_CHECK_RESPONSE_CRC, 0, 1000);
 	if (st != DWMMC_ST_OK) {
-		infos("error on CMD0\n");
+		info("error on CMD0: status=%s\n", cmd_status_names[st]);
 		return 0;
 	}
 	dwmmc_print_status(dwmmc, "CMD0 ");
-	udelay(10000);
-	st = dwmmc_wait_cmd_done(dwmmc, 8 | DWMMC_R1, 0x1aa, 100000);
+	st = dwmmc_wait_cmd_done(dwmmc, 8 | DWMMC_R1, 0x1aa, 10000);
 	dwmmc_print_status(dwmmc, "CMD8 ");
 	if (st == DWMMC_ST_ERROR) {return 0;}
 	_Bool sd_2_0 = st != DWMMC_ST_TIMEOUT;
@@ -170,14 +176,12 @@ _Bool dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services
 		st = dwmmc_wait_cmd_done(dwmmc, 0 | DWMMC_CMD_CHECK_RESPONSE_CRC, 0, 1000);
 		dwmmc_print_status(dwmmc, "CMD0 ");
 		if (st != DWMMC_ST_OK) {return 0;}
-		udelay(10000);
 	} else {
 		if ((dwmmc->resp[0] & 0xff) != 0xaa) {
 			 infos("CMD8 check pattern returned incorrectly\n");
 			 return 0;
 		}
 	}
-	info("status=%08"PRIx32"\n", dwmmc->status);
 	u32 resp;
 	{
 		timestamp_t start = get_timestamp();
@@ -195,14 +199,17 @@ _Bool dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services
 			}
 			resp = dwmmc->resp[0];
 			if (resp & SD_RESP_BUSY) {break;}
+#ifdef DEBUG_MSG
+			dwmmc_print_status(dwmmc, "ACMD41 ");
+#endif
 			if (get_timestamp() - start > 1000000 * CYCLES_PER_MICROSECOND) {
 				dwmmc_print_status(dwmmc, "init timeout ");
 				return 0;
 			}
-			udelay(100);
+			usleep(1000);
 		}
 	}
-	info("resp0=0x%08"PRIx32" status=0x%08"PRIx32"\n", resp, dwmmc->status);
+	dwmmc_print_status(dwmmc, "ACMD41 ");
 	_Bool high_capacity = !!(resp & SD_OCR_HIGH_CAPACITY);
 	assert_msg(sd_2_0 || !high_capacity, "conflicting info about card capacity");
 	st = dwmmc_wait_cmd_done(dwmmc, 2 | DWMMC_R2, 0, 1000);
@@ -306,7 +313,7 @@ void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, s
 		dwmmc->rintsts = ack;
 		if (!fifo_items) {
 			if (pos >= total_bytes) {break;}
-			udelay(100);
+			usleep(100);
 			continue;
 		}
 	}

@@ -74,7 +74,15 @@ void irq_handler(struct exc_state_save UNUSED *save) {
 	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
 }
 
-_Atomic(size_t) rk3399_init_flags = 0;
+static const size_t start_flags = 0
+#if !CONFIG_SD
+	| RK3399_INIT_SD_INIT
+#endif
+;
+
+static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT;
+
+_Atomic(size_t) rk3399_init_flags = start_flags;
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_SRAMSTAGE_VSTACK][4096];
 
@@ -135,15 +143,26 @@ int32_t NO_ASAN main(u64 sctlr) {
 	ddrinit_configure(&ddrinit_st);
 
 	for_range(i, 0, NUM_SRAMSTAGE_VSTACK) {
-		u64 limit = 0x100005000 + i * 0x1000;
+		u64 limit = 0x100005000 + i * 0x2000;
 		mmu_map_range(limit, limit + 0xfff, (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
 	}
 	dsb_ishst();
 
-	size_t flags, reported = 0, last = 0;
+#if CONFIG_SD
+	{struct sched_thread_start thread_start = {
+		.runnable = {.next = 0, .run = sched_start_thread},
+		.pc = (u64)rk3399_init_sdmmc,
+		.pad = 0,
+		.args = {},
+	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_SDMMC) - sizeof(struct sched_thread_start));
+	*runnable = thread_start;
+	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
+#endif
+
+	size_t flags, reported = 0, last = start_flags;
 	while (1) {
 		flags = atomic_load_explicit(&rk3399_init_flags, memory_order_acquire);
-		if (flags & RK3399_INIT_DRAM_READY) {break;}
+		if ((flags & root_flags) == root_flags) {break;}
 		timestamp_t now = get_timestamp();
 
 		static const struct {

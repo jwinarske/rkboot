@@ -81,7 +81,8 @@ static volatile u32 *const grf = (volatile u32 *)0xff770000;
 #define DEFINE_RK3399_INIT_FLAGS\
 	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\
 	X(DDRC0_READY, 30) X(DDRC1_READY, 30)\
-	X(DRAM_TRAINING, 40) X(DRAM_READY, 50)
+	X(DRAM_TRAINING, 40) X(DRAM_READY, 50)\
+	X(SD_INIT, 1000)
 enum {
 #define X(name, timeout) RK3399_INIT_##name##_BIT,
 	DEFINE_RK3399_INIT_FLAGS

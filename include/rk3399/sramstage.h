@@ -3,6 +3,7 @@
 #include <defs.h>
 
 void pmu_cru_setup();
+void rk3399_init_sdmmc();
 
 #define DEFINE_SRAMSTAGE_VSTACKS\
 	X(DDRC0) X(DDRC1) X(SDMMC)
