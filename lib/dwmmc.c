@@ -373,7 +373,7 @@ void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_
 		u32 idx = desc_written % ARRAY_SIZE(state->desc);
 		struct dwmmc_idmac_desc *desc = &state->desc[idx].desc;
 		desc->sizes = dma_size;
-		desc->ptr1 = (u32)buf;
+		desc->ptr1 = (u32)(uintptr_t)buf;
 		desc->ptr2 = 0;
 		u32 first_flag = !desc_written ? DWMMC_DES_FIRST : 0;
 		u32 last_flag = !bytes_left ? DWMMC_DES_LAST : 0;
@@ -410,7 +410,7 @@ void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *bu
 	puts("DMA read\n");
 	dwmmc_setup_dma(dwmmc);
 	printf("bmod %"PRIx32"\n", dwmmc->bmod);
-	dwmmc->desc_list_base = (u32)&state.desc;
+	dwmmc->desc_list_base = (u32)(uintptr_t)&state.desc;
 	read_command(dwmmc, sector, total_bytes);
 	while (state.bytes_transferred < total_bytes) {
 		dwmmc_handle_dma_interrupt(dwmmc, &state);

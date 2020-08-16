@@ -102,7 +102,7 @@ static void UNUSED rk3399_sdmmc_start_irq_read(u32 sector) {
 	dma_state.buf = sdmmc_async.buf;
 	dma_state.bytes_left = sdmmc_async.total_bytes;
 	dma_state.bytes_transferred = 0;
-	sdmmc->desc_list_base = (u32)&dma_state.desc;
+	sdmmc->desc_list_base = (u32)(uintptr_t)&dma_state.desc;
 #endif
 	sdmmc->ctrl |= DWMMC_CTRL_INT_ENABLE;
 	assert(sdmmc_async.total_bytes % 512 == 0);
