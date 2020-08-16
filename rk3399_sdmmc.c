@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <stdatomic.h>
-
 #include <assert.h>
-#include <dwmmc.h>
-#include <log.h>
-#include <rk3399.h>
-#include <mmu.h>
 
-void udelay(u32 usec);
+#include <log.h>
+#include <mmu.h>
+#include <timer.h>
+#include <aarch64.h>
+#include <dwmmc.h>
+#include <rk3399.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
 	switch (clk) {

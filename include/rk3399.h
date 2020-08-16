@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include <defs.h>
+#include <plat.h>
 
 enum {
 	GRF_GPIO2C_IOMUX = 0xe008 >> 2,

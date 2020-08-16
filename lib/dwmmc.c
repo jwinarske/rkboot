@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <dwmmc.h>
+
+#include <inttypes.h>
+#include <assert.h>
+
 #include <lib.h>
 #include <die.h>
-#include <rk3399.h>
-#include <inttypes.h>
+#include <plat.h>
 #include <sd.h>
-#include <assert.h>
 #include <runqueue.h>
 
 static const char cmd_status_names[NUM_DWMMC_ST][16] = {
@@ -19,7 +21,7 @@ _Bool dwmmc_wait_cmd_inner(volatile struct dwmmc_regs *dwmmc, u32 cmd) {
 	dwmmc->cmd = cmd;
 	timestamp_t start = get_timestamp();
 	while (dwmmc->cmd & DWMMC_CMD_START) {
-		if (get_timestamp() - start > 100 * CYCLES_PER_MICROSECOND) {
+		if (get_timestamp() - start > 100 * TICKS_PER_MICROSECOND) {
 			return 0;
 		}
 		sched_yield();
@@ -68,7 +70,7 @@ static _Bool wait_data_finished(volatile struct dwmmc_regs *dwmmc, u64 usecs) {
 		if (status & DWMMC_ERROR_INT_MASK) {
 			return 0;
 		}
-		if (get_timestamp() - start > usecs * CYCLES_PER_MICROSECOND) {
+		if (get_timestamp() - start > usecs * TICKS_PER_MICROSECOND) {
 			return 0;
 		}
 	}
@@ -120,7 +122,7 @@ static _Bool try_high_speed(volatile struct dwmmc_regs *dwmmc, struct dwmmc_sign
 			u32 a = dwmmc->fifo, b = dwmmc->fifo, c = dwmmc->fifo, d = dwmmc->fifo;
 			info("CMD6 %2"PRIu32": 0x%08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n", i, a, b, c, d);
 		}
-		timestamp_t timeout = 1000 * CYCLES_PER_MICROSECOND;
+		timestamp_t timeout = 1000 * TICKS_PER_MICROSECOND;
 		if (dwmmc_wait_not_busy(dwmmc, timeout) > timeout) {return 0;}
 		if (!set_clock_enable(dwmmc, 0)) {return 0;}
 		if (!svc->set_clock(svc, DWMMC_CLOCK_50M)) {
@@ -147,7 +149,7 @@ _Bool dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services
 		timestamp_t start = get_timestamp();
 		while (dwmmc->ctrl & 3) {
 			sched_yield();
-			if (get_timestamp() - start > 1000 * CYCLES_PER_MICROSECOND) {
+			if (get_timestamp() - start > 1000 * TICKS_PER_MICROSECOND) {
 				info("reset timeout, ctrl=%08"PRIx32"\n", dwmmc->ctrl);
 				return 0;
 			}
@@ -202,7 +204,7 @@ _Bool dwmmc_init(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services
 #ifdef DEBUG_MSG
 			dwmmc_print_status(dwmmc, "ACMD41 ");
 #endif
-			if (get_timestamp() - start > 1000000 * CYCLES_PER_MICROSECOND) {
+			if (get_timestamp() - start > 1000000 * TICKS_PER_MICROSECOND) {
 				dwmmc_print_status(dwmmc, "init timeout ");
 				return 0;
 			}
