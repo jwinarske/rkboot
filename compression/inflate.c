@@ -74,7 +74,7 @@ void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u1
 		if (!len) {continue;}
 		u16 code = codes[sym];
 		if (len <= 11) {
-			for_range(i, 0, 2048 >> len) {
+			for_range(i, 0, 2048u >> len) {
 				dectable[i << len | code] = len | sym << 4;
 			}
 		} else {
@@ -117,16 +117,6 @@ struct huffman_state {
 
 #define REPORT(ctx) spew(ctx ": 0x%x/%u\n", huff.bits, (unsigned)huff.num_bits)
 
-static inline struct huffman_state require_bits(struct huffman_state huff, const u8 *end) {
-	while (huff.num_bits < huff.val) {
-		if (huff.ptr >= end) {return huff;}
-		huff.bits |= *huff.ptr++ << huff.num_bits;
-		huff.num_bits += 8;
-		REPORT("req");
-	}
-	return huff;
-}
-
 #define ERROR_CODES \
 	X(OUT_OF_DATA, "out of data")\
 	X(FIRST_REP, "first length code is a repetition")\
@@ -150,7 +140,8 @@ const char *const error_msg[NUM_ERR_CODES] = {
 };
 
 #define SHIFT(n) do {huff.bits >>= (n); huff.num_bits -= (n);} while (0)
-static inline struct huffman_state huff_with_extra(struct huffman_state huff, const u8 *end, const u16 *dectable, const u8 *extra_bit_table, const u16 *baseline_table, const u16 *overlength_offsets, const u16 *overlength_symbols, const u16 *codes) {
+/* WARNING: does not handle overlength codes; TODO: only used in length decoding function, maybe factor into that */
+static inline struct huffman_state huff_with_extra(struct huffman_state huff, const u8 *end, const u16 *dectable, const u8 *extra_bit_table, const u16 *baseline_table, const u16 *overlength_offsets, const u16 *overlength_symbols) {
 	REPORT("sym");
 	u16 len, val;
 	while ((len = (val = dectable[huff.bits & 0x7ff]) & 0xf) > huff.num_bits) {
@@ -225,7 +216,7 @@ static struct huffman_state decode_lengths(struct huffman_state huff, const u8 *
 	static const u16 clength_base[3] = {0, 4, 12};
 	for_range(sym, 0, num_symbols) {
 		huff.val = REP_BASE;
-		huff = huff_with_extra(huff, end, dectable, clength_extra, clength_base, 0, 0, 0);
+		huff = huff_with_extra(huff, end, dectable, clength_extra, clength_base, 0, 0);
 		if (!huff.ptr) {return huff;}
 		u32 length_code = huff.val;
 		if (length_code < REP_BASE) {
@@ -370,7 +361,8 @@ static size_t raw_block(struct decompressor_state *state, const u8 *in, const u8
 	if (unlikely(end - in < 4)) {return DECODE_NEED_MORE_DATA;}
 	u16 len = in[0] | (u32)in[1] << 8;
 	u16 nlen = in[2] | (u32)in[3] << 8;
-	check(len == (nlen ^ 0xffff), "length 0x%04x is not ~0x%04x\n", (unsigned)len, (unsigned)nlen);
+	u16 diff = len ^ ~nlen;	/* work around a broken warning in GCC */
+	check(diff == 0, "length 0x%04"PRIx16" is not ~0x%04"PRIx16"\n", len, nlen);
 	in += 4;
 	if (unlikely(end - in < len)) {return DECODE_NEED_MORE_DATA;}
 	end = in + len;
