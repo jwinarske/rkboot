@@ -226,10 +226,10 @@ if args.elfloader_spi:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader |= {'lib/rkspi', 'rk3399_spi'}
 if args.elfloader_sd:
-    sdmmc_modules = {'lib/dwmmc', 'lib/sd'}
-    levinboot |= sdmmc_modules | {'rk3399_sdmmc'}
+    sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
+    levinboot |= sdmmc_modules | {'rk3399_sdmmc', 'lib/dwmmc_early'}
     flags['main'].append('-DCONFIG_SD=1')
-    elfloader |= sdmmc_modules | {'dramstage/blk_sd'}
+    elfloader |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc'}
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
 spi_flasher = {'brompatch-spi', 'lib/rkspi', 'brompatch'}
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
