@@ -24,7 +24,7 @@
 #include <dwmmc.h>
 #endif
 #include "fdt.h"
-#include ATF_HEADER_PATH
+#include TF_A_HEADER_PATH
 #include <runqueue.h>
 
 static image_info_t bl33_image = {

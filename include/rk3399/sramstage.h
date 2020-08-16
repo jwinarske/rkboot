@@ -5,6 +5,9 @@
 void pmu_cru_setup();
 void rk3399_init_sdmmc();
 
+struct stage_store;
+u32 end_sramstage(struct stage_store *store);
+
 #define DEFINE_SRAMSTAGE_VSTACKS\
 	X(DDRC0) X(DDRC1) X(SDMMC)
 

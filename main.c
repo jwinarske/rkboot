@@ -33,15 +33,6 @@ static const struct address_range critical_ranges[] = {
 	ADDRESS_RANGE_INVALID
 };
 
-#ifdef CONFIG_EMBED_ELFLOADER
-extern const u8 _binary_elfloader_lz4_start[], _binary_elfloader_lz4_end[];
-
-extern const struct decompressor lz4_decompressor;
-
-__asm__("jump: add sp, x5, #0; br x4");
-_Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
-#endif
-
 void sync_exc_handler() {
 	u64 esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3" : "=r"(esr), "=r"(far));
@@ -192,26 +183,5 @@ int32_t NO_ASAN main(u64 sctlr) {
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
 	gicv3_per_cpu_teardown(gic500r);
 	fiq_handler_spx = irq_handler_spx = 0;
-#ifdef CONFIG_EMBED_ELFLOADER
-	void *loadaddr = (void *)0x4000000;
-	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_NORMAL);
-	__asm__ volatile("dsb sy");
-	size_t size;
-	assert_msg(lz4_decompressor.probe(_binary_elfloader_lz4_start, _binary_elfloader_lz4_end, &size) == COMPR_PROBE_SIZE_KNOWN, "could not probe elfloader compression frame\n");
-	struct decompressor_state *state = (struct decompressor_state *)(loadaddr + (size + LZCOMMON_BLOCK + sizeof(max_align_t) - 1)/sizeof(max_align_t)*sizeof(max_align_t));
-	const u8 *ptr = lz4_decompressor.init(state, _binary_elfloader_lz4_start, _binary_elfloader_lz4_end);
-	assert(ptr);
-	state->window_start = state->out = loadaddr;
-	state->out_end = loadaddr + size;
-	while (state->decode) {
-		size_t res = state->decode(state, ptr, _binary_elfloader_lz4_end);
-		assert(res >= NUM_DECODE_STATUS);
-		ptr += res - NUM_DECODE_STATUS;
-	}
-	stage_teardown(&store);
-	jump(0, 0, 0, 0, loadaddr, (void *)0x1000);
-#else
-	stage_teardown(&store);
-	return 0;
-#endif
+	return end_sramstage(&store);
 }
