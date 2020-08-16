@@ -313,7 +313,9 @@ static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state 
 	u64 *header = (u64 *)bufs->header;
 	if (st->expect_header) {invalidate_range(header, sizeof(bufs->header));}
 
+#if DEBUG_MSG
 	dump_mem(bufs->header, 64);
+#endif
 	u64 cmd = header[0];
 	if (st->expect_header) {
 		switch (cmd) {
