@@ -4,6 +4,7 @@
 #include <runqueue.h>
 #include <log.h>
 #include <plat/sched.h>
+#include <timer.h>
 
 _Static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "atomic pointers are not lock-free");
 _Static_assert(sizeof(void *) == sizeof(_Atomic(void*)), "atomic pointers have different size");
@@ -99,5 +100,13 @@ void call_cc_flag_runnablelist(void NORETURN_ATTR (*callback)(struct sched_runna
 void sched_lock(struct sched_runnable_list *list, atomic_flag *flag) {
 	while (atomic_flag_test_and_set_explicit(flag, memory_order_acquire)) {
 		call_cc_flag_runnablelist(lock_finish, flag, list);
+	}
+}
+
+/* TODO: make a proper interrupt-driven timer infrastructure */
+void usleep(u32 usecs) {
+	timestamp_t start = get_timestamp();
+	while (get_timestamp() - start < (timestamp_t)usecs*TICKS_PER_MICROSECOND) {
+		sched_yield();
 	}
 }

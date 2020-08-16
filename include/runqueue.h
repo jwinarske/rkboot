@@ -34,3 +34,5 @@ _Noreturn void sched_next();
 void sched_yield();
 
 void call_cc(void NORETURN_ATTR (*callback)(struct sched_runnable *));
+
+void usleep(u32 usecs);
