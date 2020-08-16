@@ -51,7 +51,9 @@ See `<https://creativecommons.org/publicdomain/zero/1.0/legalcode>`__ for the le
 Source structure
 ================
 
-(still in flux)
+Still in flux, but slowly converging towards what it should be.
+
+Historical note: a lot of places still refer to 'elfloader'. Its current name is 'dramstage'. The transition will be completed in a future release.
 
 Board support
 =============
@@ -79,7 +81,7 @@ levinboot uses a Ninja-based build system. The build is configured by running :s
 
 Important command-line arguments for :src:`configure.py` are:
 
---with-atf-headers PATH  tells :src:`configure.py` where the ATF export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
+--with-tf-a-headers PATH  tells :src:`configure.py` where the TF-A export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
 
 --elfloader-lz4, --elfloader-gzip, --elfloader-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
 
@@ -93,19 +95,18 @@ Important command-line arguments for :src:`configure.py` are:
 --elfloader-initcpio  configures :output:`elfloader.bin` to load an initcpio image and pass it to the kernel.
   This process requires decompression support to be enabled.
 
---embed-elfloader  configures the :output:`levinboot-*` targets to contain the :output:`elfloader.bin` binary, copy it where it needs to be and run it, instead of just returning to the mask ROM.
-  This only makes sense if :output:`elfloader.bin` has is configured to load a payload by itself (see above), since otherwise it will just fail (or behave erratically in case DRAM retention has left parts of a BL31 image in RAM).
-
 Primary build targets are:
 
-- :output:`levinboot-usb.bin`: this is used for _`Booting via USB`.
+- :output:`sramstage.bin`: this is the first stage of levinboot, used to initialize DRAM (and potentially other hardware) for use by :output:`usbstage`, :output:`memtest.bin` and/or :output:`elfloader.bin`.
+
+- :output:`levinboot-usb.bin`: this is used for single-stage _`Booting via USB`
 
 - :output:`levinboot-sd.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
   Configure with :cmdargs:`--elfloader-spi --embed-elfloader` to make this useful.
 
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
-- :output:`elfloader.bin`: this is the payload loading stage for _`Booting via USB`.
+- :output:`elfloader.bin`: this is the payload loading stage for multi-stage _`Booting via USB`.
   It expects a BL31 ELF image, a FDT blob and a Linux kernel (or a similar EL2 payload like `teststage.bin`) at (currently) hardcoded DRAM addresses (or a compressed payload blob at address 32M), loads BL31 into its correct addresses (which includes SRAM), inserts address information into the FDT, and finally jumps to BL31 with parameters telling it to start Linux (or other EL2 payload).
 
 - :output:`teststage.bin`: this is a simple EL2 payload. Currently it only dumps the passed FDT blob, if it is detected at :code:`*X0`.
@@ -129,13 +130,13 @@ Booting via USB
 
 The least-setup/fastest-iteration way boot a system using levinboot is to use USB spoon feeding via RK3399 mask ROM mode.
 
-To do this:
+To prepare, you will need to do the following:
 
 - build the tools, specifically :command:`usbtool`. The tools are contained in the :src:`tools/` directory and have their own :src:`tools/configure`.
 
 - build levinboot as well as any payloads you might want to run.
 
-- remove or disable any other boot sources containing a valid ID block. These can be:
+- bring the system into USB mask ROM mode. This can be done by means of a 'recovery button' as implemented by levinboot and certain U-Boot builds, or by starting the system after removing or disabling any other boot sources containing a valid ID block. These can be:
 
   - a SPI flash chip. On the RockPro64, this can be disabled by shorting pins 23 and 25 on the PI-2 header.
     Note that neither RockPro64 nor Pinebook Pro currently ship with an ID block on the SPI chip, so this is not necessary by default.
@@ -152,32 +153,46 @@ To do this:
   Both of these use 3.3V, with levinboot setting 1.5MBaud (8 bits, no parity, no flow control) transfer rate by default (this can be changed in :src:`config.h` setting a different clock divider, i. e. 13 for 115200 baud).
   Keep in mind that BL31 by default uses 115200 baud by default, so unless you change that (in :code:`plat/rockchip/rk3399/rk3399_def.h` in the TF-A source tree or in levinboot as described before), you will not get any output from that stage.
 
-  - (re-)start the system. Both the RockPro64 and the Pinebook Pro have a reset button on the PCB, making this a quick and simple process.
+There are several possible boot processes via USB:
 
-  - tell :command:`usbtool` to run levinboot and its payload. There are multiple currently working constellations for this, and if you are just getting started, you should try them in order (while resetting the system inbetween, of course).
+- single-stage USB boot: :command:`usbtool --run levinboot-usb.bin`
 
-    - levinboot and `memtest.bin`: run :command:`usbtool --call levinboot-usb.bin --run memtest.bin`.
-      This should run levinboot and then start testing memory.
+  This is the simplest USB boot process, as it is equivalent to the self-boot images. Like the self-boot images, :output:`levinboot-usb.bin` can only be built if it is configured to use boot media.
 
-    - levinboot and BL31 with `teststage.bin`: run :command:`usbtool --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4200000 path/to/bl31.elf --load 100000 path/to/fdt-blob.dtb --load 280000 teststage.bin --jump 4000000 1000` (with the paths substituted for your system).
+  The primary purpose of this boot process is testing self-boot configurations in a situation as close as possible to self-boot, but without having to write to boot media.
 
-      This should run levinboot to initialize DRAM, load all payload files into DRAM, and finally jump to :output:`elfloader.bin` which will start BL31, which will give control to :output:`teststage.bin`, which should dump the FDT header as well as its contents in DTS syntax.
+- two-stage USB boot using boot media: :command:`usbtool --call sramstage.bin --load 4000000 elfloader.bin --jump 4000000 1000`
 
-    - levinboot and BL31 with a Linux kernel: this is basically the same as the previous command, just with your (uncompressed) kernel image instead of :output:`teststage.bin`.
+  This is functionally equivalent to the first, with the difference that sramstage does not unpack an embedded copy of dramstage (elfloader), which means that the build-process is slightly simpler and faster.
 
-    - The loading step for the previous commands will take a while, because :command:`usbtool` uses the mask ROM code to transfer the files, which is anything but fast at receiving and verifying data sent over USB. Therefore, levinboot includes a binary that offers a faster bulk-based interface to transfer commands and payloads.
+  This is useful for quickly testing dramstage changes related to boot medium handling. It is mutually exclusive with the next option:
 
-      To use it, build :output:`usbstage.bin` and run your configuration like so: :command:`usbtool --call levinboot-usb.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --load 4000000 elfloader.bin --start 4000000 4102000` or similar with :output:`teststage.bin`.
+- two-stage USB boot with mask-ROM transfer: :command:`usbtool --call sramstage.bin --load 4000000 elfloader.bin --load 4200000 path/to/bl31.elf --load 100000 path/to/fdt-blob.dtb --load 280000 teststage.bin --jump 4000000 1000` (with the paths substituted for your system)
 
-    - compressed payloads: configure the build with :cmdargs:`--elfloader-lz4`, :cmdargs:`--elfloader-gzip` and/or :cmdargs:`--elfloader-zstd` (depending on your taste in compression format) and run :command:`usbtool --call levinboot-usb.bin --load 4000000 elfloader.bin --load 4400000 path/to/payload-blob --jump 4000000 1000` where the payload blob is constructed as described in _`The Payload Blob`, with either a 'real' kernel or :output:`teststage.bin`.
-      The same can be done with :output:`usbstage.bin` like :command:`usbtool --call levinboot-usb.bin --run usbstage.bin --load 4400000 path/to/payload-blob --load 4000000 elfloader.bin --start 4000000 4102000`
+  This should run sramstage to initialize DRAM, load all payload files into DRAM, and finally jump to :output:`elfloader.bin` which will start BL31, which will give control to :output:`teststage.bin`, which should dump the FDT header as well as its contents in DTS syntax.
+
+  The primary use case for this boot process is testing any changes related to payload handoff, especially for small payloads.
+
+  You can use an (uncompressed) kernel image instead of teststage, though beware that mask-ROM-based transfers are rather slow. Instead it is recommended to use the following:
+
+- three-stage USB boot without compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --load 4000000 elfloader.bin --start 4000000 4102000`
+
+  This will use faster bulk transfers to copy the payload into memory. Note that neither this nor the previous boot process can use an initcpio, since compression is needed for framing.
+
+- three-stage USB boot with compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 4400000 path/to/payload-blob --load 4000000 elfloader.bin --start 4000000 4102000`
+
+  Note that usbstage can use stdin instead of a file by specifying '-'.
+
+  The usecase for this is booting actual systems (i. e. not payloads designed to test levinboot) via USB.
+
+You can also test DRAM by running :command:`usbtool --call sramstage.bin --run memtest.bin`. Furthermore, usbstage can also be used for _`Flashing SPI`.
 
 Booting from SPI
 ================
 
 levinboot can load its payload images from SPI flash. This way it can be used as the first stage in a kexec-based boot flow.
 
-Configure the build with :cmdargs:`--elfloader-spi --embed-elfloader` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
+Configure the build with :cmdargs:`--elfloader-spi` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
 
 You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin`, write :output:`levinboot-sd.img` to sector 64 or write :output: on SD/eMMC for use in self-booting.
 
@@ -198,8 +213,7 @@ Flashing SPI
 ------------
 
 You can write to SPI anytime you can boot via USB, as described above: :output:`usbstage.bin` implements a command to write a block of data (such as a levinboot image) to any erase-block-(typically 4k-)aligned address in SPI flash.
-To use this, configure and build levinboot without :cmdargs:`--embed-elfloader` and run :command:`usbtool --call levinboot-usb.bin --run usbstage.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
-Keep in mind that standalone images built without :cmdargs:`--embed-elfloader` will not work, so make sure to build :output:`usbtool.bin` and the image using different configurations. (TODO: make :cmdargs:`--embed-elfloader` unnecessary)
+Run :command:`usbtool --call sramstage.bin --run usbstage.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
 
 Booting from SD
 ===============
@@ -207,7 +221,7 @@ Booting from SD
 levinboot can load payload images from SDHC and SDXC cards.
 Compared to SPI payload loading, this offers potentially better performance and the ability to load larger payloads (currently limited to 60 MiB compressed, with the decompressed kernel needing to stay under 61.5 MiB because of the elfloader memory layout) than e. g. the 16 MiB flash chip of the Pinebook Pro or RockPro64.
 
-Configure the build with :cmdargs:`--elfloader-sd --embed-elfloader` in addition to your choice of preferred compression format (you need at least one).
+Configure the build with :cmdargs:`--elfloader-sd` in addition to your choice of preferred compression format (you need at least one).
 
 The output images (:output:`levinboot-sd.img` and :output:`levinboot-usb.bin`) will initialize the SDMMC block and try to start an SDHC/SDXC card connected to it, currently at 25 MHz bus frequency, and load up to 60 MiB of payload starting at sector 8192 (4 MiB offset), as needed for decompression.
 
@@ -219,4 +233,5 @@ SPI fallback
 ------------
 
 If configured with both :cmdargs:`--elfloader-sd` and :cmdargs:`--elfloader-spi`, levinboot will first try to load the payload from SD cards.
-When this fails or finishes, with the power button (still) held, levinboot will load the payload from SPI instead.
+When this finishes, with the power button (still) held, levinboot will load the payload from SPI instead.
+The same will happen if initializing the SD card fails.
