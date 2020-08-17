@@ -120,7 +120,7 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 		}
 		u32 erase_cmd = (u32)erase_ops[p].opcode << 24 | erased_until;
 		erased_until += 1 << erase_ops[p].shift;
-		printf("erase command %08"PRIx32" → %"PRIx32" ", erase_cmd, erased_until);
+		printf("erase command %08"PRIx64" → %"PRIx64" ", erase_cmd, erased_until);
 		tx_cmd(&wren, &wren + 1);
 		u8 cmd_buf[4] = {erase_cmd >> 24, erase_cmd >> 16, erase_cmd >> 8, erase_cmd};
 		tx_cmd(cmd_buf, cmd_buf + 4);
@@ -131,7 +131,7 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 	u8 _Alignas(16) cmd_buf[260];
 	cmd_buf[0] = 2;
 	while ((write_ptr & 0xffff00) != ((end - 1) & 0xffff00)) {
-		printf("%"PRIx32":", write_ptr);
+		printf("%"PRIx64":", write_ptr);
 		cmd_buf[1] = write_ptr >> 16;
 		cmd_buf[2] = write_ptr >> 8;
 		cmd_buf[3] = write_ptr;
@@ -161,6 +161,6 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 		wait_until_ready();
 	}
 	puts(" programmed.");
-	printf("written until %"PRIx32"\n", write_ptr);
+	printf("written until %"PRIx64"\n", write_ptr);
 	rk3399_spi_teardown();
 }
