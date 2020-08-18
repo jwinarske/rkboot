@@ -8,6 +8,7 @@
 #include <aarch64.h>
 #include <dwmmc.h>
 #include <rk3399.h>
+#include <runqueue.h>
 
 void rk3399_init_sdmmc() {
 	/* hclk_sd = 200 MHz */
@@ -28,9 +29,9 @@ void rk3399_init_sdmmc() {
 	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 14;
 	/* reset SDMMC */
 	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 1) << 10;
-	udelay(100);
+	usleep(100);
 	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 0) << 10;
-	udelay(2000);
+	usleep(2000);
 
 	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
 	dsb_ishst();
