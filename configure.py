@@ -76,40 +76,45 @@ parser.add_argument(
     help='use polling instead of IRQs for loading payloads'
 )
 parser.add_argument(
-    '--elfloader-spi',
-    action='store_true',
-    dest='elfloader_spi',
-    help='configure elfloader to load its images from SPI flash'
+    '--payload-spi',
+    action='append_const',
+    dest='boot_media',
+    const='spi',
+    help='configure dramstage to load its images from SPI flash'
 )
 parser.add_argument(
-    '--elfloader-sd',
-    action='store_true',
-    dest='elfloader_sd',
-    help='configure elfloader to load its images from an SD card'
+    '--payload-sd',
+    action='append_const',
+    dest='boot_media',
+    const='sd',
+    help='configure dramstage to load its images from an SD card'
 )
 parser.add_argument(
-    '--elfloader-initcpio',
+    '--payload-initcpio',
     action='store_true',
     dest='elfloader_initcpio',
-    help='configure elfloader to load an initcpio'
+    help='configure dramstage to load an initcpio'
 )
 parser.add_argument(
-    '--elfloader-lz4',
-    action='store_true',
-    dest='elfloader_lz4',
-    help='configure elfloader to decompress its payload using LZ4'
+    '--payload-lz4',
+    action='append_const',
+    dest='decompressors',
+    const='lz4',
+    help='configure dramstage to decompress its payload using LZ4'
 )
 parser.add_argument(
-    '--elfloader-gzip',
-    action='store_true',
-    dest='elfloader_gzip',
-    help='configure elfloader to decompress its payload using gzip'
+    '--payload-gzip',
+    action='append_const',
+    dest='decompressors',
+    const='gzip',
+    help='configure dramstage to decompress its payload using gzip'
 )
 parser.add_argument(
-    '--elfloader-zstd',
-    action='store_true',
-    dest='elfloader_zstd',
-    help='configure elfloader to decompress its payload using zstd'
+    '--payload-zstd',
+    action='append_const',
+    dest='decompressors',
+    const='zstd',
+    help='configure dramstage to decompress its payload using zstd'
 )
 args = parser.parse_args()
 if args.crc:
@@ -120,19 +125,9 @@ if args.uncached_memtest:
 if args.elfloader_initcpio:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_INITCPIO')
 
-boot_media = set()
-if args.elfloader_spi:
-    boot_media.add('spi')
-if args.elfloader_sd:
-    boot_media.add('sd')
+boot_media = set(args.boot_media or [])
+decompressors = set(args.decompressors or [])
 
-decompressors = set()
-if args.elfloader_lz4:
-    decompressors.add('lz4')
-if args.elfloader_gzip:
-    decompressors.add('gzip')
-if args.elfloader_zstd:
-    decompressors.add('zstd')
 if (bool(boot_media) or args.elfloader_initcpio) and not decompressors:
     print("WARNING: boot medium and initcpio support require decompression support, enabling zstd")
     elfloader_decompression = True
