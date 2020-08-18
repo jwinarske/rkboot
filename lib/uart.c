@@ -31,11 +31,17 @@ static u32 NO_ASAN fmt_str(const char *str, u32 queue_space) {
 	}
 }
 
-void puts(const char *str) {
+int fflush(FILE UNUSED *f) {
+	while (uart->tx_level) {asm("yield");}
+	return 0;
+}
+
+int puts(const char *str) {
 	u64 daif;
 	__asm__ volatile("mrs %0, DAIF;msr DAIFSet, #15" : "=r"(daif));
 	fmt_str(str, 0);
 	__asm__ volatile("msr DAIF, %0" : : "r"(daif));
+	return 0;
 }
 
 static u32 fmt_hex(u64 val, char pad, u8 width, u32 queue_space) {
@@ -148,7 +154,7 @@ static u32 fmt_format(const char *fmt, va_list *va, u32 queue_space) {
 	return queue_space;
 }
 
-void printf(const char *fmt, ...) {
+int printf(const char *fmt, ...) {
 	va_list va;
 	va_start(va, fmt);
 	u64 daif;
@@ -156,6 +162,7 @@ void printf(const char *fmt, ...) {
 	fmt_format(fmt, &va, 0);
 	__asm__ volatile("msr DAIF, %0" : : "r"(daif));
 	va_end(va);
+	return 0;
 }
 
 int die(const char *fmt, ...) {

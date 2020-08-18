@@ -3,5 +3,8 @@
 #include <defs.h>
 #define FREESTANDING_STDIO
 
-void puts(const char *);
-void PRINTF(1, 2) printf(const char *fmt, ...);
+int puts(const char *);
+int PRINTF(1, 2) printf(const char *fmt, ...);
+typedef void FILE;
+int fflush(FILE *file);
+static FILE *const stdout = 0;
