@@ -377,6 +377,8 @@ _Noreturn u32 main(u64 sctlr) {
 	load_from_spi(&payload, (u8 *)blob_addr, 60 << 20);
 #elif CONFIG_ELFLOADER_SD
 	assert_msg(load_from_sd(&payload, (u8 *)blob_addr, 60 << 20), "loading the payload failed");
+#elif CONFIG_EMMC
+	die("eMMC loading not implemented");
 #else
 #error No elfloader payload source specified
 #endif

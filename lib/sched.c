@@ -87,6 +87,16 @@ void sched_yield() {
 	call_cc(yield_finish);
 }
 
+_Noreturn NORETURN_ATTR void sched_finish_u32(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
+	struct sched_runnable_list *list = (struct sched_runnable_list *)list_;
+	sched_queue_single(list, continuation);
+	u32 val = *(volatile u32 *)reg;
+	if ((val & mask) != expected) {
+		sched_queue_list(CURRENT_RUNQUEUE, list);
+	}
+	sched_next();
+}
+
 static _Noreturn NORETURN_ATTR void lock_finish(struct sched_runnable *continuation, atomic_flag *flag, struct sched_runnable_list *list) {
 	sched_queue_single(list, continuation);
 	if (!atomic_flag_test_and_set_explicit(flag, memory_order_acquire)) {

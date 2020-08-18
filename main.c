@@ -19,6 +19,7 @@
 #include "dram/ddrinit.h"
 #include <aarch64.h>
 #include <sched_aarch64.h>
+#include <sdhci.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY_SRAM,
@@ -41,6 +42,10 @@ void sync_exc_handler() {
 
 static struct ddrinit_state ddrinit_st;
 
+#if CONFIG_EMMC
+static struct sdhci_state emmc_state;
+#endif
+
 void irq_handler(struct exc_state_save UNUSED *save) {
 	u64 grp0_intid;
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
@@ -50,6 +55,11 @@ void irq_handler(struct exc_state_save UNUSED *save) {
 	case 36:
 		ddrinit_irq(&ddrinit_st, grp0_intid - 35);
 		break;
+#if CONFIG_EMMC
+	case 43:
+		sdhci_irq(emmc, &emmc_state);
+		break;
+#endif
 	case 101:	/* stimer0 */
 		stimer0[0].interrupt_status = 1;
 #if DEBUG_MSG
@@ -69,9 +79,12 @@ static const size_t start_flags = 0
 #if !CONFIG_SD
 	| RK3399_INIT_SD_INIT
 #endif
+#if !CONFIG_EMMC
+	| RK3399_INIT_EMMC_INIT
+#endif
 ;
 
-static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT;
+static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT | RK3399_INIT_EMMC_INIT;
 
 _Atomic(size_t) rk3399_init_flags = start_flags;
 
@@ -117,6 +130,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 	} intids[] = {
 		{35, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* ddrc0 */
 		{36, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* ddrc1 */
+		{43, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* emmc */
 		{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
 	};
 	for_array(i, intids) {
@@ -147,6 +161,17 @@ int32_t NO_ASAN main(u64 sctlr) {
 		.pad = 0,
 		.args = {},
 	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_SDMMC) - sizeof(struct sched_thread_start));
+	*runnable = thread_start;
+	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
+#endif
+
+#if CONFIG_EMMC
+	{struct sched_thread_start thread_start = {
+		.runnable = {.next = 0, .run = sched_start_thread},
+		.pc = (u64)emmc_init,
+		.pad = 0,
+		.args = {(u64)&emmc_state},
+	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_EMMC) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif

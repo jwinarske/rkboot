@@ -9,7 +9,10 @@ enum {
 	GRF_GPIO4C_IOMUX = 0xe028 >> 2,
 	GRF_SOC_CON0 = 0xe200 >> 2,
 	GRF_SOC_CON7 = 0xe21c >> 2,
-	GRF_DDRC_CON = 0xe380 >> 2
+	GRF_DDRC_CON = 0xe380 >> 2,
+	GRF_EMMCCORE_CON = 0xf000 >> 2,
+	GRF_EMMCPHY_CON = 0xf780 >> 2,
+	GRF_EMMCPHY_STATUS = 0xf7a0 >> 2,
 };
 
 enum {
@@ -83,7 +86,7 @@ static volatile u32 *const grf = (volatile u32 *)0xff770000;
 	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\
 	X(DDRC0_READY, 30) X(DDRC1_READY, 30)\
 	X(DRAM_TRAINING, 40) X(DRAM_READY, 50)\
-	X(SD_INIT, 1000)
+	X(SD_INIT, 100) X(EMMC_INIT, 100)
 enum {
 #define X(name, timeout) RK3399_INIT_##name##_BIT,
 	DEFINE_RK3399_INIT_FLAGS
@@ -118,3 +121,6 @@ static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0x
 struct rktimer_regs;
 static volatile struct rktimer_regs *const stimer0 = (volatile struct rktimer_regs *)0xff860000;
 static volatile struct rktimer_regs *const stimer6 = (volatile struct rktimer_regs *)0xff868000;
+
+struct sdhci_regs;
+static volatile struct sdhci_regs *const emmc = (volatile struct sdhci_regs *)0xfe330000;

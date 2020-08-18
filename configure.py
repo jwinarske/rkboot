@@ -83,6 +83,13 @@ parser.add_argument(
     help='configure dramstage to load its images from SPI flash'
 )
 parser.add_argument(
+    '--payload-emmc',
+    action='append_const',
+    dest='boot_media',
+    const='emmc',
+    help='configure dramstage to load its images from an SD card'
+)
+parser.add_argument(
     '--payload-sd',
     action='append_const',
     dest='boot_media',
@@ -226,6 +233,12 @@ if 'zstd' in decompressors:
 if 'spi' in boot_media:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader |= {'lib/rkspi', 'rk3399_spi'}
+if 'emmc' in boot_media:
+    for f in ('main', 'elfloader'):
+        flags[f].append('-DCONFIG_EMMC=1')
+    emmc_modules = {'lib/sdhci_common'}
+    levinboot |= emmc_modules | {'sramstage/emmc_init'}
+    elfloader |= emmc_modules
 if 'sd' in boot_media:
     sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
     levinboot |= sdmmc_modules | {'rk3399_sdmmc', 'lib/dwmmc_early'}

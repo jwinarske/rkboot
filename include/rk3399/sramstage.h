@@ -4,12 +4,14 @@
 
 void pmu_cru_setup();
 void rk3399_init_sdmmc();
+struct sdhci_state;
+void emmc_init(struct sdhci_state *st);
 
 struct stage_store;
 u32 end_sramstage(struct stage_store *store);
 
 #define DEFINE_SRAMSTAGE_VSTACKS\
-	X(DDRC0) X(DDRC1) X(SDMMC)
+	X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC)
 
 enum sramstage_vstack {
 #define X(name) SRAMSTAGE_VSTACK_##name,
