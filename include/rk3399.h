@@ -82,27 +82,6 @@ static volatile u32 *const cru = (volatile u32 *)0xff760000;
 static volatile u32 *const pmucru = (volatile u32 *)0xff750000;
 static volatile u32 *const grf = (volatile u32 *)0xff770000;
 
-#define DEFINE_RK3399_INIT_FLAGS\
-	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\
-	X(DDRC0_READY, 30) X(DDRC1_READY, 30)\
-	X(DRAM_TRAINING, 40) X(DRAM_READY, 50)\
-	X(SD_INIT, 100) X(EMMC_INIT, 100)
-enum {
-#define X(name, timeout) RK3399_INIT_##name##_BIT,
-	DEFINE_RK3399_INIT_FLAGS
-#undef X
-	NUM_RK3399_INIT
-};
-_Static_assert(NUM_RK3399_INIT <= sizeof(size_t) * 8, "too many initialization flags");
-enum {
-#define X(name, timeout) RK3399_INIT_##name = (size_t)1 << RK3399_INIT_##name##_BIT,
-	DEFINE_RK3399_INIT_FLAGS
-#undef X
-};
-_Static_assert(sizeof(size_t) == sizeof(_Atomic(size_t)), "atomic size_t has differing size");
-extern _Atomic(size_t) rk3399_init_flags;
-void rk3399_set_init_flags(size_t);
-
 struct rkspi_regs;
 static volatile struct rkspi_regs *const spi1 = (volatile struct rkspi_regs*)0xff1d0000;
 

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <rk3399/sramstage.h>
 #include <stdatomic.h>
 #include <assert.h>
 
