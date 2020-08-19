@@ -130,7 +130,7 @@ flags['memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
 if args.elfloader_initcpio:
-    for f in ('elfloader', 'dramstage/commit'):
+    for f in ('elfloader', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_ELFLOADER_INITCPIO')
 
 boot_media = set(args.boot_media or [])
@@ -157,7 +157,7 @@ for m in ('elfloader', 'dramstage/blk_sd', 'rk3399_spi'):
 flags['dramstage/blk_sd'].append("-DCONFIG_ELFLOADER_DMA=1")
 
 if bool(decompressors) and not boot_media:
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_MEMORY=1')
+    flags['dramstage/decompression'].append('-DCONFIG_ELFLOADER_MEMORY=1')
 
 # ===== ninja skeleton =====
 srcdir = path.dirname(sys.argv[0])
@@ -219,23 +219,25 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 levinboot = {'main', 'pll', 'sramstage/pmu_cru'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
 elfloader = {'elfloader', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit'}
+boot_media_handlers = ('elfloader', 'dramstage/decompression')
 if decompressors:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
-    elfloader |= {'compression/lzcommon', 'lib/string'}
+    elfloader |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
 if 'lz4' in decompressors:
-    flags['elfloader'].append('-DHAVE_LZ4')
+    flags['dramstage/decompression'].append('-DHAVE_LZ4')
     elfloader |= {'compression/lz4'}
 if 'gzip' in decompressors:
-    flags['elfloader'].append('-DHAVE_GZIP')
+    flags['dramstage/decompression'].append('-DHAVE_GZIP')
     elfloader |= {'compression/inflate'}
 if 'zstd' in decompressors:
-    flags['elfloader'].append('-DHAVE_ZSTD')
+    flags['dramstage/decompression'].append('-DHAVE_ZSTD')
     elfloader |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
 if 'spi' in boot_media:
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_SPI=1')
+    for f in boot_media_handlers:
+        flags[f].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader |= {'lib/rkspi', 'rk3399_spi'}
 if 'emmc' in boot_media:
-    for f in ('main', 'elfloader'):
+    for f in ('main') + boot_media_handlers:
         flags[f].append('-DCONFIG_EMMC=1')
     emmc_modules = {'lib/sdhci_common'}
     levinboot |= emmc_modules | {'sramstage/emmc_init'}
@@ -245,7 +247,8 @@ if 'sd' in boot_media:
     levinboot |= sdmmc_modules | {'rk3399_sdmmc', 'lib/dwmmc_early'}
     flags['main'].append('-DCONFIG_SD=1')
     elfloader |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc'}
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_SD=1')
+    for f in boot_media_handlers:
+        flags[f].append('-DCONFIG_ELFLOADER_SD=1')
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
 dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
 modules = lib | levinboot | elfloader | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}
