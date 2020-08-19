@@ -130,7 +130,8 @@ flags['memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
 if args.elfloader_initcpio:
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_INITCPIO')
+    for f in ('elfloader', 'dramstage/commit'):
+        flags[f].append('-DCONFIG_ELFLOADER_INITCPIO')
 
 boot_media = set(args.boot_media or [])
 decompressors = set(args.decompressors or [])
@@ -141,7 +142,7 @@ if (bool(boot_media) or args.elfloader_initcpio) and not decompressors:
     args.elfloader_zstd = True
 
 if args.tf_a_headers:
-    flags['elfloader'].append(shesc('-DTF_A_HEADER_PATH="'+cesc(path.join(args.tf_a_headers, "common/bl_common_exp.h"))+'"'))
+    flags['dramstage/commit'].append(shesc('-DTF_A_HEADER_PATH="'+cesc(path.join(args.tf_a_headers, "common/bl_common_exp.h"))+'"'))
 elif boot_media or decompressors:
     print(
         "ERROR: booting a kernel requires TF-A support, which is enabled by providing --with-tf-a-headers.\n"
@@ -217,7 +218,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 levinboot = {'main', 'pll', 'sramstage/pmu_cru'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
-elfloader = {'elfloader', 'transform_fdt', 'lib/rki2c'}
+elfloader = {'elfloader', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit'}
 if decompressors:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
     elfloader |= {'compression/lzcommon', 'lib/string'}

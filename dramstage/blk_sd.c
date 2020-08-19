@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <rk3399/dramstage.h>
 #include <assert.h>
 
 #include <mmu.h>
@@ -12,7 +13,6 @@
 #include <dwmmc_helpers.h>
 
 #include <rk3399.h>
-#include "../elfloader.h"
 #include <async.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {

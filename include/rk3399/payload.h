@@ -11,5 +11,8 @@ struct payload_desc {
 #endif
 };
 
-struct async_transfer;
-void decompress_payload(struct async_transfer *async, struct payload_desc *payload);
+static const u64 elf_addr = 0x04200000, fdt_addr = 0x00100000, fdt_out_addr = 0x00180000, payload_addr = 0x00280000;
+static const u64 blob_addr = 0x04400000;
+#ifdef CONFIG_ELFLOADER_INITCPIO
+static const u64 initcpio_addr = 0x08000000;
+#endif
