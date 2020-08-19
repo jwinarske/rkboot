@@ -206,6 +206,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 	}
 
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
+	gicv2_wait_disabled(gic500d);
 	gicv3_per_cpu_teardown(gic500r);
 	fiq_handler_spx = irq_handler_spx = 0;
 	return end_sramstage(&store);
