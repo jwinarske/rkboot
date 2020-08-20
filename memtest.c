@@ -149,6 +149,9 @@ static void timed_flush() {
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
 static struct sched_runqueue runqueue = {};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
+u64 (*const pagetables)[512] = pagetable_frames;
+const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 _Bool memtest(u64 salt) {
 	_Bool res = 1;

@@ -65,6 +65,10 @@ static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[20][512];
+u64 (*const pagetables)[512] = pagetable_frames;
+const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
+
 _Noreturn u32 main(u64 sctlr) {
 	puts("elfloader\n");
 	struct stage_store store;

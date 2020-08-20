@@ -90,6 +90,9 @@ _Atomic(size_t) rk3399_init_flags = start_flags;
 
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_SRAMSTAGE_VSTACK][4096];
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
+u64 (*const pagetables)[512] = pagetable_frames;
+const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 static struct sched_runqueue runqueue = {};
 

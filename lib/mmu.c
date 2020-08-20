@@ -11,7 +11,6 @@
 #define PRINT_MAPPINGS 1
 #endif
 
-static u64 _Alignas(4096) UNINITIALIZED pagetables[11][512];
 static u32 next_pagetable = 1;
 
 enum {
@@ -36,7 +35,7 @@ enum {
 #define PGTAB_NS (1 << 5)
 
 static u64 *alloc_page_table() {
-	assert_msg(next_pagetable < ARRAY_SIZE(pagetables), "ERROR: ran out of pagetables");
+	assert_msg(next_pagetable < num_pagetables, "ERROR: ran out of pagetables");
 	return &pagetables[next_pagetable++][0];
 }
 
@@ -53,22 +52,22 @@ static void UNUSED dump_page_tables() {
 static u64 UNUSED map_address(u64 addr) {
 	u64 pte_l0 = pagetables[0][addr >> 39 & 0x1ff];
 	assert((pte_l0 & 3) == 3);
-	u64 pt_l1 = (pte_l0 >> 12 & MASK64(36)) - ((u64)&pagetables >> 12);
-	assert(pt_l1 < ARRAY_SIZE(pagetables));
+	u64 pt_l1 = (pte_l0 >> 12 & MASK64(36)) - ((u64)pagetables >> 12);
+	assert(pt_l1 < num_pagetables);
 	u64 pte_l1 = pagetables[pt_l1][addr >> 30 & 0x1ff];
 	if ((pte_l1 & 3) == 1) {
 		return (pte_l1 & MASK64(18) << 30) | (addr & MASK64(30));
 	}
 	assert((pte_l1 & 3) == 3);
-	u64 pt_l2 = (pte_l1 >> 12 & MASK64(36)) - ((u64)&pagetables >> 12);
-	assert(pt_l2 < ARRAY_SIZE(pagetables));
+	u64 pt_l2 = (pte_l1 >> 12 & MASK64(36)) - ((u64)pagetables >> 12);
+	assert(pt_l2 < num_pagetables);
 	u64 pte_l2 = pagetables[pt_l2][addr >> 21 & 0x1ff];
 	if ((pte_l2 & 3) == 1) {
 		return (pte_l2 & MASK64(27) << 21) | (addr & MASK64(21));
 	}
 	assert((pte_l2 & 3) == 3);
-	u64 pt_l3 = (pte_l2 >> 12 & MASK64(36)) - ((u64)&pagetables >> 12);
-	assert(pt_l3 < ARRAY_SIZE(pagetables));
+	u64 pt_l3 = (pte_l2 >> 12 & MASK64(36)) - ((u64)pagetables >> 12);
+	assert(pt_l3 < num_pagetables);
 	u64 pte_l3 = pagetables[pt_l3][addr >> 12 & 0x1ff];
 	assert_msg((pte_l3 & 3) == 3, "0x%"PRIx64" not mapped correctly (L3 translation)\n", addr);
 	return (pte_l3 & MASK64(36) << 12) | (addr & MASK64(12));
