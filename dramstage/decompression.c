@@ -2,12 +2,16 @@
 #include <rk3399/dramstage.h>
 #include <rk3399/payload.h>
 #include <assert.h>
+#include <stdatomic.h>
+#include <inttypes.h>
 
 #include <die.h>
 #include <log.h>
 #include <async.h>
 #include <timer.h>
 #include <compression.h>
+#include <runqueue.h>
+#include <dump_mem.h>
 
 static _Alignas(16) u8 decomp_state[1 << 14];
 extern const struct decompressor lz4_decompressor, gzip_decompressor, zstd_decompressor;
@@ -32,9 +36,9 @@ static size_t wait_for_data(struct async_transfer *async, size_t old_pos) {
 	if (old_pos >= async->total_bytes) {
 		die("waited for more data than planned\n");
 	}
-	while ((pos = async->pos) <= old_pos) {
+	while ((pos = atomic_load_explicit(&async->pos, memory_order_acquire)) <= old_pos) {
 		debug("waiting for data …\n");
-		__asm__("wfi");
+		sched_yield();
 	}
 	return pos;
 }
@@ -48,7 +52,7 @@ static void UNUSED async_wait(struct async_transfer *async) {
 		spew("idle ");dwmmc_print_status(sdmmc);
 #endif
 #endif
-		__asm__("wfi");
+		sched_yield();
 	}
 }
 
@@ -58,12 +62,12 @@ static const char *const decode_status_msg[NUM_DECODE_STATUS] = {
 #undef X
 };
 
-static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 *out, u8 **out_end) {
+static size_t decompress(struct async_transfer *async, size_t offset, u8 *out, u8 **out_end) {
 #ifdef ASYNC_WAIT
 	async_wait(async);
 #endif
 	struct decompressor_state *state = (struct decompressor_state *)decomp_state;
-	size_t size, xfer_pos = async->pos;
+	size_t size, xfer_pos = atomic_load_explicit(&async->pos, memory_order_acquire);
 	u64 start = get_timestamp();
 	const u8 *buf = async->buf;
 	for_array(i, formats) {
@@ -87,9 +91,13 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 				if (res == DECODE_NEED_MORE_DATA) {
 					xfer_pos = wait_for_data(async, xfer_pos);
 				} else {
-					assert_msg(res >= NUM_DECODE_STATUS, "decompression failed, status: %zu (%s)\n", res, decode_status_msg[res]);
+					if (res < NUM_DECODE_STATUS) {
+						info("decompression failed, status: %zu (%s)\n", res, decode_status_msg[res]);
+						return 0;
+					}
 					offset += res - NUM_DECODE_STATUS;
 				}
+				sched_yield();
 			}
 			info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / TICKS_PER_MICROSECOND);
 			*out_end = state->out;
@@ -99,50 +107,25 @@ static size_t UNUSED decompress(struct async_transfer *async, size_t offset, u8 
 #if DEBUG_MSG
 	dump_mem(buf + offset, xfer_pos - offset < 1024 ? xfer_pos - offset : 1024);
 #endif
-	die("couldn't probe");
+	infos("couldn't probe\n");
+	return 0;
 }
 
-void decompress_payload(struct async_transfer *async, struct payload_desc *payload) {
+_Bool decompress_payload(struct async_transfer *async) {
+	struct payload_desc *payload = get_payload_desc();
 	payload->elf_end -= LZCOMMON_BLOCK;
 	size_t offset = decompress(async, 0, payload->elf_start, &payload->elf_end);
+	if (!offset) {return 0;}
 	payload->fdt_end -= LZCOMMON_BLOCK;
 	offset = decompress(async, offset, (u8 *)fdt_addr, &payload->fdt_end);
+	if (!offset) {return 0;}
 	payload->kernel_end -= LZCOMMON_BLOCK;
 	offset = decompress(async, offset, (u8 *)payload_addr, &payload->kernel_end);
+	if (!offset) {return 0;}
 #ifdef CONFIG_ELFLOADER_INITCPIO
 	payload->initcpio_end -= LZCOMMON_BLOCK;
 	offset = decompress(async, offset, (u8 *)initcpio_addr, &payload->initcpio_end);
+	if (!offset) {return 0;}
 #endif
-}
-
-#if CONFIG_ELFLOADER_MEMORY
-static void load_from_memory(struct payload_desc *payload, u8 UNUSED *buf, size_t buf_size) {
-	struct async_transfer async = {
-		.buf = (u8 *)blob_addr,
-		.total_bytes = buf_size,
-		.pos = buf_size,
-	};
-	decompress_payload(&async, payload);
-}
-#endif
-
-void load_compressed_payload(struct payload_desc *payload) {
-#if CONFIG_ELFLOADER_MEMORY
-	load_from_memory(payload, (u8 *)blob_addr, 60 << 20);
-#elif CONFIG_ELFLOADER_SD && CONFIG_ELFLOADER_SPI
-	_Bool sd_success = load_from_sd(payload, (u8 *)blob_addr, 60 << 20);
-	printf("GPIO0: %08"PRIx32"\n", gpio0->read);
-	if (!sd_success || ~gpio0->read & 32) {
-		init_payload_desc(payload);
-		load_from_spi(payload, (u8 *)blob_addr, 60 << 20);
-	}
-#elif CONFIG_ELFLOADER_SPI
-	load_from_spi(payload, (u8 *)blob_addr, 60 << 20);
-#elif CONFIG_ELFLOADER_SD
-	assert_msg(load_from_sd(payload, (u8 *)blob_addr, 60 << 20), "loading the payload failed");
-#elif CONFIG_EMMC
-	die("eMMC loading not implemented");
-#else
-#error No elfloader payload source specified
-#endif
+	return 1;
 }

@@ -12,6 +12,9 @@ struct sdhci_state {
 
 struct sdhci_regs;
 void sdhci_irq(volatile struct sdhci_regs *sdhci, struct sdhci_state *st);
+HEADER_FUNC void sdhci_wake_threads(struct sdhci_state *st) {
+	sched_queue_list(CURRENT_RUNQUEUE, &st->interrupt_waiters);
+}
 
 enum sdhci_phy_setup_action {
 	SDHCI_PHY_START = 1,

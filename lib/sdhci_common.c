@@ -43,7 +43,7 @@ _Bool sdhci_wait_state_clear(volatile struct sdhci_regs *sdhci, struct sdhci_sta
 
 _Bool sdhci_submit_cmd(volatile struct sdhci_regs *sdhci, struct sdhci_state *st, u32 cmd, u32 arg) {
 	u32 state_mask = SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT;
-	if (!sdhci_wait_state_clear(sdhci, st, state_mask, USECS(100), "inhibit")) {return 0;}
+	if (!sdhci_wait_state_clear(sdhci, st, state_mask, USECS(1000), "inhibit")) {return 0;}
 	info("[%"PRIuTS"] CMD %04"PRIx32" %08"PRIx32"\n", get_timestamp(), cmd, arg);
 	sdhci->arg = arg;
 	sdhci->cmd = (u16)cmd;

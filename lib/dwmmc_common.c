@@ -34,11 +34,11 @@ enum dwmmc_status dwmmc_wait_cmd_done_postissue(volatile struct dwmmc_regs *dwmm
 	timestamp_t start = get_timestamp();
 	u32 status;
 	while (~(status = dwmmc->rintsts) & DWMMC_INT_CMD_DONE) {
-		sched_yield();
 		if (get_timestamp() - start > raw_timeout) {
 			info("timed out waiting for command completion, rintsts=0x%"PRIx32" status=0x%"PRIx32"\n", dwmmc->rintsts, dwmmc->status);
 			return DWMMC_ST_CMD_TIMEOUT;
 		}
+		sched_yield();
 	}
 	if (status & DWMMC_ERROR_INT_MASK) {return DWMMC_ST_ERROR;}
 	if (status & DWMMC_INT_RESP_TIMEOUT) {return DWMMC_ST_TIMEOUT;}

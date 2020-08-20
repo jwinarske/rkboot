@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399/dramstage.h>
 #include <inttypes.h>
+#include <stdatomic.h>
+
 #include <main.h>
 #include <uart.h>
 #include <rk3399.h>
@@ -10,20 +12,17 @@
 #include <async.h>
 #include <rki2c.h>
 #include <rki2c_regs.h>
-#include <exc_handler.h>
 #include <rkgpio_regs.h>
+#include <rktimer_regs.h>
+#include <exc_handler.h>
 #include <dump_mem.h>
-#if CONFIG_ELFLOADER_SPI
-#include <rkspi.h>
-#include <rkspi_regs.h>
-#include "rk3399_spi.h"
-#endif
 #include <gic.h>
 #include <gic_regs.h>
-#if CONFIG_ELFLOADER_SD
-#include <dwmmc.h>
-#endif
 #include <runqueue.h>
+#include <sched_aarch64.h>
+#include <rkspi.h>
+#include <dwmmc.h>
+#include <dwmmc_dma.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY,
@@ -45,7 +44,46 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
 }
 
-static void init_payload_desc(struct payload_desc *payload) {
+extern struct async_transfer spi1_async, sdmmc_async;
+extern struct rkspi_xfer_state spi1_state;
+extern struct dwmmc_dma_state sdmmc_dma_state;
+
+static void irq_handler(struct exc_state_save UNUSED *save) {
+	u64 grp0_intid;
+	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
+	atomic_signal_fence(memory_order_acquire);
+	switch (grp0_intid) {
+#if CONFIG_ELFLOADER_SPI
+	case 85:
+		rkspi_handle_interrupt(&spi1_state, &spi1_async, spi1);
+		dsb_sy();
+		break;
+#endif
+#if CONFIG_ELFLOADER_SD
+	case 97:
+		dwmmc_handle_dma_interrupt(sdmmc, &sdmmc_dma_state);
+		sdmmc_async.pos = sdmmc_dma_state.bytes_transferred;
+		break;
+#endif
+	case 101:	/* stimer0 */
+		stimer0[0].interrupt_status = 1;
+#if DEBUG_MSG
+		if (get_timestamp() < 2400000) {logs("tick\n");}
+#else
+		dsb_st();	/* apparently the interrupt clear isn't fast enough, wait for completion */
+#endif
+		break;	/* do nothing, just want to wake the main loop */
+	default:
+		die("unexpected intid%"PRIu64"\n", grp0_intid);
+	}
+	atomic_signal_fence(memory_order_release);
+	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
+}
+
+static struct payload_desc payload_descriptor;
+
+struct payload_desc *get_payload_desc() {
+	struct payload_desc *payload = &payload_descriptor;
 	payload->elf_start = (u8 *)elf_addr;
 	payload->elf_end =  (u8 *)blob_addr;
 	payload->fdt_start = (u8 *)fdt_addr;
@@ -57,6 +95,14 @@ static void init_payload_desc(struct payload_desc *payload) {
 	payload->initcpio_start = (u8 *)initcpio_addr;
 	payload->initcpio_end = (u8 *)(DRAM_START + dram_size());
 #endif
+	return payload;
+}
+
+void init_blob_buffer(struct async_transfer *async) {
+	async->buf = (u8 *)blob_addr;
+	async->total_bytes = 60 << 20;
+	/* this is initialization – access should be externally synchronized */
+	atomic_store_explicit(&async->pos, 0, memory_order_relaxed);
 }
 
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
@@ -65,6 +111,57 @@ static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
+static const size_t initial_boot_state = 0
+#if !CONFIG_ELFLOADER_SD
+	| 1 << BOOT_MEDIUM_SD
+#endif
+	| 1 << BOOT_MEDIUM_EMMC
+#if !CONFIG_ELFLOADER_SPI
+	| 1 << BOOT_MEDIUM_SPI
+#endif
+;
+static _Atomic(u32) boot_state = initial_boot_state;
+static _Atomic(u32) current_boot_cue = BOOT_CUE_NONE;
+_Static_assert(32 >= 3 * NUM_BOOT_MEDIUM, "not enough bits for boot medium");
+static struct sched_runnable_list boot_monitors;
+static struct sched_runnable_list boot_cue_waiters;
+
+static u32 monitor_boot_state(u32 state, u32 mask, u32 expected) {
+	while ((state & mask) == expected) {
+		printf("monitoring boot state mask0x%08"PRIx32" exp0x%08"PRIx32"\n", mask, expected);
+		call_cc_ptr2_int2(sched_finish_u32, &boot_state, &boot_monitors, mask, expected);
+		state = atomic_load_explicit(&boot_state, memory_order_acquire);
+		printf("boot monitor woke up: 0x%08"PRIx32"\n", state);
+	}
+	return state;
+}
+
+void boot_medium_exit(enum boot_medium medium) {
+	printf("boot medium exit\n");
+	atomic_fetch_or_explicit(&boot_state, 1 << medium, memory_order_release);
+	sched_queue_list(CURRENT_RUNQUEUE, &boot_monitors);
+}
+
+void boot_medium_loaded(enum boot_medium medium) {
+	atomic_fetch_or_explicit(&boot_state, 1 << 2*NUM_BOOT_MEDIUM << medium, memory_order_release);
+	sched_queue_list(CURRENT_RUNQUEUE, &boot_monitors);
+}
+
+_Bool wait_for_boot_cue(enum boot_medium medium) {
+	atomic_fetch_or_explicit(&boot_state, 1 << NUM_BOOT_MEDIUM << medium, memory_order_release);
+	sched_queue_list(CURRENT_RUNQUEUE, &boot_monitors);
+	while (1) {
+		u32 curr = atomic_load_explicit(&current_boot_cue, memory_order_acquire);
+		if (curr == BOOT_CUE_EXIT) {
+			return 0;
+		} else if (curr == medium) {
+			return 1;
+		}
+		call_cc_ptr2_int2(sched_finish_u32, &current_boot_cue, &boot_cue_waiters, ~(u32)0, curr);
+	}
+}
+
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_DRAMSTAGE_VSTACK][4096];
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[20][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
@@ -83,6 +180,9 @@ _Noreturn u32 main(u64 sctlr) {
 	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
 	mmu_map_mmio_identity((u64)gpio0, (u64)gpio0 + 0xfff);
 	dsb_ishst();
+
+	/* set DRAM as Non-Secure; needed for DMA */
+	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
 
 	assert_msg(rkpll_switch(pmucru + PMUCRU_PPLL_CON), "PPLL did not lock-on\n");
 	/* clk_i2c4 = PPLL/4 = 169 MHz, DTS has 200 */
@@ -116,24 +216,108 @@ _Noreturn u32 main(u64 sctlr) {
 		info("not running on a Pinebook Pro ⇒ not setting up regulators\n");
 	}
 
-	struct payload_desc payload;
-	init_payload_desc(&payload);
+	struct payload_desc *payload = get_payload_desc();
 
-#if CONFIG_ELFLOADER_IRQ
-	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
-	dsb_ishst();
-	gicv3_per_cpu_setup(gic500r);
-	u64 xfer_start = get_timestamp();
+	static const u32 all_exit_mask = (1 << NUM_BOOT_MEDIUM) - 1;
+	if (initial_boot_state != all_exit_mask) {
+		mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
+		mmu_map_mmio_identity((u64)stimer0, (u64)stimer0 + 0xfff);
+		dsb_ishst();
+		fiq_handler_spx = irq_handler_spx = irq_handler;
+		gicv3_per_cpu_setup(gic500r);
+		static const struct {
+			u16 intid;
+			u8 priority;
+			u8 targets;
+			u32 flags;
+		} intids[] = {
+			{43, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* emmc */
+			//{85, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* spi */
+			{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
+		};
+		for_array(i, intids) {
+			gicv2_setup_spi(gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
+		}
+
+		for_range(i, 0, NUM_DRAMSTAGE_VSTACK) {
+			u64 limit = 0x100005000 + i * 0x2000;
+			mmu_map_range(limit, limit + 0xfff, (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
+		}
+		dsb_ishst();
+
+#if CONFIG_ELFLOADER_SD
+		{struct sched_thread_start thread_start = {
+			.runnable = {.next = 0, .run = sched_start_thread},
+			.pc = (u64)boot_sd,
+			.pad = 0,
+			.args = {},
+		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_SD) - sizeof(struct sched_thread_start));
+		*runnable = thread_start;
+		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
+#endif
+#if CONFIG_ELFLOADER_SPI
+		{struct sched_thread_start thread_start = {
+			.runnable = {.next = 0, .run = sched_start_thread},
+			.pc = (u64)boot_spi,
+			.pad = 0,
+			.args = {},
+		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_SPI) - sizeof(struct sched_thread_start));
+		*runnable = thread_start;
+		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
 
-#if CONFIG_ELFLOADER_DECOMPRESSION
-	load_compressed_payload(&payload);
-#endif
+		u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
+		_Bool payload_loaded = 0;
+		for_range(boot_medium, 0, NUM_BOOT_MEDIUM) {
+			u32 ready_bit = 1 << NUM_BOOT_MEDIUM << boot_medium;
+			u32 exit_bit = 1 << boot_medium;
+			state = monitor_boot_state(state, ready_bit | exit_bit, 0);
+			if (state & exit_bit) {
+				printf("boot medium failed, going on to next\n");
+				continue;
+			}
+			atomic_store_explicit(&current_boot_cue, boot_medium, memory_order_release);
+			sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
+			u64 xfer_start = get_timestamp();
 
-#if CONFIG_ELFLOADER_IRQ
-	u64 xfer_end = get_timestamp();
-	printf("transfer finished after %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
-	gicv3_per_cpu_teardown(gic500r);
+			u32 loaded_bit = 1 << 2*NUM_BOOT_MEDIUM << boot_medium;
+			state = monitor_boot_state(state, loaded_bit | exit_bit, 0);
+
+			if (state & loaded_bit) {
+				u64 xfer_end = get_timestamp();
+				printf("payload loaded in %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
+				/* leave the user at least 500 ms to let go for each payload  */
+				while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
+				if ((~gpio0->read & 32) && boot_medium != NUM_BOOT_MEDIUM - 1) {
+					printf("boot overridden\n");
+					continue;
+				}
+				payload_loaded = 1;
+				break;
+			}
+			printf("boot medium failed, going on to next\n");
+		}
+		if (!payload_loaded) {
+			die("no payload available\n");
+		}
+		atomic_store_explicit(&current_boot_cue, BOOT_CUE_EXIT, memory_order_release);
+		sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
+		while ((state & all_exit_mask) != all_exit_mask) {
+			state = monitor_boot_state(state, all_exit_mask, state & all_exit_mask);
+		}
+
+		for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
+		gicv2_wait_disabled(gic500d);
+		gicv3_per_cpu_teardown(gic500r);
+	} else {
+#if ELFLOADER_DECOMPRESSION
+		struct async_transfer async;
+		init_blob_buffer(&async);
+		async.pos = async.total_bytes;
+		decompress_payload(&async);
 #endif
-	commit(&payload, &store);
+	}
+	fiq_handler_spx = irq_handler_spx = 0;
+
+	commit(payload, &store);
 }

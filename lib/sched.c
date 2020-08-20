@@ -90,7 +90,8 @@ void sched_yield() {
 _Noreturn NORETURN_ATTR void sched_finish_u32(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
 	struct sched_runnable_list *list = (struct sched_runnable_list *)list_;
 	sched_queue_single(list, continuation);
-	u32 val = *(volatile u32 *)reg;
+	/* in the critical case where the notifier just dequeued before we enqueued, we are already synchronized by the dequeue-enqueue, so relaxed is OK */
+	u32 val = atomic_load_explicit((volatile _Atomic(u32) *)reg, memory_order_relaxed);
 	if ((val & mask) != expected) {
 		sched_queue_list(CURRENT_RUNQUEUE, list);
 	}
