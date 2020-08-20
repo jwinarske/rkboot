@@ -46,8 +46,8 @@ PROC(sched_resume, 2)
 	.cfi_offset x29, -112
 	.cfi_offset x30, -104
 	// restore the stack
-	add sp, x1, #-16
-	add x29, x1, #-16
+	add sp, x0, #-16
+	add x29, x0, #-16
 	.cfi_def_cfa x29, 112
 
 	// restore non-volatile GPRs
