@@ -2,9 +2,9 @@
 #include <dwmmc.h>
 #include <dwmmc_helpers.h>
 #include <dwmmc_dma.h>
-
 #include <inttypes.h>
 #include <assert.h>
+#include <stdatomic.h>
 
 #include <die.h>
 #include <timer.h>
@@ -200,14 +200,14 @@ void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, s
 		u32 fifo_items = status >> 17 & 0x1fff;
 		for_range(i, 0, fifo_items) {
 			u32 val = *(volatile u32*)0xfe320200;
-			spew("%3"PRIu32": 0x%08"PRIx32"\n", pos, val);
+			spew("%3zu: 0x%08"PRIx32"\n", pos, val);
 			*(u32 *)(buf + pos) = val;
 			pos += 4;
 		}
 		u32 ack = 0;
 		if (intstatus & DWMMC_INT_CMD_DONE) {
 #ifdef SPEW_MSG
-			dwmmc_print_status(dwmmc);
+			dwmmc_print_status(dwmmc, "poll ");
 #endif
 			ack |= DWMMC_INT_CMD_DONE;
 		}
@@ -244,10 +244,12 @@ void dwmmc_init_dma_state(struct dwmmc_dma_state *state) {
 void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_dma_state *state) {
 	u32 status = dwmmc->idmac_status;
 	u32 desc_written = state->desc_written, desc_completed = state->desc_completed;
-	size_t bytes_transferred = state->bytes_transferred;
-	size_t bytes_left = state->bytes_left;
+	/* mutual exclusion should be provided by the interrupt controller, only need to handle synchronization */
+	u32 finished = atomic_load_explicit(&state->finished, memory_order_acquire);
+	u32 buf = state->buf;
+	u32 end = state->end;
 	debugs("?");
-	spew("idmac %"PRIu32"/%"PRIu32" %zx/%zx status=0x%"PRIx32" cur_desc=0x%08"PRIx32" cur_buf=0x%08"PRIx32"\n", desc_completed, desc_written, bytes_transferred, bytes_left, status, dwmmc->cur_desc_addr, dwmmc->cur_buf_addr);
+	spew("idmac %"PRIu32"/%"PRIu32" %"PRIx32"/%"PRIx32" status=0x%"PRIx32" cur_desc=0x%08"PRIx32" cur_buf=0x%08"PRIx32"\n", desc_completed, desc_written, finished, buf, status, dwmmc->cur_desc_addr, dwmmc->cur_buf_addr);
 	if (status & DWMMC_IDMAC_INT_RECEIVE) {
 		dwmmc->idmac_status = DWMMC_IDMAC_INT_NORMAL | DWMMC_IDMAC_INT_RECEIVE;
 	}
@@ -257,7 +259,7 @@ void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_
 		struct dwmmc_idmac_desc *desc = &state->desc[idx].desc;
 		if (desc->control & DWMMC_DES_OWN) {break;}
 		u32 sizes = desc->sizes;
-		bytes_transferred += (sizes & 0x1fff) + (sizes >> 13 & 0x1fff);
+		finished += (sizes & 0x1fff) + (sizes >> 13 & 0x1fff);
 		desc_completed += 1;
 		debugs(".");
 		for (u64 addr = desc->ptr1, end = addr + (sizes & 0x1fff); addr < end; addr += 64) {
@@ -265,22 +267,20 @@ void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_
 		}
 	}
 	state->desc_completed = desc_completed;
-	state->bytes_transferred = bytes_transferred;
-	void *buf = state->buf;
-	while (bytes_left && desc_completed + ARRAY_SIZE(state->desc) > desc_written) {
+	while (buf < end && desc_completed + ARRAY_SIZE(state->desc) > desc_written) {
+		size_t bytes_left = end - buf;
 		u32 dma_size = bytes_left < 4096 ? bytes_left : 4096;
-		bytes_left -= dma_size;
 		u32 idx = desc_written % ARRAY_SIZE(state->desc);
 		struct dwmmc_idmac_desc *desc = &state->desc[idx].desc;
 		desc->sizes = dma_size;
 		desc->ptr1 = (u32)(uintptr_t)buf;
 		desc->ptr2 = 0;
 		u32 first_flag = !desc_written ? DWMMC_DES_FIRST : 0;
-		u32 last_flag = !bytes_left ? DWMMC_DES_LAST : 0;
+		u32 last_flag = buf == end ? DWMMC_DES_LAST : 0;
 		u32 ring_end_flag = idx == ARRAY_SIZE(state->desc) - 1 ? DWMMC_DES_END_OF_RING : 0;
 		u32 control = first_flag | last_flag | ring_end_flag | DWMMC_DES_OWN;
 		debugs("=");
-		spew("writing descriptor@%"PRIx64": %08"PRIx32" %08"PRIx32"\n", (u64)desc, control, (u32)buf);
+		spew("writing descriptor@%"PRIx64": %08"PRIx32" %08"PRIx32"\n", (u64)desc, control, buf);
 		dsb_st();
 		desc->control = control;
 		first_flag = 0;
@@ -289,11 +289,16 @@ void dwmmc_handle_dma_interrupt(volatile struct dwmmc_regs *dwmmc, struct dwmmc_
 		__asm__ volatile("dmb sy;dc civac, %0": : "r"(desc) : "memory");
 	}
 	state->desc_written = desc_written;
-	state->bytes_left = bytes_left;
 	state->buf = buf;
+	atomic_store_explicit(&state->finished, finished, memory_order_release);
+	sched_queue_list(CURRENT_RUNQUEUE, &state->waiters);
 	if (status & DWMMC_IDMAC_INT_DESC_UNAVAILABLE) {
 		dwmmc->idmac_status = DWMMC_IDMAC_INT_ABNORMAL | DWMMC_IDMAC_INT_DESC_UNAVAILABLE;
-		if (bytes_left) {dwmmc->poll_demand = 1;}
+		if (buf != end) {
+			dwmmc->poll_demand = 1;
+		} else {
+			debugs("end of transfer reached\n");
+		}
 	} else {
 		assert_eq((status & DWMMC_IDMAC_INTMASK_ABNORMAL), 0, u32, "0x%"PRIx32);
 		__asm__("yield");
@@ -304,15 +309,17 @@ void dwmmc_read_poll_dma(volatile struct dwmmc_regs *dwmmc, u32 sector, void *bu
 	assert(total_bytes >= 512);
 	struct dwmmc_dma_state state;
 	dwmmc_init_dma_state(&state);
-	state.buf = buf;
-	state.bytes_left = total_bytes;
-	state.bytes_transferred = 0;
+	assert((uintptr_t)(buf + total_bytes) <= 0xffffffff);
+	state.end = (u32)(uintptr_t)(buf + total_bytes);
+	state.buf = (u32)(uintptr_t)buf;
+	/* single-threaded: don't need synchronization */
+	atomic_store_explicit(&state.finished, (u32)(uintptr_t)buf, memory_order_relaxed);
 	puts("DMA read\n");
 	dwmmc_setup_dma(dwmmc);
 	printf("bmod %"PRIx32"\n", dwmmc->bmod);
 	dwmmc->desc_list_base = (u32)(uintptr_t)&state.desc;
 	read_command(dwmmc, sector, total_bytes);
-	while (state.bytes_transferred < total_bytes) {
+	while (atomic_load_explicit(&state.finished, memory_order_relaxed) < state.end) {
 		dwmmc_handle_dma_interrupt(dwmmc, &state);
 	}
 }

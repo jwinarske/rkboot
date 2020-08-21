@@ -15,7 +15,6 @@ void boot_sd();
 void boot_spi();
 
 struct async_transfer;
-void init_blob_buffer(struct async_transfer *async);
 _Bool decompress_payload(struct async_transfer *async);
 struct stage_store;
 void load_compressed_payload(struct payload_desc *payload);

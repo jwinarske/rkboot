@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399/dramstage.h>
+#include <rk3399/payload.h>
 #include <inttypes.h>
 #include <stdatomic.h>
 
@@ -17,20 +18,25 @@
 #include <assert.h>
 #include "rk3399_spi.h"
 #include <dump_mem.h>
+#include <cache.h>
 
 static const u16 spi1_intr = 85;
-struct async_transfer spi1_async = {};
 struct rkspi_xfer_state spi1_state = {};
 
-void rkspi_start_irq_flash_read(u32 addr) {
+static void start_irq_flash_read(u32 addr, u8 *buf, u8 *end) {
 	volatile struct rkspi_regs *spi = spi1;
-	assert(spi1_async.total_bytes % 2 == 0 && (u64)spi1_async.buf % 2 == 0);
+	size_t total_bytes = end - buf;
+	assert(total_bytes % 2 == 0);
 	spi->intr_mask = RKSPI_RX_FULL_INTR;
 	spi->slave_enable = 1; dsb_st();
 	rkspi_tx_fast_read_cmd(spi, addr);
+	spi1_state.end = end;
+	atomic_store_explicit(&spi1_state.buf, buf, memory_order_release);
 	spi->ctrl0 = rkspi_mode_base | RKSPI_XFM_RX | RKSPI_BHT_APB_16BIT;
 	debug("start rxlvl=%"PRIu32", rxthreshold=%"PRIu32" intr_status=0x%"PRIx32"\n", spi->rx_fifo_level, spi->rx_fifo_threshold, spi->intr_raw_status);
-	rkspi_start_rx_xfer(&spi1_state, &spi1_async, spi);
+	atomic_thread_fence(memory_order_release);
+	gicv2_setup_spi(gic500d, 85, 0x80, 1, IGROUP_0 | INTR_LEVEL);
+	rkspi_start_rx_xfer(&spi1_state, spi, total_bytes);
 }
 
 void rkspi_end_irq_flash_read() {
@@ -45,6 +51,19 @@ void rkspi_end_irq_flash_read() {
 	gicv2_wait_disabled(gic500d);
 }
 
+static struct async_buf pump(struct async_transfer *async_, size_t consume, size_t min_size) {
+	struct async_dummy *async = (struct async_dummy *)async_;
+	async->buf.start += consume;
+	u8 *old_end = async->buf.end;
+	while (1) {
+		u8 *ptr = async->buf.end =atomic_load_explicit(&spi1_state.buf, memory_order_acquire);
+		if ((size_t)(ptr - async->buf.start) >= min_size || ptr == spi1_state.end) {break;}
+		call_cc_ptr2_int1(sched_finish_u8ptr, &spi1_state.buf, &spi1_state.waiters, (ureg_t)ptr);
+	}
+	invalidate_range(old_end, async->buf.end - old_end);
+	return async->buf;
+}
+
 void boot_spi() {
 	u32 spi_load_addr = 256 << 10;
 
@@ -54,31 +73,37 @@ void boot_spi() {
 		return;
 	}
 	printf("SPI cued\n");
-	struct async_transfer *async = &spi1_async;
-	init_blob_buffer(async);
-	if (async->total_bytes > (16 << 20)) {
-		async->total_bytes = 16 << 20;
+	u8 *start = blob_buffer.start, *end = blob_buffer.end;
+	if ((size_t)(end - start)  > (16 << 20)) {
+		end = start +(16 << 20);
 	}
-	atomic_thread_fence(memory_order_release);
-	gicv2_setup_spi(gic500d, 85, 0x80, 1, IGROUP_0 | INTR_LEVEL);
 
 	rk3399_spi_setup();
 	printf("setup\n");
 #if !CONFIG_ELFLOADER_IRQ
-	rkspi_read_flash_poll(spi1, async->buf, async->total_bytes, spi_load_addr);
-	async->pos = async->total_bytes;
+	rkspi_read_flash_poll(spi1, start, end - start, spi_load_addr);
+	struct async_dummy async = {
+		.async = {async_pump_dummy},
+		.buf = {start, end}
+	};
 #else
-	rkspi_start_irq_flash_read(spi_load_addr);
+	struct async_dummy async = {
+		.async = {pump},
+		.buf = {start, start}
+	};
+	start_irq_flash_read(spi_load_addr, start, end);
 #endif
 	printf("start\n");
 
-	if (decompress_payload(async)) {boot_medium_loaded(BOOT_MEDIUM_SPI);}
+	if (decompress_payload(&async.async)) {
+		boot_medium_loaded(BOOT_MEDIUM_SPI);
+	}
 
 #if CONFIG_ELFLOADER_IRQ
 	rkspi_end_irq_flash_read();
 #endif
 	rk3399_spi_teardown();
 
-	printf("had read %zu bytes\n", async->pos);
+	printf("had read %zu bytes\n", async.buf.end - start);
 	boot_medium_exit(BOOT_MEDIUM_SPI);
 }

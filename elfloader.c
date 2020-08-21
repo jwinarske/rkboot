@@ -55,14 +55,13 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 	switch (grp0_intid) {
 #if CONFIG_ELFLOADER_SPI
 	case 85:
-		rkspi_handle_interrupt(&spi1_state, &spi1_async, spi1);
+		rkspi_handle_interrupt(&spi1_state, spi1);
 		dsb_sy();
 		break;
 #endif
 #if CONFIG_ELFLOADER_SD
 	case 97:
 		dwmmc_handle_dma_interrupt(sdmmc, &sdmmc_dma_state);
-		sdmmc_async.pos = sdmmc_dma_state.bytes_transferred;
 		break;
 #endif
 	case 101:	/* stimer0 */
@@ -98,33 +97,31 @@ struct payload_desc *get_payload_desc() {
 	return payload;
 }
 
-void init_blob_buffer(struct async_transfer *async) {
-	async->buf = (u8 *)blob_addr;
-	async->total_bytes = 60 << 20;
-	/* this is initialization – access should be externally synchronized */
-	atomic_store_explicit(&async->pos, 0, memory_order_relaxed);
-}
-
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
 
 static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
-static const size_t initial_boot_state = 0
-#if !CONFIG_ELFLOADER_SD
+_Static_assert(32 >= 3 * NUM_BOOT_MEDIUM, "not enough bits for boot medium");
+static const size_t available_boot_media = 0
+#if CONFIG_ELFLOADER_SD
 	| 1 << BOOT_MEDIUM_SD
 #endif
-	| 1 << BOOT_MEDIUM_EMMC
-#if !CONFIG_ELFLOADER_SPI
+#if CONFIG_ELFLOADER_SPI
 	| 1 << BOOT_MEDIUM_SPI
 #endif
 ;
-static _Atomic(u32) boot_state = initial_boot_state;
+static _Atomic(u32) boot_state = available_boot_media ^ ((1 << NUM_BOOT_MEDIUM) - 1);
 static _Atomic(u32) current_boot_cue = BOOT_CUE_NONE;
-_Static_assert(32 >= 3 * NUM_BOOT_MEDIUM, "not enough bits for boot medium");
 static struct sched_runnable_list boot_monitors;
 static struct sched_runnable_list boot_cue_waiters;
+
+static const char boot_medium_names[NUM_BOOT_MEDIUM][8] = {
+#define X(name) #name,
+	DEFINE_BOOT_MEDIUM
+#undef X
+};
 
 static u32 monitor_boot_state(u32 state, u32 mask, u32 expected) {
 	while ((state & mask) == expected) {
@@ -219,7 +216,7 @@ _Noreturn u32 main(u64 sctlr) {
 	struct payload_desc *payload = get_payload_desc();
 
 	static const u32 all_exit_mask = (1 << NUM_BOOT_MEDIUM) - 1;
-	if (initial_boot_state != all_exit_mask) {
+	if (available_boot_media) {
 		mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
 		mmu_map_mmio_identity((u64)stimer0, (u64)stimer0 + 0xfff);
 		dsb_ishst();
@@ -269,15 +266,17 @@ _Noreturn u32 main(u64 sctlr) {
 		u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
 		_Bool payload_loaded = 0;
 		for_range(boot_medium, 0, NUM_BOOT_MEDIUM) {
-			u32 ready_bit = 1 << NUM_BOOT_MEDIUM << boot_medium;
 			u32 exit_bit = 1 << boot_medium;
+			if (~available_boot_media & exit_bit) {continue;}
+			u32 ready_bit = 1 << NUM_BOOT_MEDIUM << boot_medium;
 			state = monitor_boot_state(state, ready_bit | exit_bit, 0);
 			if (state & exit_bit) {
-				printf("boot medium failed, going on to next\n");
+				printf("%s failed, going on to next\n", boot_medium_names[boot_medium]);
 				continue;
 			}
 			atomic_store_explicit(&current_boot_cue, boot_medium, memory_order_release);
 			sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
+			printf("cued %s\n", boot_medium_names[boot_medium]);
 			u64 xfer_start = get_timestamp();
 
 			u32 loaded_bit = 1 << 2*NUM_BOOT_MEDIUM << boot_medium;
@@ -288,7 +287,7 @@ _Noreturn u32 main(u64 sctlr) {
 				printf("payload loaded in %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 				/* leave the user at least 500 ms to let go for each payload  */
 				while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
-				if ((~gpio0->read & 32) && boot_medium != NUM_BOOT_MEDIUM - 1) {
+				if ((~gpio0->read & 32) && available_boot_media >> 1 >> boot_medium != 0) {
 					printf("boot overridden\n");
 					continue;
 				}

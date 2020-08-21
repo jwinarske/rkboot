@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include <dwmmc_regs.h>
+#include <runqueue.h>
 
 struct dwmmc_dma_state {
 	u32 desc_written, desc_completed;
-	void *buf;
-	size_t bytes_left, bytes_transferred;
+	_Atomic(u32) finished;
+	u32 buf, end;
+	struct sched_runnable_list waiters;
 	struct {_Alignas(64) struct dwmmc_idmac_desc desc;} desc[4];
 };
 

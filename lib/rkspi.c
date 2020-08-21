@@ -1,9 +1,15 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
 #include <rkspi.h>
 #include <rkspi_regs.h>
-#include <rk3399.h>
 #include <inttypes.h>
+#include <stdatomic.h>
+#include <assert.h>
+
+#include <timer.h>
+#include <die.h>
+#include <log.h>
+#include <byteorder.h>
+#include <runqueue.h>
 
 void rkspi_recv_fast(volatile struct rkspi_regs *spi, u8 *buf, u32 buf_size) {
 	assert((u64)buf % 2 == 0 && buf_size % 2 == 0 && buf_size <= 0xffff);
@@ -18,7 +24,7 @@ void rkspi_recv_fast(volatile struct rkspi_regs *spi, u8 *buf, u32 buf_size) {
 		while (!(rx_lvl = spi->rx_fifo_level)) {
 			__asm__ volatile("yield");
 			end_wait_ts = get_timestamp();
-			if (end_wait_ts - wait_ts > 1000 * CYCLES_PER_MICROSECOND) {
+			if (end_wait_ts - wait_ts > USECS(1000)) {
 				die("SPI timed out\n");
 			}
 		}
@@ -35,7 +41,7 @@ void rkspi_recv_fast(volatile struct rkspi_regs *spi, u8 *buf, u32 buf_size) {
 
 void rkspi_tx_cmd4_dummy1(volatile struct rkspi_regs *spi, u32 cmd) {
 	spi->ctrl0 = rkspi_mode_base | RKSPI_XFM_TX | RKSPI_BHT_APB_8BIT;
-	spi->enable = 1; mmio_barrier();
+	spi->enable = 1;
 	spi->tx = cmd >> 24;
 	spi->tx = cmd >> 16 & 0xff;
 	spi->tx = cmd >> 8 & 0xff;
@@ -53,8 +59,7 @@ void rkspi_tx_fast_read_cmd(volatile struct rkspi_regs *spi, u32 addr) {
 static const u8 irq_threshold = 24;
 static const u16 max_transfer = 0xffff / (2 * irq_threshold) * irq_threshold * 2;
 
-void rkspi_start_rx_xfer(struct rkspi_xfer_state *state, struct async_transfer *async, volatile struct rkspi_regs *spi) {
-	size_t bytes = async->total_bytes - async->pos;
+void rkspi_start_rx_xfer(struct rkspi_xfer_state *state, volatile struct rkspi_regs *spi, size_t bytes) {
 	assert(bytes % 2 == 0);
 	if (bytes/2 < irq_threshold) {
 		spi->rx_fifo_threshold = bytes / 2 - 1;
@@ -72,27 +77,24 @@ void rkspi_start_rx_xfer(struct rkspi_xfer_state *state, struct async_transfer *
 	spi->enable = 1;
 }
 
-void rkspi_handle_interrupt(struct rkspi_xfer_state *state, struct async_transfer *async, volatile struct rkspi_regs *spi) {
+void rkspi_handle_interrupt(struct rkspi_xfer_state *state, volatile struct rkspi_regs *spi) {
 	if (!(spi->intr_status & RKSPI_RX_FULL_INTR)) {
 		die("unexpected SPI interrupt status %"PRIx32"\n", spi->intr_status);
 	}
-	assert(async->buf);
+	void *buf_ = atomic_load_explicit(&state->buf, memory_order_acquire);
+	assert(buf_);
 	u8 read_items = state->this_xfer_items >= irq_threshold ? irq_threshold : state->this_xfer_items;
-	size_t pos = async->pos;
-	assert(read_items * 2 <= async->total_bytes - pos);
-	for_range(i, 0, read_items) {
-		*(u16*)(async->buf + pos + 2 * i) = spi->rx;
-	}
-	pos += read_items * 2;
-	async->pos = pos;
-	state->this_xfer_items -= read_items;
+	u16 *buf = (u16 *)buf_, *end = (u16 *)state->end;
+	assert(read_items <= (size_t)(end - buf));
+	for_range(i, 0, read_items) {*buf++ = to_le16((u16)spi->rx);}
+	atomic_store_explicit(&state->buf, (void *)buf, memory_order_release);
 	spew("pos=0x%zx, this_xfer=%"PRIu16"\n", pos, state->this_xfer_items);
-	if (!state->this_xfer_items) {
-		assert(spi->rx_fifo_level == 0);
-		if (pos >= async->total_bytes) {return;}
+	sched_queue_list(CURRENT_RUNQUEUE, &state->waiters);
+	if ((state->this_xfer_items -= read_items) == 0) {
+		if (end <= buf) {return;}
 		spi->enable = 0;
 		debugs("starting next transfer\n");
-		rkspi_start_rx_xfer(state, async, spi);
+		rkspi_start_rx_xfer(state, spi, (size_t)(end - buf) * 2);
 	}
 }
 

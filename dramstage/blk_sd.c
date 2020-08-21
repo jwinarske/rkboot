@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399/dramstage.h>
+#include <rk3399/payload.h>
 #include <assert.h>
+#include <stdatomic.h>
 
 #include <mmu.h>
+#include <cache.h>
 #include <log.h>
 #include <die.h>
 #include <exc_handler.h>
@@ -11,6 +14,7 @@
 #include <dwmmc.h>
 #include <dwmmc_dma.h>
 #include <dwmmc_helpers.h>
+#include <runqueue.h>
 
 #include <rk3399.h>
 #include <async.h>
@@ -35,77 +39,49 @@ static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_cloc
 	return 1;
 }
 
-struct async_transfer sdmmc_async = {};
+static const u32 sdmmc_intid = 97;
 
-static const u32 sdmmc_intid = 97, sdmmc_irq_threshold = 128;
+struct dwmmc_dma_state sdmmc_dma_state = {};
 
-static void UNUSED handle_sdmmc_interrupt_pio(volatile struct dwmmc_regs *sdmmc, struct async_transfer *async) {
-	u32 items_to_read = 0, rintsts = sdmmc->rintsts, ack = 0;
-	assert((rintsts & DWMMC_ERROR_INT_MASK) == 0);
-	if (rintsts & DWMMC_INT_DATA_TRANSFER_OVER) {
-		ack |= DWMMC_INT_DATA_TRANSFER_OVER;
-		items_to_read = sdmmc->status >> 17 & 0x1fff;
+static struct async_buf pump(struct async_transfer *async_, size_t consume, size_t min_size) {
+	struct async_dummy *async = (struct async_dummy *)async_;
+	async->buf.start += consume;
+	u8 *old_end = async->buf.end;
+	while (1) {
+		u32 val =atomic_load_explicit(&sdmmc_dma_state.finished, memory_order_acquire);
+		async->buf.end = (u8 *)(uintptr_t)val;
+		if ((size_t)(async->buf.end - async->buf.start) >= min_size || val == sdmmc_dma_state.end) {break;}
+		call_cc_ptr2_int2(sched_finish_u32, &sdmmc_dma_state.finished, &sdmmc_dma_state.waiters, ~(u32)0, val);
 	}
-	if (rintsts & DWMMC_INT_RX_FIFO_DATA_REQ) {
-		ack |= DWMMC_INT_RX_FIFO_DATA_REQ;
-		if (items_to_read < sdmmc_irq_threshold) {
-			items_to_read = sdmmc_irq_threshold;
-		}
-	}
-	if (items_to_read) {
-		u32 *buf = (u32*)async->buf;
-		size_t pos = async->pos;
-		assert(pos % 4 == 0);
-		for_range(i, 0, items_to_read) {
-			buf[pos/4] = *(volatile u32 *)0xfe320200;
-			pos += 4;
-		}
-		async->pos = pos;
-	}
-#ifdef DEBUG_MSG
-	if (unlikely(!ack)) {
-		dwmmc_print_status(sdmmc, "unexpected interrupt ");
-	} else if (ack == 0x20) {
-		debugs(".");
-	} else {
-		debug("ack %"PRIx32"\n", ack);
-	}
-#endif
-	sdmmc->rintsts = ack;
+	invalidate_range(old_end, async->buf.end - old_end);
+	return async->buf;
 }
 
-#if CONFIG_ELFLOADER_DMA
-struct dwmmc_dma_state sdmmc_dma_state = {};
-#endif
-
-static void UNUSED rk3399_sdmmc_start_irq_read(u32 sector) {
-	gicv2_setup_spi(gic500d, sdmmc_intid, 0x80, 1, IGROUP_0 | INTR_LEVEL);
-#if !CONFIG_ELFLOADER_DMA
-	sdmmc->intmask = DWMMC_ERROR_INT_MASK | DWMMC_INT_DATA_TRANSFER_OVER | DWMMC_INT_RX_FIFO_DATA_REQ | DWMMC_INT_TX_FIFO_DATA_REQ;
-#else
+static void UNUSED rk3399_sdmmc_start_irq_read(u32 sector, u8 *start, u8 *end) {
 	dwmmc_setup_dma(sdmmc);
 	dwmmc_init_dma_state(&sdmmc_dma_state);
-	sdmmc_dma_state.buf = sdmmc_async.buf;
-	sdmmc_dma_state.bytes_left = sdmmc_async.total_bytes;
-	sdmmc_dma_state.bytes_transferred = 0;
+	sdmmc_dma_state.end = (u32)(uintptr_t)end;
+	sdmmc_dma_state.buf = (u32)(uintptr_t)start;
+	atomic_store_explicit(&sdmmc_dma_state.finished, (u32)(uintptr_t)start, memory_order_release);
 	sdmmc->desc_list_base = (u32)(uintptr_t)&sdmmc_dma_state.desc;
-#endif
+	gicv2_setup_spi(gic500d, sdmmc_intid, 0x80, 1, IGROUP_0 | INTR_LEVEL);
 	sdmmc->ctrl |= DWMMC_CTRL_INT_ENABLE;
-	assert(sdmmc_async.total_bytes % 512 == 0);
+	size_t total_bytes = end - start;
+	printf("%"PRIx64"–%"PRIx64"\n", (u64)start, (u64)end);
+	assert(total_bytes % 512 == 0);
+	assert(total_bytes <= 0xffffffff);
 	sdmmc->blksiz = 512;
-	sdmmc->bytcnt = sdmmc_async.total_bytes;
+	sdmmc->bytcnt = total_bytes;
 	enum dwmmc_status st = dwmmc_wait_cmd_done(sdmmc, 18 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, sector, 1000);
 	dwmmc_check_ok_status(sdmmc, st, "CMD18 (READ_MULTIPLE_BLOCK)");
 }
 static void UNUSED rk3399_sdmmc_end_irq_read() {
 	gicv2_disable_spi(gic500d, sdmmc_intid);
-#if CONFIG_ELFLOADER_DMA
 	/* make sure the iDMAC is suspended before we hand off */
     u32 tmp;
 	while (((tmp = sdmmc->idmac_status) & (DWMMC_IDMAC_INTMASK_ABNORMAL | DWMMC_IDMAC_INT_CARD_ERROR)) == 0 && (tmp >> 13 & 15) > 1) {
 		__asm__("yield");
 	}
-#endif
 }
 
 
@@ -134,25 +110,29 @@ void boot_sd() {
 		return;
 	}
 	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
-	init_blob_buffer(&sdmmc_async);
 
 #if !CONFIG_ELFLOADER_IRQ
-#if !CONFIG_ELFLOADER_DMA
-	dwmmc_read_poll(sdmmc, sd_start_sector, sdmmc_async.buf, sdmmc_async.total_bytes);
+	dwmmc_read_poll_dma(sdmmc, sd_start_sector, blob_buffer.start, blob_buffer.end - blob_buffer.start);
+	struct async_dummy async = {
+		.async = {async_pump_dummy},
+		.buf = {blob_buffer.start, blob_buffer.end},
+	};
 #else
-	dwmmc_read_poll_dma(sdmmc, sd_start_sector, sdmmc_async.buf, sdmmc_async.total_bytes);
-#endif
-	sdmmc_async.pos = sdmmc_async.total_bytes;
-#else
-	rk3399_sdmmc_start_irq_read(sd_start_sector);
+	struct async_dummy async = {
+		.async = {pump},
+		.buf = {blob_buffer.start, blob_buffer.start},
+	};
+	rk3399_sdmmc_start_irq_read(sd_start_sector, blob_buffer.start, blob_buffer.end);
 #endif
 
-	if (decompress_payload(&sdmmc_async)) {boot_medium_loaded(BOOT_MEDIUM_SD);}
+	if (decompress_payload(&async.async)) {
+		boot_medium_loaded(BOOT_MEDIUM_SD);
+	}
 
 #if CONFIG_ELFLOADER_IRQ
 	rk3399_sdmmc_end_irq_read();
 #endif
 
-	printf("had read %zu bytes\n", sdmmc_async.pos);
+	printf("had read %zu bytes\n", (size_t)(async.buf.end - blob_buffer.start));
 	boot_medium_exit(BOOT_MEDIUM_SD);
 }

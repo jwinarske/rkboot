@@ -5,6 +5,7 @@
 PROC(call_cc, 2)
 call_cc_flag_runnablelist: .global call_cc_flag_runnablelist
 call_cc_ptr2_int2: .global call_cc_ptr2_int2
+call_cc_ptr2_int1: .global call_cc_ptr2_int1
 	create_stackframe 112
 
 	adr x10, sched_resume
