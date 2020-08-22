@@ -289,7 +289,7 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 	entry_exists:;
 		u64 head = from_le64(*(u64 *)buf.start);
 		u64 tail = from_be64(*(u64 *)(buf.start + 8));
-		printf("entry %"PRIu32": %08"PRIx32"-%04"PRIx16"-%04"PRIx64"-%04"PRIx16"-%012"PRIx64,
+		printf("entry %"PRIu32": %08"PRIx32"-%04"PRIx16"-%04"PRIx64"-%04"PRIx64"-%012"PRIx64,
 			i, (u32)head, (u16)(head >> 32), head >> 48, tail >> 48, tail & 0xffffffffffff
 		);
 		u32 index = 3;
@@ -356,7 +356,7 @@ _Bool parse_cardinfo() {
 		}
 	}
 	blk.blk.num_blocks = mmc_sector_count(&blk.card);
-	info("eMMC has %"PRIu32" %"PRIu32"-byte sectors\n", blk.blk.num_blocks, blk.blk.block_size);
+	info("eMMC has %"PRIu64" %"PRIu32"-byte sectors\n", blk.blk.num_blocks, blk.blk.block_size);
 	if (~blk.card.rocr & 1 << 30) {blk.address_shift = 9;}
 	return 1;
 }
