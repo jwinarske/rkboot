@@ -79,7 +79,7 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 		dsb_st();	/* apparently the interrupt clear isn't fast enough, wait for completion */
 #endif
 #if CONFIG_EMMC
-		//sdhci_wake_threads(&emmc_state);
+		sdhci_wake_threads(&emmc_state);
 #endif
 		break;	/* do nothing, just want to wake the main loop */
 	default:

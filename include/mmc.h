@@ -7,13 +7,30 @@
 enum {
 	EXTCSD_DATA_SECTOR_SIZE = 61,
 	EXTCSD_BUS_WIDTH = 183,
+	EXTCSD_HS_TIMING = 185,
 	EXTCSD_REV = 192,
 	EXTCSD_STRUCTURE = 194,
+	EXTCSD_CARD_TYPE = 196,
 	EXTCSD_SEC_CNT = 212,
+	EXTCSD_GENERIC_CMD6_TIME = 248,
 };
 
-enum {
-	MMC_BUS_WIDTH_8 = 2,
+enum extcsd_bus_width {
+	MMC_BUS_WIDTH_1,
+	MMC_BUS_WIDTH_4,
+	MMC_BUS_WIDTH_8,
+};
+
+enum extcsd_card_type {
+	MMC_CARD_TYPE_HS52 = 2,
+	MMC_CARD_TYPE_HS26 = 1,
+};
+
+enum extcsd_hs_timing {
+	MMC_TIMING_BC,
+	MMC_TIMING_HS,
+	MMC_TIMING_HS200,
+	MMC_TIMING_HS400,
 };
 
 struct mmc_cardinfo {

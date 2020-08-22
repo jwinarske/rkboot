@@ -27,9 +27,9 @@ void sdhci_irq(volatile struct sdhci_regs *sdhci, struct sdhci_state *st) {
 	fflush(stdout);
 	u32 status = sdhci->int_st, status_remaining = status;
 	spew("SDHCI IRQ 0x%08"PRIx32"\n", status);
-	if (status & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_XFER_COMPLETE)) {
-		/* completion interrupt: just ack, thread will know what to do next */
-		sdhci->normal_int_st = status & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_XFER_COMPLETE);
+	u16 insta_ack = SDHCI_INT_CMD_COMPLETE | SDHCI_INT_XFER_COMPLETE | SDHCI_INT_BUFFER_READ_READY | SDHCI_INT_BUFFER_WRITE_READY;
+	if (status & insta_ack) {
+		sdhci->normal_int_st = status & insta_ack;
 		if (status & SDHCI_INT_XFER_COMPLETE) {
 			atomic_store_explicit(&st->sdma_buf, 0, memory_order_release);
 		}
