@@ -45,6 +45,20 @@ parser.add_argument(
     help='add full debug message output'
 )
 parser.add_argument(
+    '--debug',
+    action='store',
+    type=str,
+    dest='debug',
+    help='modules to select debug verbosity for (comma-separated)'
+)
+parser.add_argument(
+    '--spew',
+    action='store',
+    type=str,
+    dest='spew',
+    help='modules to select debug verbosity for (comma-separated)'
+)
+parser.add_argument(
     '--crc',
     action='store_true',
     dest='crc',
@@ -132,6 +146,13 @@ if args.uncached_memtest:
 if args.elfloader_initcpio:
     for f in ('elfloader', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_ELFLOADER_INITCPIO')
+
+for f in (args.debug or '').split(','):
+    print(f)
+    flags[f].append('-DDEBUG_MSG')
+for f in (args.spew or '').split(','):
+    print(f)
+    flags[f].extend(('-DDEBUG_MSG', '-DSPEW_MSG'))
 
 boot_media = set(args.boot_media or [])
 decompressors = set(args.decompressors or [])
