@@ -7,6 +7,9 @@ struct sdhci_state {
 	u8 version;
 
 	_Atomic(u32) int_st;
+	_Atomic(u8 *) sdma_buf;
+	u8 *buf_end;
+	u32 sdma_buffer_size;
 	struct sched_runnable_list interrupt_waiters;
 };
 

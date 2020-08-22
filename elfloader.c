@@ -19,6 +19,7 @@
 #include <gic.h>
 #include <gic_regs.h>
 #include <runqueue.h>
+#include <sdhci.h>
 #include <sched_aarch64.h>
 #include <rkspi.h>
 #include <dwmmc.h>
@@ -44,6 +45,7 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
 }
 
+extern struct sdhci_state emmc_state;
 extern struct async_transfer spi1_async, sdmmc_async;
 extern struct rkspi_xfer_state spi1_state;
 extern struct dwmmc_dma_state sdmmc_dma_state;
@@ -53,6 +55,11 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
 	atomic_signal_fence(memory_order_acquire);
 	switch (grp0_intid) {
+#if CONFIG_EMMC
+	case 43:
+		sdhci_irq(emmc, &emmc_state);
+		break;
+#endif
 #if CONFIG_ELFLOADER_SPI
 	case 85:
 		rkspi_handle_interrupt(&spi1_state, spi1);
@@ -67,9 +74,12 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 	case 101:	/* stimer0 */
 		stimer0[0].interrupt_status = 1;
 #if DEBUG_MSG
-		if (get_timestamp() < 2400000) {logs("tick\n");}
+		if (get_timestamp() < 12000000) {logs("tick\n");}
 #else
 		dsb_st();	/* apparently the interrupt clear isn't fast enough, wait for completion */
+#endif
+#if CONFIG_EMMC
+		//sdhci_wake_threads(&emmc_state);
 #endif
 		break;	/* do nothing, just want to wake the main loop */
 	default:
@@ -107,6 +117,9 @@ _Static_assert(32 >= 3 * NUM_BOOT_MEDIUM, "not enough bits for boot medium");
 static const size_t available_boot_media = 0
 #if CONFIG_ELFLOADER_SD
 	| 1 << BOOT_MEDIUM_SD
+#endif
+#if CONFIG_EMMC
+	| 1 << BOOT_MEDIUM_EMMC
 #endif
 #if CONFIG_ELFLOADER_SPI
 	| 1 << BOOT_MEDIUM_SPI
@@ -249,6 +262,16 @@ _Noreturn u32 main(u64 sctlr) {
 			.pad = 0,
 			.args = {},
 		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_SD) - sizeof(struct sched_thread_start));
+		*runnable = thread_start;
+		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
+#endif
+#if CONFIG_EMMC
+		{struct sched_thread_start thread_start = {
+			.runnable = {.next = 0, .run = sched_start_thread},
+			.pc = (u64)boot_emmc,
+			.pad = 0,
+			.args = {},
+		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_EMMC) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif

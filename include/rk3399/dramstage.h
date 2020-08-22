@@ -12,12 +12,12 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 struct payload_desc;
 struct payload_desc *get_payload_desc();
 void boot_sd();
+void boot_emmc();
 void boot_spi();
 
 struct async_transfer;
 _Bool decompress_payload(struct async_transfer *async);
 struct stage_store;
-void load_compressed_payload(struct payload_desc *payload);
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store);
 
 /* this enumeration defines the boot order */

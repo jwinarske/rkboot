@@ -20,4 +20,5 @@ static inline void UNUSED dmb_st() {__asm__("dmb st");}
 
 static inline void UNUSED dsb_sy() {__asm__("dsb sy");}
 static inline void UNUSED dsb_st() {__asm__("dsb st");}
+static inline void UNUSED dsb_ish() {__asm__("dsb ish");}
 static inline void UNUSED dsb_ishst() {__asm__("dsb ishst");}

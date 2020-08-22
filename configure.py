@@ -237,14 +237,14 @@ if 'spi' in boot_media:
         flags[f].append('-DCONFIG_ELFLOADER_SPI=1')
     elfloader |= {'lib/rkspi', 'rk3399_spi'}
 if 'emmc' in boot_media:
-    for f in ('main') + boot_media_handlers:
+    for f in ('main',) + boot_media_handlers:
         flags[f].append('-DCONFIG_EMMC=1')
-    emmc_modules = {'lib/sdhci_common'}
+    emmc_modules = {'lib/sdhci_common', 'rk3399_emmcphy'}
     levinboot |= emmc_modules | {'sramstage/emmc_init'}
-    elfloader |= emmc_modules
+    elfloader |= emmc_modules | {'dramstage/blk_emmc'}
 if 'sd' in boot_media:
     sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
-    levinboot |= sdmmc_modules | {'rk3399_sdmmc', 'lib/dwmmc_early'}
+    levinboot |= sdmmc_modules | {'sramstage/sd_init', 'lib/dwmmc_early'}
     flags['main'].append('-DCONFIG_SD=1')
     elfloader |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc'}
     for f in boot_media_handlers:
