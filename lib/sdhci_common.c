@@ -49,13 +49,15 @@ void sdhci_irq(volatile struct sdhci_regs *sdhci, struct sdhci_state *st) {
 enum iost sdhci_wait_state(volatile struct sdhci_regs *sdhci, struct sdhci_state *st, u32 mask, u32 expected, timestamp_t timeout, const char *name) {
 	timestamp_t start = get_timestamp();
 	u32 prests, int_st;
-	while (((prests = sdhci->present_state) & mask) != expected) {
-		if (get_timestamp() - start > timeout) {
-			info("%s timeout: reg0x%08"PRIx32" mask0x%08"PRIx32" expected0x%08"PRIx32"\n", name, prests, mask, expected);
-			return IOST_TRANSIENT;
-		} else if ((int_st = atomic_load_explicit(&st->int_st, memory_order_relaxed)) >> 16) {
+	while (1) {
+		if ((int_st = atomic_load_explicit(&st->int_st, memory_order_relaxed)) >> 16) {
 			info("%s error: intsts0x%08"PRIx32" prests0x%08"PRIx32" cmd %"PRIx16" %08"PRIx32"\n", name, int_st, prests, sdhci->cmd, sdhci->arg);
 			return IOST_GLOBAL;
+		} else if (((prests = sdhci->present_state) & mask) == expected) {
+			break;
+		} else if (get_timestamp() - start > timeout) {
+			info("%s timeout: reg0x%08"PRIx32" mask0x%08"PRIx32" expected0x%08"PRIx32"\n", name, prests, mask, expected);
+			return IOST_TRANSIENT;
 		}
 		printf("sleeping on PRESTS=0x%08"PRIx32"\n", prests);
 		call_cc_ptr2_int2(sched_finish_u32, &sdhci->present_state, &st->interrupt_waiters, mask, mask & prests);
