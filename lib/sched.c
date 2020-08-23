@@ -50,6 +50,7 @@ static void cpuidle() {
 
 _Noreturn void sched_next() {
 	struct sched_runnable *runnable;
+	debugs("%");
 	do {
 		{irq_mask();
 			struct sched_runqueue *rq = get_runqueue();
@@ -77,6 +78,7 @@ _Noreturn void sched_next() {
 			}
 		irq_unmask();}
 	} while (!runnable);
+	spew("running0x%"PRIx64"\n", (u64)runnable);
 	runnable->run(runnable);
 }
 
@@ -106,6 +108,7 @@ _Noreturn NORETURN_ATTR void sched_finish_u8ptr(struct sched_runnable *continuat
 	/* in the critical case where the notifier just dequeued before we enqueued, we are already synchronized by the dequeue-enqueue, so relaxed is OK */
 	u8 *val = atomic_load_explicit((volatile _Atomic(u8 *) *)ptr, memory_order_relaxed);
 	if (val != (u8 *)expected) {
+		printf("requeue\n");
 		sched_queue_list(CURRENT_RUNQUEUE, list);
 	}
 	sched_next();
