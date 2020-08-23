@@ -345,6 +345,8 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 		);
 		u32 index = 3;
 		if (head == 0x46f68e5ee5ab07a0 && tail == 0x9ce841a518929b7c) {index = 0;}
+		if (head == 0x4b6dc9205f04b556 && tail == 0xbd77804efe6fae01) {index = 1;}
+		if (head == 0x4b78d766c195cc59 && tail == 0x813fa0e1519099d8) {index = 2;}
 		if (index >= 3) {
 			puts(" ignored\n");
 		} else if (mask & 1 << index) {
