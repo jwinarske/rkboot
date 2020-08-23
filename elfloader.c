@@ -60,13 +60,13 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 		sdhci_irq(emmc, &emmc_state);
 		break;
 #endif
-#if CONFIG_ELFLOADER_SPI
+#if CONFIG_SPI
 	case 85:
 		rkspi_handle_interrupt(&spi1_state, spi1);
 		dsb_sy();
 		break;
 #endif
-#if CONFIG_ELFLOADER_SD
+#if CONFIG_SD
 	case 97:
 		dwmmc_handle_dma_interrupt(sdmmc, &sdmmc_dma_state);
 		break;
@@ -115,13 +115,13 @@ struct sched_runqueue *get_runqueue() {return &runqueue;}
 
 _Static_assert(32 >= 3 * NUM_BOOT_MEDIUM, "not enough bits for boot medium");
 static const size_t available_boot_media = 0
-#if CONFIG_ELFLOADER_SD
+#if CONFIG_SD
 	| 1 << BOOT_MEDIUM_SD
 #endif
 #if CONFIG_EMMC
 	| 1 << BOOT_MEDIUM_EMMC
 #endif
-#if CONFIG_ELFLOADER_SPI
+#if CONFIG_SPI
 	| 1 << BOOT_MEDIUM_SPI
 #endif
 ;
@@ -255,7 +255,7 @@ _Noreturn u32 main(u64 sctlr) {
 		}
 		dsb_ishst();
 
-#if CONFIG_ELFLOADER_SD
+#if CONFIG_SD
 		{struct sched_thread_start thread_start = {
 			.runnable = {.next = 0, .run = sched_start_thread},
 			.pc = (u64)boot_sd,
@@ -275,7 +275,7 @@ _Noreturn u32 main(u64 sctlr) {
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
-#if CONFIG_ELFLOADER_SPI
+#if CONFIG_SPI
 		{struct sched_thread_start thread_start = {
 			.runnable = {.next = 0, .run = sched_start_thread},
 			.pc = (u64)boot_spi,

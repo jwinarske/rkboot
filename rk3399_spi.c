@@ -58,6 +58,7 @@ static struct async_buf pump(struct async_transfer *async_, size_t consume, size
 	while (1) {
 		u8 *ptr = async->buf.end =atomic_load_explicit(&spi1_state.buf, memory_order_acquire);
 		if ((size_t)(ptr - async->buf.start) >= min_size || ptr == spi1_state.end) {break;}
+		spew("idle pos=0x%zx rxlvl=%"PRIu32", rxthreshold=%"PRIu32"\n", spi1_state.pos, spi->rx_fifo_level, spi->rx_fifo_threshold);
 		call_cc_ptr2_int1(sched_finish_u8ptr, &spi1_state.buf, &spi1_state.waiters, (ureg_t)ptr);
 	}
 	invalidate_range(old_end, async->buf.end - old_end);

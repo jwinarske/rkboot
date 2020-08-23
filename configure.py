@@ -240,7 +240,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 levinboot = {'main', 'pll', 'sramstage/pmu_cru'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
 elfloader = {'elfloader', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit'}
-boot_media_handlers = ('elfloader', 'dramstage/decompression')
+boot_media_handlers = ('main', 'elfloader')
 if decompressors:
     flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
     elfloader |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
@@ -255,21 +255,20 @@ if 'zstd' in decompressors:
     elfloader |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
 if 'spi' in boot_media:
     for f in boot_media_handlers:
-        flags[f].append('-DCONFIG_ELFLOADER_SPI=1')
+        flags[f].append('-DCONFIG_SPI=1')
     elfloader |= {'lib/rkspi', 'rk3399_spi'}
 if 'emmc' in boot_media:
-    for f in ('main',) + boot_media_handlers:
+    for f in boot_media_handlers:
         flags[f].append('-DCONFIG_EMMC=1')
     emmc_modules = {'lib/sdhci_common', 'rk3399_emmcphy'}
     levinboot |= emmc_modules | {'sramstage/emmc_init'}
     elfloader |= emmc_modules | {'dramstage/blk_emmc'}
 if 'sd' in boot_media:
+    for f in boot_media_handlers:
+        flags[f].append('-DCONFIG_SD=1')
     sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
     levinboot |= sdmmc_modules | {'sramstage/sd_init', 'lib/dwmmc_early'}
-    flags['main'].append('-DCONFIG_SD=1')
     elfloader |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc'}
-    for f in boot_media_handlers:
-        flags[f].append('-DCONFIG_ELFLOADER_SD=1')
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
 dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
 modules = lib | levinboot | elfloader | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}

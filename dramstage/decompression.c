@@ -37,13 +37,6 @@ static void UNUSED async_wait(struct async_transfer *async) {
 	do {
 		size = buf.end - buf.start;
 		buf = async->pump(async, 0, size + 1);
-#if CONFIG_ELFLOADER_SPI
-		spew("idle pos=0x%zx rxlvl=%"PRIu32", rxthreshold=%"PRIu32"\n", spi1_state.pos, spi->rx_fifo_level, spi->rx_fifo_threshold);
-#elif CONFIG_ELFLOADER_SD
-#ifdef SPEW_MSG
-		spew("idle ");dwmmc_print_status(sdmmc);
-#endif
-#endif
 	} while ((size_t)(buf.end - buf.start) > size);
 }
 
