@@ -50,7 +50,8 @@ static struct async_buf pump(struct async_transfer *async_, size_t consume, size
 	while (1) {
 		u32 val =atomic_load_explicit(&sdmmc_dma_state.finished, memory_order_acquire);
 		async->buf.end = (u8 *)(uintptr_t)val;
-		if ((size_t)(async->buf.end - async->buf.start) >= min_size || val == sdmmc_dma_state.end) {break;}
+		size_t size = async->buf.end - async->buf.start;
+		if (size >= min_size || val == sdmmc_dma_state.end) {break;}
 		call_cc_ptr2_int2(sched_finish_u32, &sdmmc_dma_state.finished, &sdmmc_dma_state.waiters, ~(u32)0, val);
 	}
 	invalidate_range(old_end, async->buf.end - old_end);
