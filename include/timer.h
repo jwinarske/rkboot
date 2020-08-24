@@ -9,9 +9,11 @@ HEADER_FUNC timestamp_t get_timestamp() {
 	return res;
 }
 
-HEADER_FUNC void udelay(u32 usec) {
+HEADER_FUNC void delay(timestamp_t time) {
 	timestamp_t start = get_timestamp();
 	do {
 		__asm__ volatile("yield");
-	} while (get_timestamp() - start < usec * TICKS_PER_MICROSECOND);
+	} while (get_timestamp() - start < time);
 }
+
+HEADER_FUNC void udelay(u32 usec) {delay(usec * TICKS_PER_MICROSECOND);}
