@@ -148,10 +148,8 @@ if args.elfloader_initcpio:
         flags[f].append('-DCONFIG_ELFLOADER_INITCPIO')
 
 for f in (args.debug or '').split(','):
-    print(f)
     flags[f].append('-DDEBUG_MSG')
 for f in (args.spew or '').split(','):
-    print(f)
     flags[f].extend(('-DDEBUG_MSG', '-DSPEW_MSG'))
 
 boot_media = set(args.boot_media or [])
@@ -262,7 +260,7 @@ if 'emmc' in boot_media:
         flags[f].append('-DCONFIG_EMMC=1')
     emmc_modules = {'lib/sdhci_common', 'rk3399_emmcphy'}
     levinboot |= emmc_modules | {'sramstage/emmc_init'}
-    elfloader |= emmc_modules | {'dramstage/blk_emmc'}
+    elfloader |= emmc_modules | {'dramstage/blk_emmc', 'lib/sdhci', 'dramstage/boot_blockdev'}
 if 'sd' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SD=1')

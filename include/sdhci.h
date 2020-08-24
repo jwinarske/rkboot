@@ -15,6 +15,8 @@ struct sdhci_state {
 
 struct sdhci_regs;
 void sdhci_irq(volatile struct sdhci_regs *sdhci, struct sdhci_state *st);
+_Bool sdhci_try_abort(volatile struct sdhci_regs *sdhci, struct sdhci_state *st);
+
 HEADER_FUNC void sdhci_wake_threads(struct sdhci_state *st) {
 	sched_queue_list(CURRENT_RUNQUEUE, &st->interrupt_waiters);
 }
@@ -29,3 +31,6 @@ struct sdhci_phy {
 	_Bool (*setup)(struct sdhci_phy *, enum sdhci_phy_setup_action action);
 	_Bool (*lock_freq)(struct sdhci_phy *phy, u32 khz);
 };
+
+struct mmc_cardinfo;
+enum iost sdhci_init_late(volatile struct sdhci_regs *sdhci, struct sdhci_state *st, struct sdhci_phy *phy, struct mmc_cardinfo *card);
