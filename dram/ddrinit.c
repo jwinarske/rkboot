@@ -13,6 +13,7 @@
 #include <rk3399/sramstage.h>
 #include "rk3399-dmc.h"
 #include <gic.h>
+#include <irq.h>
 
 const struct phy_layout cfg_layout = {
 	.dslice = 0,
@@ -122,31 +123,26 @@ void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_u
 	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
 }
 
-static void dpll_wait() {
-	timestamp_t start = get_timestamp();
-	while (!rkpll_switch(cru + CRU_DPLL_CON)) {
-		if (get_timestamp() - start > 100 * TICKS_PER_MICROSECOND) {
-			die("failed to lock-on DPLL\n");
-		}
-		sched_yield(CURRENT_RUNQUEUE);
-	}
-}
-
+/* this function seems very prone to system hangs if we try to yield inbetween, probably because of the bus idle. it usually finishes in around 25 μs, so that sholudn't be a problem */
 void fast_freq_switch(u8 freqset, u32 freq) {
+	irq_save_t irq = irq_save_mask();	/* just for safety */
 	grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
 	pmu[PMU_NOC_AUTO_ENA] |= 0x180;
 	pmu[PMU_BUS_IDLE_REQ] |= 3 << 18;
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {
 		debugs("waiting for bus idle\n");
-		sched_yield(CURRENT_RUNQUEUE);
 	}
 	cic[0] = (SET_BITS16(2, freqset) << 4) | (SET_BITS16(1, 1) << 2) | SET_BITS16(1, 1);
 	while (!(cic[CIC_STATUS] & 4)) {
 		debugs("waiting for CIC ready\n");
-		/* yielding here seems to cause system hangs, so just busy-wait */
 	}
 	rkpll_configure(cru + CRU_DPLL_CON, freq);
-	dpll_wait();
+	timestamp_t start = get_timestamp();
+	while (!rkpll_switch(cru + CRU_DPLL_CON)) {
+		if (get_timestamp() - start > USECS(100)) {
+			die("failed to lock-on DPLL\n");
+		}
+	}
 	cic[0] = SET_BITS16(1, 1) << 1;
 	debugs("waiting for CIC finish … ");
 	while (1) {
@@ -156,15 +152,14 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 		} else if (status & 1) {
 			break;
 		}
-		sched_yield(CURRENT_RUNQUEUE);
 	}
 	debugs("done\n");
 	pmu[PMU_BUS_IDLE_REQ] &= ~((u32)3 << 18);
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != 0) {
 		debugs("waiting for bus un-idle\n");
-		sched_yield(CURRENT_RUNQUEUE);
 	}
 	pmu[PMU_NOC_AUTO_ENA] &= ~(u32)0x180;
+	irq_restore(irq);
 }
 
 void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
@@ -189,8 +184,9 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 		}
 	}
 	puts("ready … ");
+	timestamp_t start = get_timestamp();
 	fast_freq_switch(ctl_freqset, mhz);
-	puts("switched … ");
+	printf("switched (%"PRIuTS" ticks) … ", get_timestamp() - start);
 }
 
 void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
