@@ -6,20 +6,23 @@
 #define TZRAM_SIZE 0x00200000
 
 HEADER_FUNC u32 dram_size() {return 0xf8000000;}
-struct fdt_header;
-void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size);
 
-struct payload_desc;
-struct payload_desc *get_payload_desc();
 void boot_sd();
 void boot_emmc();
 void boot_spi();
 
+/* access to these is only allowed by the currently cued boot medium thread */
 struct async_transfer;
 struct async_blockdev;
+struct payload_desc;
+struct payload_desc *get_payload_desc();
 enum iost decompress_payload(struct async_transfer *async);
 enum iost boot_blockdev(struct async_blockdev *blk);
+
+/* boot commit functions: only run after all boot medium threads have finished running */
 struct stage_store;
+struct fdt_header;
+void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size);
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store);
 
 /* this enumeration defines the boot order */
