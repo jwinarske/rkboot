@@ -4,11 +4,14 @@
 #include <plat.h>
 
 enum {
+	GRF_SOC_CON9 = 0x6224 >> 2,	/* 0, 20–26 */
 	GRF_GPIO2C_IOMUX = 0xe008 >> 2,
 	GRF_GPIO4B_IOMUX = 0xe024 >> 2,
 	GRF_GPIO4C_IOMUX = 0xe028 >> 2,
-	GRF_SOC_CON0 = 0xe200 >> 2,
-	GRF_SOC_CON7 = 0xe21c >> 2,
+	GRF_GPIO2D_P = 0xe04c >> 2,
+	GRF_SOC_CON5 = 0xc214 >> 2,	/* 5–6 */
+	GRF_SOC_CON0 = 0xe200 >> 2,	/* 0–4, 5_PCIE, 7–8, 9_PCIE */
+	GRF_SOC_STATUS = 0xe2a0 >> 2,
 	GRF_DDRC_CON = 0xe380 >> 2,
 	GRF_EMMCCORE_CON = 0xf000 >> 2,
 	GRF_EMMCPHY_CON = 0xf780 >> 2,

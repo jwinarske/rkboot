@@ -111,6 +111,13 @@ parser.add_argument(
     help='configure dramstage to load its images from an SD card'
 )
 parser.add_argument(
+    '--payload-nvme',
+    action='append_const',
+    dest='boot_media',
+    const='nvme',
+    help='configure dramstage to load its images from an NVMe drive'
+)
+parser.add_argument(
     '--payload-initcpio',
     action='store_true',
     dest='elfloader_initcpio',
@@ -284,6 +291,9 @@ if 'sd' in boot_media:
     sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
     levinboot |= sdmmc_modules | {'sramstage/sd_init', 'lib/dwmmc_early'}
     elfloader |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc', 'lib/dwmmc_xfer', 'dramstage/boot_blockdev'}
+if 'nvme' in boot_media:
+    flags['main'].append('-DCONFIG_PCIE=1')
+    levinboot |= {'sramstage/pcie_init'}
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
 dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
 modules = lib | levinboot | elfloader | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}

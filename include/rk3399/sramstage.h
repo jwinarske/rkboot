@@ -7,12 +7,13 @@ void misc_init();
 void rk3399_init_sdmmc();
 struct sdhci_state;
 void emmc_init(struct sdhci_state *st);
+void pcie_init();
 
 struct stage_store;
 u32 end_sramstage(struct stage_store *store);
 
 #define DEFINE_SRAMSTAGE_VSTACKS\
-	X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC)
+	X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)
 
 enum sramstage_vstack {
 #define X(name) SRAMSTAGE_VSTACK_##name,
@@ -29,7 +30,8 @@ HEADER_FUNC u64 vstack_base(enum sramstage_vstack vstack) {
 	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\
 	X(DDRC0_READY, 30) X(DDRC1_READY, 30)\
 	X(DRAM_TRAINING, 40) X(DRAM_READY, 50)\
-	X(SD_INIT, 100) X(EMMC_INIT, 100)
+	X(SD_INIT, 100) X(EMMC_INIT, 100)\
+	X(PCIE, 100)
 enum {
 #define X(name, timeout) RK3399_INIT_##name##_BIT,
 	DEFINE_RK3399_INIT_FLAGS

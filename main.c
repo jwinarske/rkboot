@@ -91,9 +91,12 @@ static const size_t start_flags = 0
 #if !CONFIG_EMMC
 	| RK3399_INIT_EMMC_INIT
 #endif
+#if !CONFIG_PCIE
+	| RK3399_INIT_PCIE
+#endif
 ;
 
-static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT | RK3399_INIT_EMMC_INIT;
+static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT | RK3399_INIT_EMMC_INIT | RK3399_INIT_PCIE;
 
 _Atomic(size_t) rk3399_init_flags = start_flags;
 
@@ -179,6 +182,17 @@ int32_t NO_ASAN main(u64 sctlr) {
 		.pad = 0,
 		.args = {(u64)&emmc_state},
 	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_EMMC) - sizeof(struct sched_thread_start));
+	*runnable = thread_start;
+	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
+#endif
+
+#if CONFIG_PCIE
+	{struct sched_thread_start thread_start = {
+		.runnable = {.next = 0, .run = sched_start_thread},
+		.pc = (u64)pcie_init,
+		.pad = 0,
+		.args = {},
+	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_PCIE) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
