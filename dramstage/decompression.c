@@ -12,6 +12,7 @@
 #include <compression.h>
 #include <runqueue.h>
 #include <dump_mem.h>
+#include <iost.h>
 
 static _Alignas(16) u8 decomp_state[1 << 14];
 extern const struct decompressor lz4_decompressor, gzip_decompressor, zstd_decompressor;
@@ -31,13 +32,15 @@ const struct format {
 #endif
 };
 
-static void UNUSED async_wait(struct async_transfer *async) {
+static enum iost UNUSED async_wait(struct async_transfer *async) {
 	struct async_buf buf = async->pump(async, 0, 0);
 	size_t size;
 	do {
 		size = buf.end - buf.start;
 		buf = async->pump(async, 0, size + 1);
+		if (buf.end < buf.start) {return buf.start - buf.end;}
 	} while ((size_t)(buf.end - buf.start) > size);
+	return IOST_OK;
 }
 
 static const char *const decode_status_msg[NUM_DECODE_STATUS] = {
@@ -46,9 +49,11 @@ static const char *const decode_status_msg[NUM_DECODE_STATUS] = {
 #undef X
 };
 
-static _Bool decompress(struct async_transfer *async, u8 *out, u8 **out_end) {
+static enum iost decompress(struct async_transfer *async, u8 *out, u8 **out_end) {
 #ifdef ASYNC_WAIT
-	async_wait(async);
+	{enum iost res;
+		if (IOST_OK != (res = async_wait(async))) {return res;}
+	}
 #endif
 	struct decompressor_state *state = (struct decompressor_state *)decomp_state;;
 	u64 start = get_timestamp();
@@ -62,22 +67,22 @@ static _Bool decompress(struct async_transfer *async, u8 *out, u8 **out_end) {
 		if (status <= COMPR_PROBE_LAST_SUCCESS) {
 			assert(sizeof(decomp_state) >= formats[i].decomp->state_size);
 			info("%s probed\n", formats[i].name);
-			{
-				const u8 *data = formats[i].decomp->init(state, buf.start, buf.end);
+			{const u8 *data = formats[i].decomp->init(state, buf.start, buf.end);
 				assert(data);
 				buf = async->pump(async, data - buf.start, 0);
+				if (buf.end < buf.start) {return buf.start - buf.end;}
 			}
-			if (!buf.start) {return 0;}
 			state->out = state->window_start = out;
 			debug("output buffer: 0x%"PRIx64"–0x%"PRIx64"\n", (u64)out, (u64)*out_end);
 			state->out_end = *out_end;
 			while (state->decode) {
-				if (!buf.start) {return 0;}
+				if (!buf.start) {return IOST_INVALID;}
 				sched_yield();
 				size_t res = state->decode(state, buf.start, buf.end);
 				if (res == DECODE_NEED_MORE_DATA) {
 					size_t min_size = buf.end - buf.start + 1;
 					buf = async->pump(async, 0, min_size);
+					if (buf.end < buf.start) {return buf.start - buf.end;}
 					if ((size_t)(buf.end - buf.start) >= min_size) {continue;}
 				} else if (res > NUM_DECODE_STATUS) {
 					size_t consume = res - NUM_DECODE_STATUS;
@@ -85,31 +90,32 @@ static _Bool decompress(struct async_transfer *async, u8 *out, u8 **out_end) {
 					continue;
 				}
 				info("decompression failed, status: %zu (%s)\n", res, decode_status_msg[res]);
-				return 0;
+				return IOST_INVALID;
 			}
 			info("decompressed %zu bytes in %zu μs\n", state->out - out, (get_timestamp() - start) / TICKS_PER_MICROSECOND);
 			*out_end = state->out;
-			return 1;
+			return IOST_OK;
 		}
 	}
 #if DEBUG_MSG
 	dump_mem(buf.start, (size_t)(buf.end - buf.start) < 1024 ? (size_t)(buf.end - buf.start) : 1024);
 #endif
 	infos("couldn't probe\n");
-	return 0;
+	return IOST_INVALID;
 }
 
-_Bool decompress_payload(struct async_transfer *async) {
+enum iost decompress_payload(struct async_transfer *async) {
 	struct payload_desc *payload = get_payload_desc();
 	payload->elf_end -= LZCOMMON_BLOCK;
-	if (!decompress(async, payload->elf_start, &payload->elf_end)) {return 0;}
+	enum iost res;
+	if (IOST_OK != (res = decompress(async, payload->elf_start, &payload->elf_end))) {return res;}
 	payload->fdt_end -= LZCOMMON_BLOCK;
-	if (!decompress(async, (u8 *)fdt_addr, &payload->fdt_end)) {return 0;}
+	if (IOST_OK != (res = decompress(async, (u8 *)fdt_addr, &payload->fdt_end))) {return res;}
 	payload->kernel_end -= LZCOMMON_BLOCK;
-	if (!decompress(async, (u8 *)payload_addr, &payload->kernel_end)) {return 0;}
+	if (IOST_OK != (res = decompress(async, (u8 *)payload_addr, &payload->kernel_end))) {return res;}
 #ifdef CONFIG_ELFLOADER_INITCPIO
 	payload->initcpio_end -= LZCOMMON_BLOCK;
-	if (!decompress(async, (u8 *)initcpio_addr, &payload->initcpio_end)) {return 0;}
+	if (IOST_OK != (res = decompress(async, (u8 *)initcpio_addr, &payload->initcpio_end))) {return res;}
 #endif
-	return 1;
+	return IOST_OK;
 }

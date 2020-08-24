@@ -15,9 +15,9 @@
 #include <dwmmc_dma.h>
 #include <dwmmc_helpers.h>
 #include <runqueue.h>
-
 #include <rk3399.h>
 #include <async.h>
+#include <iost.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
 	switch (clk) {
@@ -129,7 +129,7 @@ void boot_sd() {
 	rk3399_sdmmc_start_irq_read(sd_start_sector, blob_buffer.start, blob_buffer.end);
 #endif
 
-	if (decompress_payload(&async.async)) {
+	if (IOST_OK == decompress_payload(&async.async)) {
 		boot_medium_loaded(BOOT_MEDIUM_SD);
 	}
 

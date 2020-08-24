@@ -377,7 +377,7 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 		used_last = used_first + max_length - 1;
 	}
 	if (IOST_OK != (res = blk->start(blk, used_first, blob_buffer.start, blob_buffer.end))) {return res;}
-	if (!decompress_payload(&blk->async)) {return IOST_INVALID;}
+	if (IOST_OK != (res = decompress_payload(&blk->async))) {return res;}
 	return IOST_OK;
 }
 

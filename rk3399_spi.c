@@ -19,6 +19,7 @@
 #include "rk3399_spi.h"
 #include <dump_mem.h>
 #include <cache.h>
+#include <iost.h>
 
 static const u16 spi1_intr = 85;
 struct rkspi_xfer_state spi1_state = {};
@@ -96,7 +97,7 @@ void boot_spi() {
 #endif
 	printf("start\n");
 
-	if (decompress_payload(&async.async)) {
+	if (IOST_OK == decompress_payload(&async.async)) {
 		boot_medium_loaded(BOOT_MEDIUM_SPI);
 	}
 

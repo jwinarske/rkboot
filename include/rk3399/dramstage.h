@@ -16,7 +16,7 @@ void boot_emmc();
 void boot_spi();
 
 struct async_transfer;
-_Bool decompress_payload(struct async_transfer *async);
+enum iost decompress_payload(struct async_transfer *async);
 struct stage_store;
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store);
 
