@@ -9,6 +9,7 @@ MEMORY {
        SRAM : ORIGIN = 0xff8c0000, LENGTH = 192K
        DRAM : ORIGIN = 0x00000000, LENGTH = 0xf800000
 }
+ENTRY(entry_point)
 END
 sections=""
 while test $# -gt 0; do
@@ -45,7 +46,7 @@ while test $# -gt 0; do
 		__${prefix}ro_end__ = ALIGN(0x1000);
 	} >${memory}
 	.data.$name __${prefix}ro_end__  : {
-		$objs(.data)
+		$objs(.data*)
 		__${prefix}data_end__ = ALIGN(16);
 	} >${memory}
 	.bss.$name __${prefix}data_end__  : {

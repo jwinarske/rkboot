@@ -6,9 +6,3 @@ size_t strnlen(const char *s, size_t maxlen) {
 	while (s < end && *s) {s += 1;}
 	return s - start;
 }
-
-void *memset(void *s, int c, size_t n) {
-	u8 *p = s;
-	while (n--) {*p++ = (u8)c;}
-	return s;
-}

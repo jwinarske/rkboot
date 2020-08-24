@@ -288,9 +288,10 @@ print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
 print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
 print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
+print(build('string_aarch64.o', 'cc', path.join(srcdir, 'lib/string_aarch64.S')))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
-lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'sched_aarch64'}
+lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'sched_aarch64', 'string_aarch64'}
 usbstage |= {'exc_handlers'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))

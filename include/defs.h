@@ -15,6 +15,7 @@ typedef u64 ureg_t;
 #define FALLTHROUGH __attribute__((fallthrough))
 #define NO_ASAN __attribute__((no_sanitize_address))
 #define UNUSED __attribute__((unused))
+#define FORCE_USED __attribute__((used))
 #define PRINTF(str_idx, start) __attribute__((format(printf, str_idx, start)))
 #define UNINITIALIZED __attribute__((section(".bss.noinit")))
 #define NORETURN_ATTR __attribute__((__noreturn__))
