@@ -8,3 +8,5 @@ typedef u64 timestamp_t;
 #define USECS(n) ((u64)(n) * TICKS_PER_MICROSECOND)
 #define MSECS(n) ((u64)(n) * 1024 * TICKS_PER_MICROSECOND)
 #define PRIuTS PRIu64
+
+static volatile struct uart *const uart = (volatile struct uart *)0xff1a0000;

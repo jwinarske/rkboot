@@ -9,7 +9,6 @@
 #include <rk3399.h>
 #include <stage.h>
 #include <mmu.h>
-#include <uart.h>
 #include <dwc3_regs.h>
 #include <dwc3.h>
 #include <xhci_regs.h>

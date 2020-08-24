@@ -3,7 +3,6 @@
 #include <rkpll.h>
 #include <rk3399.h>
 #include <stage.h>
-#include <uart.h>
 #include <runqueue.h>
 
 #define MEMTEST_CHACHAISH

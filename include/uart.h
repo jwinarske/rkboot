@@ -64,5 +64,3 @@ enum {
 	UART_LCR_7_DATA_BITS = 0x02,
 	UART_LCR_8_DATA_BITS = 0x03
 };
-
-static volatile struct uart *const uart = (volatile struct uart *)0xff1a0000;

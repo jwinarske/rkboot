@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
 #include <uart.h>
+#include <stdio.h>
 #include <stdarg.h>
+
+#include <plat.h>
+#include <die.h>
 
 static u32 NO_ASAN wait_until_fifo_free(u32 space_needed) {
 	u32 queue_space;

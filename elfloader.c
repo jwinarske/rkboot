@@ -4,7 +4,6 @@
 #include <stdatomic.h>
 
 #include <main.h>
-#include <uart.h>
 #include <rk3399.h>
 #include <rk3399/payload.h>
 #include <rkpll.h>

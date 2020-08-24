@@ -3,7 +3,6 @@
 #include <inttypes.h>
 
 #include <main.h>
-#include <uart.h>
 #include <rk3399.h>
 #include <rk3399/sramstage.h>
 #include <stage.h>
