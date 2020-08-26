@@ -17,6 +17,7 @@ enum {
 	MEM_ACCESS_RW_UNPRIV = 1 << 3,
 	MEM_ACCESS_RO_PRIV = 2 << 3,
 	MEM_ACCESS_RO_UNPRIV = 3 << 3,
+	MEM_NON_SECURE = 32,
 };
 struct mapping {u64 first, last; u64 flags;};
 extern u8 __start__[], __ro_end__[], __end__[];

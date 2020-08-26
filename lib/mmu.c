@@ -109,6 +109,7 @@ static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 			u64 attridx = flags & 7;
 			u64 template = pte_lvls[lvl].last_level ? PGTAB_PAGE(attridx) : PGTAB_BLOCK(attridx);
 			template |= (flags >> 3 & 3) << 8;	/* Data access permissions */
+			template |= flags & MEM_NON_SECURE;	/* bit position matches up */
 			for_range(i, first_entry, last_entry + 1) {
 				assert(!(pt[i] & 1));
 				u64 addr = paddr + ((i - first_entry) << shift);
