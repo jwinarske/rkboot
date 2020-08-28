@@ -11,8 +11,6 @@
 #include <sd.h>
 #include <runqueue.h>
 
-void sd_dump_cid(u32 cid0, u32 cid1, u32 cid2, u32 cid3);
-
 /* WARNING: does not read from the FIFO, so only use for short results that are read later */
 static _Bool wait_data_finished(volatile struct dwmmc_regs *dwmmc, u64 usecs) {
 	u32 status;
@@ -77,7 +75,7 @@ static _Bool try_high_speed(volatile struct dwmmc_regs *dwmmc, struct dwmmc_sign
 }
 
 /* assumes that the bus is at 400kHz, with ACMD41 having been issued last (infers further info from the command registers) */
-_Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc) {
+_Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc, struct sd_cardinfo *card) {
 	assert((~svc->frequencies_supported & (1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M)) == 0);
 	assert(svc->voltages_supported & 1 << DWMMC_SIGNAL_3V3);
 
@@ -86,13 +84,12 @@ _Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_ser
 	u32 acmd41_arg = dwmmc->cmdarg;
 	_Bool sd_2_0 = !!(acmd41_arg & SD_OCR_HIGH_CAPACITY);
 	dwmmc_wait_cmd_done_postissue(dwmmc, 1000);
-	u32 resp;
 	enum dwmmc_status st;
 	{
 		timestamp_t start = get_timestamp();
 		while (1) {
-			resp = dwmmc->resp[0];
-			if (resp & SD_RESP_BUSY) {break;}
+			card->rocr = dwmmc->resp[0];
+			if (card->rocr & SD_RESP_BUSY) {break;}
 #ifdef DEBUG_MSG
 			dwmmc_print_status(dwmmc, "ACMD41 ");
 #endif
@@ -114,25 +111,21 @@ _Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_ser
 		}
 	}
 	dwmmc_print_status(dwmmc, "ACMD41 ");
-	_Bool high_capacity = !!(resp & SD_OCR_HIGH_CAPACITY);
+	_Bool high_capacity = !!(card->rocr & SD_OCR_HIGH_CAPACITY);
 	assert_msg(sd_2_0 || !high_capacity, "conflicting info about card capacity");
 	st = dwmmc_wait_cmd_done(dwmmc, 2 | DWMMC_R2, 0, 1000);
 	if (st != DWMMC_ST_OK) {
 		dwmmc_print_status(dwmmc, "CMD2 (ALL_SEND_CID) ");
 		return 0;
 	}
-	sd_dump_cid(dwmmc->resp[0], dwmmc->resp[1], dwmmc->resp[2], dwmmc->resp[3]);
+	for_array(i, card->cid) {card->cid[i] = dwmmc->resp[i];}
+	sd_dump_cid(card);
 	st = dwmmc_wait_cmd_done(dwmmc, 3 | DWMMC_R6, 0, 1000);
 	dwmmc_print_status(dwmmc, "CMD3 (send RCA) ");
 	if (st != DWMMC_ST_OK) {return 0;}
-	u32 rca = dwmmc->resp[0];
-	info("RCA: %08"PRIx32"\n", rca);
-	rca &= 0xffff0000;
-	st = dwmmc_wait_cmd_done(dwmmc, 7 | DWMMC_R1, rca, 1000);
-	if (st != DWMMC_ST_OK) {
-		dwmmc_print_status(dwmmc, "CMD7 (select card) ");
-		return 0;
-	}
+	card->rca = dwmmc->resp[0];
+	card->rca &= 0xffff0000;
+	info("RCA: %08"PRIx32"\n", card->rca);
 
 	timestamp_t timeout = 1000 * TICKS_PER_MICROSECOND;
 	if (dwmmc_wait_not_busy(dwmmc, timeout) > timeout
@@ -141,11 +134,25 @@ _Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_ser
 		|| !set_clock_enable(dwmmc, 1)
 	) {return 0;}
 
+	st = dwmmc_wait_cmd_done(dwmmc, 9 | DWMMC_R2, card->rca, 1000);
+	if (st != DWMMC_ST_OK) {
+		dwmmc_print_status(dwmmc, "CMD9 (SEND_CSD) ");
+		return 0;
+	}
+	for_array(i, card->csd) {card->csd[i] = dwmmc->resp[i];}
+	sd_dump_csd(card);
+
+	st = dwmmc_wait_cmd_done(dwmmc, 7 | DWMMC_R1, card->rca, 1000);
+	if (st != DWMMC_ST_OK) {
+		dwmmc_print_status(dwmmc, "CMD7 (select card) ");
+		return 0;
+	}
+
 	st = dwmmc_wait_cmd_done(dwmmc, 16 | DWMMC_R1, 512, 1000);
 	dwmmc_print_status(dwmmc, "CMD16 (set blocklen) ");
 	if (st != DWMMC_ST_OK) {return 0;}
 
-	st = dwmmc_wait_cmd_done(dwmmc, 55 | DWMMC_R1, rca, 1000);
+	st = dwmmc_wait_cmd_done(dwmmc, 55 | DWMMC_R1, card->rca, 1000);
 	if (st != DWMMC_ST_OK) {
 		dwmmc_print_status(dwmmc, "ACMD6 (set bus width) ");
 		return 0;
@@ -159,7 +166,7 @@ _Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_ser
 		if (!try_high_speed(dwmmc, svc)) {return 0;}
 	}
 
-	st = dwmmc_wait_cmd_done(dwmmc, 55 | DWMMC_R1, rca, 1000);
+	st = dwmmc_wait_cmd_done(dwmmc, 55 | DWMMC_R1, card->rca, 1000);
 	if (st != DWMMC_ST_OK) {
 		dwmmc_print_status(dwmmc, "ACMD13 (SD_STATUS) ");
 		return 0;
@@ -175,6 +182,7 @@ _Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_ser
 	for (u32 i = 0; i < 16; i += 4) {
 		u32 a = dwmmc->fifo, b = dwmmc->fifo, c = dwmmc->fifo, d = dwmmc->fifo;
 		info("SSR %2"PRIu32": 0x%08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n", i, a, b, c, d);
+		card->ssr[i] = a; card->ssr[i + 1] = b; card->ssr[i + 2] = c; card->ssr[i + 3] = d;
 	}
 	if (!high_capacity) {
 		info("card does not support high capacity addressing\n");

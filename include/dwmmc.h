@@ -23,6 +23,7 @@ struct dwmmc_signal_services {
 };
 
 struct dwmmc_regs;
+struct sd_cardinfo;
 _Bool dwmmc_init_early(volatile struct dwmmc_regs *dwmmc);
-_Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc);
+_Bool dwmmc_init_late(volatile struct dwmmc_regs *dwmmc, struct dwmmc_signal_services *svc, struct sd_cardinfo *card);
 void dwmmc_read_poll(volatile struct dwmmc_regs *dwmmc, u32 sector, void *buf, size_t total_bytes);

@@ -18,6 +18,7 @@
 #include <rk3399.h>
 #include <async.h>
 #include <iost.h>
+#include <sd.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
 	switch (clk) {
@@ -42,6 +43,13 @@ static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_cloc
 static const u32 sdmmc_intid = 97;
 
 struct dwmmc_dma_state sdmmc_dma_state = {};
+
+struct sd_blockdev {
+	struct async_blockdev blk;
+	u32 address_shift;
+	u8 *readptr, *invalidate_ptr;
+	struct sd_cardinfo card;
+};
 
 static struct async_buf pump(struct async_transfer *async_, size_t consume, size_t min_size) {
 	struct async_dummy *async = (struct async_dummy *)async_;
@@ -88,6 +96,18 @@ static void UNUSED rk3399_sdmmc_end_irq_read() {
 	}
 }
 
+_Bool parse_cardinfo(struct sd_blockdev *dev) {
+	const u32 *csd = dev->card.csd;
+	if (csd[3] >> 30 != 1) {
+		infos("unrecognized CSD structure version\n");
+		return 0;
+	}
+	dev->address_shift = 0;
+	dev->blk.block_size = 512;
+	dev->blk.num_blocks = (u64)(csd[1] >> 16 | (csd[2] << 16 & 0x3f0000)) * 1024 + 1024;
+	info("SD has %"PRIu64" %"PRIu32"-byte sectors\n", dev->blk.num_blocks, dev->blk.block_size);
+	return 1;
+}
 
 void boot_sd() {
 	infos("trying SD");
@@ -104,10 +124,23 @@ void boot_sd() {
 		.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M | 1 << DWMMC_CLOCK_50M,
 		.voltages_supported = 1 << DWMMC_SIGNAL_3V3,
 	};
-	if (!dwmmc_init_late(sdmmc, &svc)) {
+	struct sd_blockdev blk = {
+		.blk = {
+			.async = {pump},
+			.num_blocks = 0,
+			.block_size = 0,
+			.start = 0,
+		},
+		.address_shift = 0,
+		.readptr = 0,
+		.invalidate_ptr = 0,
+		/* don't init cardinfo */
+	};
+	if (!dwmmc_init_late(sdmmc, &svc, &blk.card)) {
 		boot_medium_exit(BOOT_MEDIUM_SD);
 		return;
 	}
+	if (!parse_cardinfo(&blk)) {goto out;}
 
 	if (!wait_for_boot_cue(BOOT_MEDIUM_SD)) {
 		boot_medium_exit(BOOT_MEDIUM_SD);
@@ -138,5 +171,6 @@ void boot_sd() {
 #endif
 
 	printf("had read %zu bytes\n", (size_t)(async.buf.end - blob_buffer.start));
+out:
 	boot_medium_exit(BOOT_MEDIUM_SD);
 }
