@@ -18,6 +18,7 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 	enum iost res;
 	if (IOST_OK != (res = blk->start(blk, 0, partition_table_buffer, partition_table_buffer + sizeof(partition_table_buffer)))) {return res;}
 	struct async_buf buf = blk->async.pump(&blk->async, 0, blk->block_size);
+	if (buf.end < buf.start) {return buf.start - buf.end;}
 	dump_mem(partition_table_buffer, 512);
 	if (buf.start[510] != 0x55 || buf.start[511] != 0xaa) {
 		puts("no MBR found\n");
@@ -32,6 +33,7 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 	return IOST_INVALID;
 	gpt_found:
 	buf = blk->async.pump(&blk->async, 512, 2 * blk->block_size - 512);
+	if (buf.end < buf.start) {return buf.start - buf.end;}
 	buf.start += blk->block_size - 512;
 	dump_mem(buf.start, 92);
 	if (from_le64(*(u64 *)buf.start) != 0x5452415020494645) {
@@ -69,10 +71,12 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 	u32 entries_per_block = blk->block_size / 128;
 	u32 num_partition_entries = (u32)partition_table_size * entries_per_block;
 	buf = blk->async.pump(&blk->async, blk->block_size, 128);
+	if (buf.end < buf.start) {return buf.start - buf.end;}
 	u32 mask = 0;
 	u64 first[3], last[3];
 	u8 str[2] = "A";
 	for_range(i, 0, num_partition_entries) {
+		if (buf.end < buf.start) {return buf.start - buf.end;}
 #ifdef DEBUG_MSG
 		dump_mem(buf.start, 128);
 #endif
@@ -117,7 +121,10 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 		}
 		buf = blk->async.pump(&blk->async, 128, i < num_partition_entries - 1 ? 128 : 0);
 	}
-	if (mask == 0) {return IOST_INVALID;}
+	if (mask == 0) {
+		infos("no payload partitions\n");
+		return IOST_INVALID;
+	}
 	u32 used_index = 0;
 	if (mask == 2 || mask == 6) {used_index = 1;}
 	if (mask == 4 || mask == 5) {used_index = 2;}
