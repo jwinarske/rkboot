@@ -61,7 +61,7 @@ static struct async_buf pump(struct async_transfer *async_, size_t consume, size
 		size_t size = async->buf.end - async->buf.start;
 		if (size >= min_size || val == sdmmc_dma_state.end) {break;}
 #ifdef SPEW_MSG
-		spew("idle ");dwmmc_print_status(sdmmc);
+		dwmmc_print_status(sdmmc, "idle ");
 #endif
 		call_cc_ptr2_int2(sched_finish_u32, &sdmmc_dma_state.finished, &sdmmc_dma_state.waiters, ~(u32)0, val);
 	}
