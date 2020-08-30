@@ -34,6 +34,8 @@ void mmu_setup(const struct mapping *initial_mappings, const struct address_rang
 void mmu_unmap_range(u64 first, u64 last);
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags);
 
+HEADER_FUNC void mmu_flush() {__asm__("dsb ishst");}
+
 extern u64 (*const pagetables)[512];
 extern const size_t num_pagetables;
 
