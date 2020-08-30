@@ -7,6 +7,7 @@
 #include <mmu.h>
 #include <cache.h>
 #include <log.h>
+#include <arch.h>
 #include <die.h>
 #include <exc_handler.h>
 #include <gic.h>
@@ -36,7 +37,7 @@ static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_cloc
 		break;
 	default: return 0;
 	}
-	dsb_st();
+	arch_flush_writes();
 	return 1;
 }
 
