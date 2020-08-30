@@ -3,6 +3,7 @@
 #include <defs.h>
 
 enum {
+	SD_OCR_BUSY = 1 << 31,
 	SD_OCR_HIGH_CAPACITY = 1 << 30,
 	SD_OCR_XPC = 1 << 28,
 	SD_OCR_S18R = 1 << 24,
