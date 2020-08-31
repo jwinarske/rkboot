@@ -110,7 +110,7 @@ static struct emmc_blockdev blk = {
 	.address_shift = 0,
 };
 
-_Bool parse_cardinfo() {
+static _Bool parse_cardinfo() {
 	if (!mmc_cardinfo_understood(&blk.card)) {
 		infos("unknown CSD or EXT_CSD structure version");
 		return 0;

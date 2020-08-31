@@ -97,7 +97,7 @@ static void UNUSED rk3399_sdmmc_end_irq_read() {
 	}
 }
 
-_Bool parse_cardinfo(struct sd_blockdev *dev) {
+static _Bool parse_cardinfo(struct sd_blockdev *dev) {
 	const u32 *csd = dev->card.csd;
 	if (csd[3] >> 30 != 1) {
 		infos("unrecognized CSD structure version\n");
