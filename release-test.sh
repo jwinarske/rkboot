@@ -70,7 +70,7 @@ fi
 
 if [ -z "$skip" -o "$skip" == "5" ]; then
 	echo "Configuration 5: sramstage + elfloader + teststage, gzip compression"
-	"$src/configure.py" --with-tf-a-headers "$atf" --elfloader-gzip
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-gzip
 	ninja sramstage.bin elfloader.bin teststage.bin
 	gzip -k teststage.bin
 	until prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
@@ -81,7 +81,7 @@ fi
 
 if [ -z "$skip" -o "$skip" == "6" ]; then
 	echo "Configuration 6: sramstage + usbstage + elfloader + kernel, mixed compression"
-	"$src/configure.py" --with-tf-a-headers "$atf" --elfloader-gzip --elfloader-lz4 --elfloader-zstd
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{lz4,gzip,zstd}
 	ninja sramstage.bin usbstage.bin elfloader.bin teststage.bin
 	until prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
 		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" | usbtool --call sramstage.bin --run usbstage.bin --load 4400000 - --load 4000000 elfloader.bin --start 4000000 4102000; do true; done
@@ -89,28 +89,28 @@ fi
 
 if [ -z "$skip" -o "$skip" == "7" ]; then
 	echo "Configuration 7: levinboot with embedded SPI elfloader (zstd decompression)"
-	"$src/configure.py" --with-tf-a-headers "$atf" --elfloader-{spi,zstd}
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{spi,zstd}
 	ninja levinboot-usb.bin
 	until prompt || usbtool --run levinboot-usb.bin;do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "8" ]; then
 	echo "Configuration 8: levinboot SD image with gzip decompressor"
-	"$src/configure.py" --with-tf-a-headers "$atf" --elfloader-{spi,gzip}
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{spi,gzip}
 	ninja levinboot-sd.img
 	echo "Build successful"
 fi
 
 if [ -z "$skip" -o "$skip" == "9" ]; then
 	echo "Configuration 9: levinboot with embedded SD elfloader, configured for initcpio use (gzip decompression)"
-	"$src/configure.py" --with-tf-a-headers "$atf" --elfloader-{sd,gzip,initcpio}
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{sd,gzip,initcpio}
 	ninja levinboot-usb.bin
 	until prompt || usbtool --run levinboot-usb.bin;do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "10" ]; then
 	echo "Configuration 10: flash levinboot SPI image configured for SD and SPI boot with initcpio (lz4, gzip and zstd decompression)"
-	"$src/configure.py" --with-tf-a-headers "$atf" --elfloader-{sd,spi,lz4,gzip,zstd,initcpio}
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{sd,spi,lz4,gzip,zstd,initcpio}
 	ninja levinboot-spi.img sramstage.bin usbstage.bin
 	until prompt || usbtool --call sramstage.bin --run usbstage.bin --flash 0 levinboot-spi.img;do true; done
 	read -p "now reset the board to try it out (both boot from SD and SPI), press enter to continue"
