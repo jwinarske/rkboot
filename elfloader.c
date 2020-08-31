@@ -23,6 +23,7 @@
 #include <rkspi.h>
 #include <dwmmc.h>
 #include <dwmmc_dma.h>
+#include <iost.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY,
@@ -331,11 +332,12 @@ _Noreturn u32 main(u64 sctlr) {
 		gicv2_wait_disabled(gic500d);
 		gicv3_per_cpu_teardown(gic500r);
 	} else {
-#if ELFLOADER_DECOMPRESSION
-		struct async_transfer async;
-		init_blob_buffer(&async);
-		async.pos = async.total_bytes;
-		decompress_payload(&async);
+#if CONFIG_ELFLOADER_DECOMPRESSION
+		struct async_dummy async = {
+			.async = {async_pump_dummy},
+			.buf = blob_buffer,
+		};
+		decompress_payload(&async.async);
 #endif
 	}
 	fiq_handler_spx = irq_handler_spx = 0;
