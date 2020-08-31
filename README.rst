@@ -24,26 +24,32 @@ What works and what doesn't?
 
 What should work at this point:
 
-- Boot from USB, SD or eMMC with a memtest payload. *Caveat*: the memtest tries to test the entire DRAM address space, so will probably fail with <4GB boards.
+- Starting the system using the USB mask ROM mode.
 
-- Boot to Linux via TF-A over USB. This is described in _`Booting via USB`.
+  - running a memtest.
+  - Booting to Linux without a boot medium. This is described in _`Booting via USB`.
 
-- Boot to Linux from SPI, with levinboot on SD/MMC. This is described in _`Booting from SPI`
+- Booting Linux from a boot medium. levinboot is currently agnostic about what medium it itself was loaded from (there might be optimization potential in adding medium-specific code to take over from mask ROM earlier – TODO: evaluate).
 
-- Boot to Linux, completely from SD. This is described in _`Booting from SD`
+  - from SPI. This is described in _`Booting from SPI`
+  - from SD. This is described in _`Booting from SD`
+  - from eMMC. This is described in _`Booting from eMMC`
 
 What is intended to work by 1.0, but not implemented yet:
 
 - Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
 
-General TODOs, not assigned to a milestone:
+- using the hardware RNG to provide `/chosen/kaslr-seed`
 
-- more boot medium options, e. g. eMMC, NVMe
+General TODOs and feature ideas, not assigned to a milestone:
 
-- basic FIT support
+- more boot medium options, e. g. NVMe
+
+- more image format options: filesystems, boot configurations, FIT containers, …
 
 License
 =======
+
 levinboot is licensed under CC0, meaning that the author and contributors give up their copyright by placing the work in the public domain, in jurisdictions where that is possible, or if not, provide a non-exclusive license to do just about anything to the work to anyone who gets a copy, and waives all other legal interests of the author/contributor in the work.
 
 See `<https://creativecommons.org/publicdomain/zero/1.0/legalcode>`__ for the legal text.
@@ -70,6 +76,7 @@ It makes the following assumptions about the board:
 - GPIO0A5 is connected to an active-low "power" button. This is read in a _`SPI Recovery` setup.
 - if loading from SPI is configured, it tries to read using the normal 0x0b 'fast read' command with 3 address and 1 dummy byte at 50 MHz on the SPI1 pins
 - if loading from SD is configured, it will configure the SD pins on GPIO4B0-5 (inclusive) and the card detect pin on GPIO0A7.
+- if loading from eMMC is configured, it will configure GPIO0A5 as the eMMC power enable pin.
 
 These assumptions hold as described on the RockPro64 and the Pinebook Pro. On the Rock Pi 4 (according to the schematics), the pins used for the LEDs are unconnected and GPIO0A5 is connected to the anode of a diode, which should make it read high (i. e. inactive).
 
@@ -83,16 +90,15 @@ Important command-line arguments for :src:`configure.py` are:
 
 --with-tf-a-headers PATH  tells :src:`configure.py` where the TF-A export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
 
---elfloader-lz4, --elfloader-gzip, --elfloader-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
+--payload-lz4, --payload-gzip, --payload-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
 
---elfloader-spi, --elfloader-sd  configures :output:`elfloader.bin` to load payload images from SPI flash or SD cards (respectively) instead of expecting them preloaded at specific addresses.
+--payload-spi, --payload-sd, --payload-emmc  configures :output:`elfloader.bin` to load payload images from SPI flash, SD cards or eMMC storage (respectively) instead of expecting them preloaded at specific addresses.
   This process requires decompression support to be enabled.
-  See _`Booting from SPI` and _`Booting from SD` for more information, respectively.
+  See _`Booting from SPI`, _`Booting from SD` and  _`Booting from eMMC` for more information.
 
-  The two options can be combined, in which case :output:`elfloader.bin` will try to boot from SD, and if that fails (or if the power button is pressed when loading the payload finishes) it will boot from SPI instead.
-  See _`SPI Recovery`
+  These options can be combined. See _`Boot Order` for a description for which payload is loaded in which case.
 
---elfloader-initcpio  configures :output:`elfloader.bin` to load an initcpio image and pass it to the kernel.
+--payload-initcpio  configures :output:`elfloader.bin` to load an initcpio image and pass it to the kernel.
   This process requires decompression support to be enabled.
 
 Primary build targets are:
@@ -102,12 +108,16 @@ Primary build targets are:
 - :output:`levinboot-usb.bin`: this is used for single-stage _`Booting via USB`
 
 - :output:`levinboot-sd.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
-  Configure with :cmdargs:`--elfloader-spi --embed-elfloader` to make this useful.
+  This target is only available if a boot medium is configured.
 
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
 - :output:`elfloader.bin`: this is the payload loading stage for multi-stage _`Booting via USB`.
-  It expects a BL31 ELF image, a FDT blob and a Linux kernel (or a similar EL2 payload like `teststage.bin`) at (currently) hardcoded DRAM addresses (or a compressed payload blob at address 32M), loads BL31 into its correct addresses (which includes SRAM), inserts address information into the FDT, and finally jumps to BL31 with parameters telling it to start Linux (or other EL2 payload).
+  Depending on the configuration it can behave in different ways:
+
+  - if no compression format is configured: starting a kernel (or similar EL2 payload like :output:`teststage.bin`) pre-loaded at 0x00280000 with a BL31 ELF pre-loaded at 0x04200000 and a DTB pre-loaded at 0x00100000.
+  - if compression but no boot media are configured: decompressing and starting a compressed payload blob pre-loaded at 0x04400000.
+  - if a boot medium is configured: booting from the configured boot media, like in self-boot.
 
 - :output:`teststage.bin`: this is a simple EL2 payload. Currently it only dumps the passed FDT blob, if it is detected at :code:`*X0`.
 
@@ -118,12 +128,21 @@ Primary build targets are:
 The Payload Blob
 ================
 
-The current payload format used by levinboot consists of 3 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image. If configured with :cmdargs:`--elfloader-initcpio`, a compressed initcpio must be appended.
+The current payload format used by levinboot consists of 3 or 4 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image. If configured with :cmdargs:`--elfloader-initcpio`, a compressed initcpio must be appended.
 Depending on your configuration, arbitrary combinations of LZ4, gzip and zstd frames are supported.
 
 If you want to use levinboot to boot actual systems, keep in mind that it will only insert a `/memory` node (FIXME: which is currently hardcoded to 4GB) and `/chosen/linux,initrd-{start,end}` properties into the device tree.
 This means you will need to either use an initcpio or insert command line arguments or other ways to set a root file system into the device tree blob yourself.
 See :src:`overlay-example.dts` for an example overlay that could be applied (using, e. g. :command:`fdtoverlay` from the U-Boot tools) on an upstream kernel device tree, which designates the part of flash starting at 7MiB as a block device containing a squashfs root.
+
+Boot order
+==========
+
+While levinboot tries to initialize the different boot media concurrently, it does have a notion of priority, which is defined by the `DEFINE_BOOT_MEDIUM` macro in :src:`include/rk3399/dramstage.h`. The default order is SD, eMMC, SPI.
+
+Boot media are 'cued` in priority order. Without user intervention, levinboot will 'commit' to the first payload it can successfully load. This can be prevented for all except the last configured boot medium by holding the power button at the moment when loading is complete. levinboot will give the user at least 500 ms to let go of the button to prevent accidental override.
+
+The primary use case for this mechanism is to force booting from SPI without having to disassemble a Pinebook Pro to disable eMMC, by holding the power button until the SPI payload comes up.
 
 Booting via USB
 ===============
@@ -194,7 +213,7 @@ levinboot can load its payload images from SPI flash. This way it can be used as
 
 Configure the build with :cmdargs:`--elfloader-spi` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
 
-You can test it over USB (see above for basic steps) with :command:`usbtool --run levinboot-usb.bin`, write :output:`levinboot-sd.img` to sector 64 or write :output: on SD/eMMC for use in self-booting.
+Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash (see below for a way to do that without a working OS).
 
 After DRAM init, this will asynchronously read up to 16MiB of SPI flash on SPI interface 1 (which is the entire chip on a RockPro64 or Pinebook Pro) as needed, starting from address 0x40000 (256 KiB offset from start), and will decompress the payload blob from it.
 The flash contents after the end of _`The Payload Blob` are not used by levinboot and may be used for a root file system.
@@ -225,13 +244,31 @@ Configure the build with :cmdargs:`--elfloader-sd` in addition to your choice of
 
 The output images (:output:`levinboot-sd.img` and :output:`levinboot-usb.bin`) will initialize the SDMMC block and try to start an SDHC/SDXC card connected to it, currently at 25 MHz bus frequency, and load up to 60 MiB of payload starting at sector 8192 (4 MiB offset), as needed for decompression.
 
-You can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card (or eMMC if you feel like it, but it makes little sense).
+Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash.
 
-While levinboot does not read partition tables at this point, it may be advisable to create partitions starting at sectors 64 and 8192, for easier and potentially safer upgrades of levinboot and the payload, respectively.
+While levinboot does not read partition tables on SD at this point, it may be advisable to create partitions starting at sectors 64 and 8192, for easier and potentially safer upgrades of levinboot and the payload, respectively.
 
-SPI fallback
-------------
+Booting from eMMC
+=================
 
-If configured with both :cmdargs:`--elfloader-sd` and :cmdargs:`--elfloader-spi`, levinboot will first try to load the payload from SD cards.
-When this finishes, with the power button (still) held, levinboot will load the payload from SPI instead.
-The same will happen if initializing the SD card fails.
+levinboot can load payload images from eMMC storage. Configure it with :cmdargs:`--payload-emmc` to enable this.
+
+The drive has to be partitioned using GPT. levinboot will then load a compressed payload blob from a partition with one of these special partition type GUIDs (not partition UUIDs!):
+
+- payload A: e5ab07a0-8e5e-46f6-9ce8-41a518929b7c
+- payload B: 5f04b556-c920-4b6d-bd77-804efe6fae01
+- payload C: c195cc59-d766-4b78-813f-a0e1519099d8
+
+Partition type GUIDs can be set in :cmd:`fdisk` by just pasting them instead of a partition type number from the list when setting partition type. The type will then be displayed as 'unknown'.
+
+For each type, it will ignore all but the first one present in partition table order. If only one of these is present, it will load from that, if all three are present, it will take A, If 2 are present, it uses these rules:
+
+- if A and B are present, it uses A.
+- if B and C are present, it uses B.
+- if C and A are present, it uses C.
+
+It might be apparent from the enumeration that these are cyclical. The idea behind this rule set is to allow the following scheme to update payloads atomically by using 2 payload partitions: write the new payload to the partition that is currently unused, then (atomically) change the type of the old payload partition to the type that was not present before.
+
+As with SD and USB compressed payload booting, the maximum size is 60 MiB, so reserving more space for the partitions does not make sense (typical payloads tend to stay under 30MB).
+
+Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash.
