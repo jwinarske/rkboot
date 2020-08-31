@@ -16,12 +16,12 @@ in
 {
   levinboot = aarch64.stdenv.mkDerivation {
     pname = "levinboot";
-    version = "0.7";
+    version = "0.7.1";
     nativeBuildInputs = [host.ninja host.python3 host.lz4];
     configurePhase = ''
       mkdir build
       cd build
-      python3 ../configure.py --with-tf-a-headers ${atf-sources}/include/export --elfloader-{gzip,initcpio,sd}
+      python3 ../configure.py --with-tf-a-headers ${atf-sources}/include/export --payload-{gzip,initcpio,sd}
     '';
     installPhase = "mkdir -p $out; cp sramstage.bin memtest.bin usbstage.bin levinboot-usb.bin levinboot-sd.img levinboot-spi.img teststage.bin $out";
     depsBuildBuild = [host.buildPackages.stdenv.cc];
