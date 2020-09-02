@@ -11,6 +11,10 @@ void boot_sd();
 void boot_emmc();
 void boot_spi();
 
+extern u32 entropy_buffer[];
+extern u16 entropy_words;
+void pull_entropy(_Bool keep_running);
+
 /* access to these is only allowed by the currently cued boot medium thread */
 struct async_transfer;
 struct async_blockdev;

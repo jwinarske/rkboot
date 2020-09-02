@@ -73,6 +73,7 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 #endif
 	case 101:	/* stimer0 */
 		stimer0[0].interrupt_status = 1;
+		pull_entropy(1);
 #if DEBUG_MSG
 		if (get_timestamp() < 12000000) {logs("tick\n");}
 #else

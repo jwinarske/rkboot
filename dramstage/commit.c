@@ -118,21 +118,14 @@ _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	gpio0->direction |= 1 << 11;
 
 	info("trng: %"PRIx32" %"PRIx32"\n", crypto1->control, crypto1->interrupt_status);
-	crypto1->trng_control = RKCRYPTO_V1_TRNG_DISABLE;
-	crypto1->control = SET_BITS16(1, 0) << RKCRYPTO_V1_CTRL_TRNG_START_BIT;
 
-	u32 entropy[8];
-	for_array(i, entropy) {entropy[i] = crypto1->trng_output[i];}
-	info("%08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n",
-	     entropy[0], entropy[1], entropy[2], entropy[3]);
-	info("%08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n",
-	     entropy[4], entropy[5], entropy[6], entropy[7]);
+	pull_entropy(0);
 
 	struct fdt_addendum fdt_add = {
 		.dram_start = DRAM_START + TZRAM_SIZE,
 		.dram_size = dram_size() - TZRAM_SIZE,
-		.entropy = entropy,
-		.entropy_words = ARRAY_SIZE(entropy),
+		.entropy = entropy_buffer,
+		.entropy_words = entropy_words,
 #ifdef CONFIG_ELFLOADER_INITCPIO
 		.initcpio_start = (u64)payload->initcpio_start,
 		.initcpio_end = (u64)payload->initcpio_end,
