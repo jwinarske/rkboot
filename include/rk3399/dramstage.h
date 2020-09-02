@@ -22,7 +22,14 @@ enum iost boot_blockdev(struct async_blockdev *blk);
 /* boot commit functions: only run after all boot medium threads have finished running */
 struct stage_store;
 struct fdt_header;
-void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size);
+
+struct fdt_addendum {
+	u64 initcpio_start, initcpio_end, dram_start, dram_size;
+	u32 *entropy;
+	size_t entropy_words;
+};
+
+void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, const struct fdt_addendum *info);
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store);
 
 /* this enumeration defines the boot order */

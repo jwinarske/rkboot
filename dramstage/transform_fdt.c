@@ -1,4 +1,6 @@
+#include <rk3399/dramstage.h>
 #include <assert.h>
+
 #include <fdt.h>
 #include <log.h>
 #include <die.h>
@@ -50,8 +52,78 @@ static char *memcpy(char *dest, const char *src, size_t len) {
 	return ret;
 }
 
-void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, void *initcpio_start, void *initcpio_end, u64 dram_start, u64 dram_size) {
-	assert_unimpl(dram_start <= 0xffffffff && dram_size <= 0xffffffff, "64-bit DRAM address/size");
+#define DEFINE_INSSTR\
+	X(DEVICE_TYPE, "device_type")\
+	X(REG, "reg")\
+	X(INITRD_START, "linux,initrd-start")\
+	X(INITRD_END, "linux,initrd-end")\
+	X(KASLR_SEED, "kaslr-seed")\
+	X(RNG_SEED, "rng-seed")
+
+#define X(name, str) static char UNUSED dummy_##name[] = str;
+DEFINE_INSSTR
+#undef X
+
+enum {
+#define X(name, str) INSSTR_##name,
+	DEFINE_INSSTR
+#undef X
+	NUM_INSSTR
+};
+
+static const u32 insstr_lengths[NUM_INSSTR] = {
+#define X(name, str) sizeof(dummy_##name),
+	DEFINE_INSSTR
+#undef X
+};
+
+char inserted_strings[] =
+#define X(name, str) str "\0"
+	DEFINE_INSSTR
+#undef X
+;
+
+static be32 *insert_chosen_props(be32 *dest_struct, const struct fdt_addendum *info, u32 addr_cells, u32 string_offset) {
+	info("%zu words of entropy\n", info->entropy_words);
+	if (info->initcpio_start != info->initcpio_end) {
+		write_be32(dest_struct++, 3);
+		write_be32(dest_struct++, 4 * addr_cells);
+		u32 offset = string_offset;
+		for_range(i, 0, INSSTR_INITRD_START) {offset += insstr_lengths[i];}
+		write_be32(dest_struct++, offset);
+		for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
+		write_be32(dest_struct++, (u32)info->initcpio_start);
+		write_be32(dest_struct++, 3);
+		write_be32(dest_struct++, 4 * addr_cells);
+		offset = string_offset;
+		for_range(i, 0, INSSTR_INITRD_END) {offset += insstr_lengths[i];}
+		write_be32(dest_struct++, offset);
+		for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
+		write_be32(dest_struct++, (u32)info->initcpio_end);
+	}
+	if (info->entropy_words >= 2) {
+		u32 offset = string_offset;
+		for_range(i, 0, INSSTR_KASLR_SEED) {offset += insstr_lengths[i];}
+		write_be32(dest_struct++, 3);
+		write_be32(dest_struct++, 8);
+		write_be32(dest_struct++, offset);
+		dest_struct++->v = info->entropy[0];
+		dest_struct++->v = info->entropy[1];
+	}
+	if (info->entropy_words > 2) {
+		u32 offset = string_offset;
+		for_range(i, 0, INSSTR_RNG_SEED) {offset += insstr_lengths[i];}
+		write_be32(dest_struct++, 3);
+		assert(info->entropy_words < 0x40000002);
+		write_be32(dest_struct++, 4 * (info->entropy_words - 2));
+		write_be32(dest_struct++, offset);
+		for_range(i, 2, info->entropy_words) {dest_struct++->v = info->entropy[i];}
+	}
+	return dest_struct;
+}
+
+void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, const struct fdt_addendum *info) {
+	assert_unimpl(info->dram_start <= 0xffffffff && info->dram_size <= 0xffffffff, "64-bit DRAM address/size");
 	const u32 src_size = read_be32(&header->totalsize);
 	const u64 src_end = (u64)header + src_size;
 	assert(src_end <= (u64)input_end);
@@ -66,10 +138,9 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 		u64 start = src_rsvmap++->v;
 		u64 length = src_rsvmap++->v;
 		if (!length) {
-			if (initcpio_start) {
-				assert(initcpio_end);
-				write_be64(dest_rsvmap++, (u64)initcpio_start);
-				write_be64(dest_rsvmap++, (u64)(initcpio_end - initcpio_start));
+			if (info->initcpio_start != info->initcpio_end) {
+				write_be64(dest_rsvmap++, info->initcpio_start);
+				write_be64(dest_rsvmap++, info->initcpio_end - info->initcpio_end);
 			}
 			/* insert fdt address entry at the end */
 			write_be64(dest_rsvmap++, (u64)dest);
@@ -112,7 +183,6 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 	assert(addr_cells >= 1 && size_cells >= 1);
 
 	u32 string_size = read_be32(&header->string_size);
-	static const char initrd_start[] = "linux,initrd-start", initrd_end[] = "linux,initrd-end";
 
 	_Bool have_memory = 0, have_chosen = 0;
 	while ((cmd = read_be32(src_struct)) == 1) {
@@ -124,18 +194,7 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 				copy_subtree(&src_struct, &dest_struct, src_struct_end);
 				assert((u64)src_struct < src_end);
 			}
-			if (initcpio_start) {
-				write_be32(dest_struct++, 3);
-				write_be32(dest_struct++, 4 * addr_cells);
-				write_be32(dest_struct++, string_size);
-				for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
-				write_be32(dest_struct++, (u32)(u64)initcpio_start);
-				write_be32(dest_struct++, 3);
-				write_be32(dest_struct++, 4 * addr_cells);
-				write_be32(dest_struct++, string_size + sizeof(initrd_start));
-				for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
-				write_be32(dest_struct++, (u32)(u64)initcpio_end);
-			}
+			dest_struct = insert_chosen_props(dest_struct, info, addr_cells, string_size);
 			assert(read_be32(src_struct++) == 2);
 			write_be32(dest_struct++, 2);
 			break;
@@ -145,27 +204,30 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 		copy_subtree(&src_struct, &dest_struct, src_struct_end);
 		assert((u64)src_struct < src_end);
 	}
-	assert_unimpl(have_chosen/* || !initcpio_start*/, "inserting a /chosen node");
+	assert_unimpl(have_chosen, "inserting a /chosen node");
 	while (read_be32(src_struct) == 1) {
 		copy_subtree(&src_struct, &dest_struct, src_struct_end);
 	}
 	assert(read_be32(src_struct) == 2);
 
-	static const char device_type[] = "device_type";
 	static const u32 memory_node1[] = {
 		1, 0x6d656d6f, 0x72790000, 3, 7, 0 /*overwritten later*/, 0x6d656d6f, 0x72790000, 3
 	};
 	if (!have_memory) {
-		const u32 str_offset = string_size + sizeof(initrd_start) + sizeof(initrd_end);
+		u32 str_offset = string_size;
+		for_range(i, 0, INSSTR_DEVICE_TYPE) {str_offset += insstr_lengths[i];}
 		for_array(i, memory_node1) {write_be32(dest_struct+i, memory_node1[i]);}
 		write_be32(dest_struct+5, str_offset);
 		dest_struct += ARRAY_SIZE(memory_node1);
 		write_be32(dest_struct++, (addr_cells + size_cells) * 4);
-		write_be32(dest_struct++, str_offset + sizeof(device_type));
+
+		str_offset = string_size;
+		for_range(i, 0, INSSTR_REG) {str_offset += insstr_lengths[i];}
+		write_be32(dest_struct++, str_offset);
 		for_range(i, 0, addr_cells - 1) {dest_struct++->v = 0;}
-		write_be32(dest_struct++, dram_start);
+		write_be32(dest_struct++, info->dram_start);
 		for_range(i, 0, size_cells - 1) {dest_struct++->v = 0;}
-		write_be32(dest_struct++, dram_size);
+		write_be32(dest_struct++, info->dram_size);
 		write_be32(dest_struct++, 2);
 	}
 
@@ -174,16 +236,8 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 	char *dest_string = (char *)dest_struct, *dest_string_start = dest_string;
 	memcpy(dest_string, src_string, string_size);
 	dest_string += string_size;
-	memcpy(dest_string, initrd_start, sizeof(initrd_start));
-	dest_string += sizeof(initrd_start);
-	memcpy(dest_string, initrd_end, sizeof(initrd_end));
-	dest_string += sizeof(initrd_end);
-	if (!have_memory) {
-		memcpy(dest_string, device_type, sizeof(device_type));
-		dest_string += sizeof(device_type);
-		memcpy(dest_string, "reg", 4);
-		dest_string += 4;
-	}
+	memcpy(dest_string, inserted_strings, sizeof(inserted_strings));
+	dest_string += sizeof(inserted_strings);
 
 	struct fdt_header *dest_header = dest;
 	write_be32(&dest_header->magic, 0xd00dfeed);

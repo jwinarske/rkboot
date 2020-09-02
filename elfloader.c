@@ -189,7 +189,8 @@ _Noreturn u32 main(u64 sctlr) {
 	mmu_map_range(0xff3b0000, 0xff3b1fff, 0xff3b0000, MEM_TYPE_NORMAL);	/* PMUSRAM */
 	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
 	mmu_map_mmio_identity((u64)gpio0, (u64)gpio0 + 0xfff);
-	dsb_ishst();
+	mmu_map_mmio_identity((u64)crypto1, (u64)crypto1 + 0xfff);
+	mmu_flush();
 
 	/* set DRAM as Non-Secure; needed for DMA */
 	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;

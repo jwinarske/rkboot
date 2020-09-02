@@ -139,16 +139,10 @@ int32_t NO_ASAN main(u64 sctlr) {
 		gicv2_setup_spi(gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
 	}
 
-	mmu_map_mmio_identity((u64)stimer0, (u64)stimer0 + 0xfff);
-	dsb_ishst();
-	stimer0[0].control = 0;
-	stimer0[0].load_count2 = stimer0[0].load_count3 = stimer0[0].load_count0 = 0;
-	stimer0[0].load_count0 = 240000;
-	stimer0[0].interrupt_status = 1;
-	stimer0[0].control = RKTIMER_ENABLE | RKTIMER_INT_EN;
-
 	logs("jumping to ddrinit");
 	ddrinit_configure(&ddrinit_st);
+
+	misc_init();
 
 	for_range(i, 0, NUM_SRAMSTAGE_VSTACK) {
 		u64 limit = 0x100005000 + i * 0x2000;

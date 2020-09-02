@@ -3,6 +3,7 @@
 #include <defs.h>
 
 void pmu_cru_setup();
+void misc_init();
 void rk3399_init_sdmmc();
 struct sdhci_state;
 void emmc_init(struct sdhci_state *st);

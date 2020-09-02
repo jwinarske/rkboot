@@ -103,3 +103,6 @@ static volatile struct rktimer_regs *const stimer6 = (volatile struct rktimer_re
 
 struct sdhci_regs;
 static volatile struct sdhci_regs *const emmc = (volatile struct sdhci_regs *)0xfe330000;
+
+struct rkcrypto_v1_regs;
+static volatile struct rkcrypto_v1_regs *const crypto1 = (volatile struct rkcrypto_v1_regs *)0xff8b8000;

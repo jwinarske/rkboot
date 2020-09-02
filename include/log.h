@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include <stdio.h>
+#include <inttypes.h>
 
 #ifndef FREESTANDING_STDIO
 	#ifdef SPEW_MSG
