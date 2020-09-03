@@ -102,9 +102,11 @@ int main(int argc, char **argv) {
 					}
 					break;
 				} else if (*ptr == 'f') {
+					ptr += 1;
 					overwrite = 1;
 				} else {
 					fprintf(stderr, "unknown short-form option %s\n", ptr);
+					return 1;
 				}
 			}
 		} else {
