@@ -58,18 +58,22 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 		return IOST_INVALID;
 	}
 	u64 first_usable_lba = from_le64(*(u64 *)(buf.start + 40));
-	u64 partition_table_size = first_usable_lba - 2;
-	if (first_usable_lba > 1024 || partition_table_size < 16 * 1024 / blk->block_size) {
-		puts("bogus partition table size\n");
-		return IOST_INVALID;
-	}
-	u64 last_usable = from_le64(*(u64 *)(buf.start + 48));
-	if (last_usable != blk->num_blocks -  partition_table_size - 2) {
-		puts("wrong last usable LBA\n");
-		return IOST_INVALID;
-	}
+	u64 last_usable_lba = from_le64(*(u64 *)(buf.start + 48));
+	u32 num_partition_entries = from_le32(*(u32 *)(buf.start + 80));
 	u32 entries_per_block = blk->block_size / 128;
-	u32 num_partition_entries = (u32)partition_table_size * entries_per_block;
+	u32 partition_table_size = num_partition_entries / entries_per_block;
+	if (first_usable_lba < 2 + partition_table_size) {
+		puts("not enough space reserved for primary partition table entries\n");
+		return IOST_INVALID;
+	}
+	if (last_usable_lba > blk->num_blocks - 2 - partition_table_size) {
+		puts("not enough space reserved for secondary partition table entries\n");
+		return IOST_INVALID;
+	}
+	if (num_partition_entries > 0x10000) {
+		printf("refusing to read %"PRIu32" partition table entries\n", num_partition_entries);
+		return IOST_INVALID;
+	}
 	buf = blk->async.pump(&blk->async, blk->block_size, 128);
 	if (buf.end < buf.start) {return buf.start - buf.end;}
 	u32 mask = 0;
@@ -113,7 +117,7 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 			last[index] = from_le64(*(u64 *)(buf.start + 40));
 			str[0] = 'A' + index;
 			printf(" levinboot payload %s: %"PRIu64"–%"PRIu64"\n", str, first[index], last[index]);
-			if (first[index] > last[index] || last[index] > last_usable) {
+			if (first[index] > last[index] || last[index] > last_usable_lba) {
 				puts("bogus LBAs, ignoring");
 			} else {
 				mask |= 1 << index;
