@@ -14,7 +14,7 @@ struct dwmmc_regs {
 	u32 bytcnt;
 	u32 intmask;
 	u32 cmdarg;
-	u32 cmd;
+	_Atomic u32 cmd;
 	u32 resp[4];
 	u32 mintsts;
 	u32 rintsts;
@@ -52,6 +52,7 @@ CHECK_OFFSET(dwmmc_regs, hcon, 0x70);
 CHECK_OFFSET(dwmmc_regs, bmod, 0x80);
 CHECK_OFFSET(dwmmc_regs, card_threshold, 0x100);
 CHECK_OFFSET(dwmmc_regs, fifo, 0x200);
+_Static_assert(sizeof(_Atomic u32) == 4, "_Atomic u32 is not 4 bytes");
 
 enum {
 	DWMMC_CTRL_USE_IDMAC = 1 << 25,
@@ -74,7 +75,9 @@ enum {
 	DWMMC_CMD_SEND_INITIALIZATION = 1 << 15,
 	/* … */
 	DWMMC_CMD_SYNC_DATA = 1 << 13,
-	/* … */
+	DWMMC_CMD_AUTO_STOP = 1 << 12,
+	DWMMC_CMD_STREAM_TRANSFER = 1 << 11,
+	DWMMC_CMD_WRITE = 1 << 10,
 	DWMMC_CMD_DATA_EXPECTED = 1 << 9,
 	DWMMC_CMD_CHECK_RESPONSE_CRC = 1 << 8,
 	DWMMC_CMD_RESPONSE_LENGTH = 1 << 7,
@@ -87,16 +90,23 @@ enum {
 	DWMMC_R6 = DWMMC_CMD_SYNC_DATA | DWMMC_CMD_CHECK_RESPONSE_CRC | DWMMC_CMD_RESPONSE_EXPECT,
 };
 enum {
+	/* this seems to be an interrupt in a special mode enabled by DWMMC_CARDTHRCTL_BUSY_CLEAR_INT; in the "legacy" mode, the upper 16 bits are SDIO interrupts for each of the up to 16 cards supported by the controller (which start at bit 24 in the special mode) TODO: verify this actually works (so far no cards I have seen have asserted busy in any situation I've seen) */
 	DWMMC_INT_DATA_NO_BUSY = 0x10000,
+	/* … */
+	DWMMC_INT_FIFO_XERRUN = 0x800,
 	/* …  */
 	DWMMC_INT_RESP_TIMEOUT = 0x100,
 	/* … */
 	DWMMC_INT_RX_FIFO_DATA_REQ = 0x20,
 	DWMMC_INT_TX_FIFO_DATA_REQ = 0x10,
+	/* asserted whenever DWMMC_STATUS_DATA_SM_BUSY gets reset (transfer finished successfully, read timeout, transfer abort, …) */
 	DWMMC_INT_DATA_TRANSFER_OVER = 8,
+	/* asserted whenever the command FSM goes into idle state (0) */
 	DWMMC_INT_CMD_DONE = 4,
-	/* … */
-	DWMMC_ERROR_INT_MASK = 0xb8c2
+	DWMMC_INT_RESP_ERR = 2,
+	DWMMC_INT_CARD_DETECT = 1,
+	DWMMC_ERROR_INT_MASK = 0xb8c2,
+	DWMMC_INTMASK_ALL = 0x0101ffff,
 };
 enum {
 	DWMMC_STATUS_DMA_REQ = 1 << 31,
@@ -122,24 +132,13 @@ enum {
 };
 
 enum {
-	DWMMC_IDMAC_FSM_MASK = 15 << 13,
-};
-
-enum {
-	DWMMC_IDMAC_INT_ABNORMAL = 1 << 9,
-	DWMMC_IDMAC_INT_NORMAL = 1 << 8,
-	DWMMC_IDMAC_INT_CARD_ERROR = 32,
-	DWMMC_IDMAC_INT_DESC_UNAVAILABLE = 16,
-	DWMMC_IDMAC_INT_FATAL_BUS_ERROR = 4,
-	DWMMC_IDMAC_INT_RECEIVE = 2,
-	DWMMC_IDMAC_INT_TRANSMIT = 1,
-	DWMMC_IDMAC_INTMASK_ABNORMAL = 0x214,
-	DWMMC_IDMAC_INTMASK_NORMAL = 0x103,
-	DWMMC_IDMAC_INTMASK_ALL = 0x337,
+#define DWMMC_CARDTHRCTL_CARD_THRESHOLD(n) ((n) << 16)
+	DWMMC_CARDTHRCTL_BUSY_CLEAR_INT = 2,
+	DWMMC_CARDTHRCTL_CARD_THRESHOLD_EN = 1
 };
 
 struct dwmmc_idmac_desc {
-	_Alignas(8)
+	_Alignas(16)
 	_Atomic(u32) control;
 	u32 sizes;
 	u32 ptr1;
@@ -155,4 +154,21 @@ enum {
 	DWMMC_DES_FIRST = 8,
 	DWMMC_DES_LAST = 4,
 	DWMMC_DES_DISABLE_INTERRUPT = 2,
+};
+
+enum {
+	DWMMC_IDMAC_FSM_MASK = 15 << 13,
+};
+
+enum {
+	DWMMC_IDMAC_INT_ABNORMAL = 1 << 9,
+	DWMMC_IDMAC_INT_NORMAL = 1 << 8,
+	DWMMC_IDMAC_INT_CARD_ERROR = 32,
+	DWMMC_IDMAC_INT_DESC_UNAVAILABLE = 16,
+	DWMMC_IDMAC_INT_FATAL_BUS_ERROR = 4,
+	DWMMC_IDMAC_INT_RECEIVE = 2,
+	DWMMC_IDMAC_INT_TRANSMIT = 1,
+	DWMMC_IDMAC_INTMASK_ABNORMAL = 0x214,
+	DWMMC_IDMAC_INTMASK_NORMAL = 0x103,
+	DWMMC_IDMAC_INTMASK_ALL = 0x337,
 };

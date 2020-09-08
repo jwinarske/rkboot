@@ -19,6 +19,7 @@
 #include <aarch64.h>
 #include <sched_aarch64.h>
 #include <sdhci.h>
+#include <dwmmc.h>
 
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY_SRAM,
@@ -44,6 +45,7 @@ static struct ddrinit_state ddrinit_st;
 #if CONFIG_EMMC
 static struct sdhci_state emmc_state;
 #endif
+extern struct dwmmc_state sdmmc_state;
 
 void irq_handler(struct exc_state_save UNUSED *save) {
 	u64 grp0_intid;
@@ -59,12 +61,20 @@ void irq_handler(struct exc_state_save UNUSED *save) {
 		sdhci_irq(emmc, &emmc_state);
 		break;
 #endif
+#if CONFIG_SD
+	case 97:
+		dwmmc_irq(&sdmmc_state);
+		break;
+#endif
 	case 101:	/* stimer0 */
 		stimer0[0].interrupt_status = 1;
-#if DEBUG_MSG
+#ifdef DEBUG_MSG
 		if (get_timestamp() < 2400000) {logs("tick\n");}
 #else
 		dsb_st();	/* apparently the interrupt clear isn't fast enough, wait for completion */
+#endif
+#if CONFIG_SD
+		dwmmc_wake_waiters(&sdmmc_state);
 #endif
 		break;	/* do nothing, just want to wake the main loop */
 	default:
@@ -133,6 +143,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 		{35, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* ddrc0 */
 		{36, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* ddrc1 */
 		{43, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* emmc */
+		{97, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* sd */
 		{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
 	};
 	for_array(i, intids) {

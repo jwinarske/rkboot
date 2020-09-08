@@ -38,6 +38,7 @@ void call_cc_ptr2_int2(void NORETURN_ATTR (*callback)(struct sched_runnable *, v
 void call_cc_ptr2_int1(void NORETURN_ATTR (*callback)(struct sched_runnable *, volatile void *, volatile void *, ureg_t), volatile void *, volatile void *, ureg_t);
 
 _Noreturn NORETURN_ATTR void sched_finish_u32(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t clear, ureg_t set);
+_Noreturn NORETURN_ATTR void sched_finish_u8(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t clear, ureg_t set);
 _Noreturn NORETURN_ATTR void sched_finish_u8ptr(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t val);
 
 void usleep(u32 usecs);

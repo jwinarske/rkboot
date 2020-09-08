@@ -13,13 +13,13 @@
 #include <gic.h>
 #include <gic_regs.h>
 #include <dwmmc.h>
-#include <dwmmc_dma.h>
 #include <dwmmc_helpers.h>
 #include <runqueue.h>
 #include <rk3399.h>
 #include <async.h>
 #include <iost.h>
 #include <sd.h>
+#include <dump_mem.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
 	switch (clk) {
@@ -40,11 +40,22 @@ static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_cloc
 	arch_flush_writes();
 	return 1;
 }
+static struct dwmmc_signal_services svc = {
+	.set_clock = set_clock,
+	.set_signal_voltage = 0,
+	.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M | 1 << DWMMC_CLOCK_50M,
+	.voltages_supported = 1 << DWMMC_SIGNAL_3V3,
+};
+
+struct dwmmc_state sdmmc_state = {
+	.regs = sdmmc,
+	.svc = &svc,
+	.int_st = DWMMC_INT_DATA_TRANSFER_OVER,
+	.cmd_template = DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG,
+};
+#if 0
 
 static const u32 sdmmc_intid = 97;
-
-struct dwmmc_dma_state sdmmc_dma_state = {};
-
 struct sd_blockdev {
 	struct async_blockdev blk;
 	u32 address_shift;
@@ -52,8 +63,8 @@ struct sd_blockdev {
 	struct sd_cardinfo card;
 };
 
-static struct async_buf pump(struct async_transfer *async_, size_t consume, size_t min_size) {
-	struct async_dummy *async = (struct async_dummy *)async_;
+static struct async_buf pump(struct async_transfer *async, size_t consume, size_t min_size) {
+	struct sd_blockdev *dev = (struct sd_blockdev *)async;
 	async->buf.start += consume;
 	u8 *old_end = async->buf.end;
 	while (1) {
@@ -109,22 +120,24 @@ static _Bool parse_cardinfo(struct sd_blockdev *dev) {
 	info("SD has %"PRIu64" %"PRIu32"-byte sectors\n", dev->blk.num_blocks, dev->blk.block_size);
 	return 1;
 }
+#endif
+
+static _Alignas(4096) struct dwmmc_idmac_desc desc_buf[4096 / sizeof(struct dwmmc_idmac_desc)];
+
+static _Alignas(4) u8 test_buf[1 << 12];
 
 void boot_sd() {
-	infos("trying SD");
+	infos("trying SD\n");
+	mmu_unmap_range((u64)desc_buf, (u64)desc_buf + 0xfff);
 	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
+	mmu_map_range((u64)desc_buf, (u64)desc_buf + 0xfff, (u64)desc_buf, MEM_TYPE_UNCACHED);
 	dsb_ishst();
 	if (cru[CRU_CLKGATE_CON+12] & 1 << 13) {
 		puts("sramstage left SD disabled\n");
 		boot_medium_exit(BOOT_MEDIUM_SD);
 		return;
 	}
-	struct dwmmc_signal_services svc = {
-		.set_clock = set_clock,
-		.set_signal_voltage = 0,
-		.frequencies_supported = 1 << DWMMC_CLOCK_400K | 1 << DWMMC_CLOCK_25M | 1 << DWMMC_CLOCK_50M,
-		.voltages_supported = 1 << DWMMC_SIGNAL_3V3,
-	};
+#if 0
 	struct sd_blockdev blk = {
 		.blk = {
 			.async = {pump},
@@ -137,16 +150,37 @@ void boot_sd() {
 		.invalidate_ptr = 0,
 		/* don't init cardinfo */
 	};
-	if (!dwmmc_init_late(sdmmc, &svc, &blk.card)) {
+#endif
+	struct sd_cardinfo card;
+	if (!dwmmc_init_late(&sdmmc_state, &card)) {
 		boot_medium_exit(BOOT_MEDIUM_SD);
 		return;
 	}
-	if (!parse_cardinfo(&blk)) {goto out;}
+	//if (!parse_cardinfo(&blk)) {goto out;}
 
 	if (!wait_for_boot_cue(BOOT_MEDIUM_SD)) {
 		boot_medium_exit(BOOT_MEDIUM_SD);
 		return;
 	}
+	struct dwmmc_xfer xfer = {
+		.desc = desc_buf,
+		.desc_addr = plat_virt_to_phys(desc_buf),
+		.desc_cap = ARRAY_SIZE(desc_buf),
+	};
+	enum iost res = dwmmc_start_request(&xfer, 0);
+	if (res != IOST_OK) {goto out;}
+	phys_addr_t dest = plat_virt_to_phys(test_buf);
+	puts("add buffer\n");
+	if (!dwmmc_add_phys_buffer(&xfer, dest, dest + sizeof(test_buf))) {goto out;}
+	puts("start_xfer\n");
+	res = dwmmc_start_xfer(&sdmmc_state, &xfer);
+	if (res != IOST_OK) {goto out;}
+	puts("wait_xfer\n");
+	res = dwmmc_wait_xfer(&sdmmc_state, &xfer);
+	if (res != IOST_OK) {goto out;}
+	invalidate_range(test_buf, sizeof(test_buf));
+	dump_mem(test_buf, sizeof(test_buf));
+#if 0
 	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
 
 #if !CONFIG_ELFLOADER_IRQ
@@ -172,6 +206,7 @@ void boot_sd() {
 #endif
 
 	printf("had read %zu bytes\n", (size_t)(async.buf.end - blob_buffer.start));
+#endif
 out:
 	boot_medium_exit(BOOT_MEDIUM_SD);
 }

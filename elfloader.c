@@ -22,7 +22,6 @@
 #include <sched_aarch64.h>
 #include <rkspi.h>
 #include <dwmmc.h>
-#include <dwmmc_dma.h>
 #include <iost.h>
 
 static const struct mapping initial_mappings[] = {
@@ -48,7 +47,7 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 extern struct sdhci_state emmc_state;
 extern struct async_transfer spi1_async, sdmmc_async;
 extern struct rkspi_xfer_state spi1_state;
-extern struct dwmmc_dma_state sdmmc_dma_state;
+extern struct dwmmc_state sdmmc_state;
 
 static void irq_handler(struct exc_state_save UNUSED *save) {
 	u64 grp0_intid;
@@ -68,7 +67,7 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 #endif
 #if CONFIG_SD
 	case 97:
-		dwmmc_handle_dma_interrupt(sdmmc, &sdmmc_dma_state);
+		dwmmc_irq(&sdmmc_state);
 		break;
 #endif
 	case 101:	/* stimer0 */
@@ -81,6 +80,9 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 #endif
 #if CONFIG_EMMC
 		sdhci_wake_threads(&emmc_state);
+#endif
+#if CONFIG_SD
+		dwmmc_wake_waiters(&sdmmc_state);
 #endif
 		break;	/* do nothing, just want to wake the main loop */
 	default:
@@ -245,6 +247,7 @@ _Noreturn u32 main(u64 sctlr) {
 		} intids[] = {
 			{43, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* emmc */
 			//{85, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* spi */
+			{97, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* sd */
 			{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
 		};
 		for_array(i, intids) {

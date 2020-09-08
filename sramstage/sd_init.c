@@ -8,8 +8,15 @@
 #include <timer.h>
 #include <aarch64.h>
 #include <dwmmc.h>
+#include <dwmmc_regs.h>
 #include <rk3399.h>
 #include <runqueue.h>
+
+struct dwmmc_state sdmmc_state = {
+	.regs = sdmmc,
+	.int_st = DWMMC_INT_DATA_NO_BUSY | DWMMC_INT_CMD_DONE | DWMMC_INT_DATA_TRANSFER_OVER,
+	.cmd_template = DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG,
+};
 
 void rk3399_init_sdmmc() {
 	/* hclk_sd = 200 MHz */
@@ -37,7 +44,7 @@ void rk3399_init_sdmmc() {
 	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
 	dsb_ishst();
 	info("starting SDMMC\n");
-	if (!dwmmc_init_early(sdmmc)) {
+	if (!dwmmc_init_early(&sdmmc_state)) {
 		puts("SD init failed\n");
 		atomic_thread_fence(memory_order_release);
 		/* gate hclk_sd, this is checked by dramstage to see if SDMMC was initialized */
