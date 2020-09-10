@@ -187,12 +187,12 @@ cc = os.getenv('CC', 'cc')
 cflags = os.getenv('CFLAGS', '-O3')
 cflags += " -Wall -Wextra -Werror=all -Wno-error=unused-parameter  -Wno-error=comment -Werror=incompatible-pointer-types"
 if cc.endswith('gcc'):
-    cflags += '  -Werror=discarded-qualifiers'
+    cflags += '  -Werror=discarded-qualifiers -mcpu=cortex-a72.cortex-a53+crc'
 
 genld = path.join(srcdir, 'gen_linkerscript.sh')
 
 print('''
-cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem {src}/include/std -isystem . {cflags} -march=armv8-a+crc -mcpu=cortex-a72.cortex-a53+crc
+cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem {src}/include/std -isystem . {cflags} -march=armv8-a+crc
 ldflags = {ldflags}
 
 incbin_flags = --rename-section .data=.rodata,alloc,load,readonly,data,contents
