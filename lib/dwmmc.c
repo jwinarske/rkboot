@@ -181,7 +181,7 @@ _Bool dwmmc_init_late(struct dwmmc_state *state, struct sd_cardinfo *card) {
 	dwmmc->bytcnt = 64;
 	st = dwmmc_wait_cmd_done(state,
 		13 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0,
-		USECS(1000)
+		MSECS(10)
 	);
 	dwmmc_print_status(dwmmc, "ACMD13 (SD_STATUS) ");
 	if (st != IOST_OK) {return 0;}

@@ -124,7 +124,45 @@ static _Bool parse_cardinfo(struct sd_blockdev *dev) {
 
 static _Alignas(4096) struct dwmmc_idmac_desc desc_buf[4096 / sizeof(struct dwmmc_idmac_desc)];
 
-static _Alignas(4) u8 test_buf[1 << 12];
+struct sd_blockdev {
+	struct async_transfer async;
+	struct dwmmc_xfer xfer;
+	u8 *consume_ptr, *end_ptr, *next_end_ptr, *stop_ptr;
+	u32 next_lba;
+};
+
+enum {REQUEST_SIZE = 1 << 18};
+
+static u8 iost_u8[NUM_IOST];
+
+static struct async_buf pump(struct async_transfer *async, size_t consume, size_t min_size) {
+	struct sd_blockdev *dev = (struct sd_blockdev *)async;
+	assert((size_t)(dev->end_ptr - dev->consume_ptr) >= consume);
+	dev->consume_ptr += consume;
+	while ((size_t)(dev->end_ptr - dev->consume_ptr) < min_size) {
+		if (dev->end_ptr != dev->next_end_ptr) {
+			infos("waiting for xfer\n");
+			dwmmc_wait_xfer(&sdmmc_state, &dev->xfer);
+			invalidate_range(dev->end_ptr, dev->next_end_ptr - dev->end_ptr);
+			dev->end_ptr = dev->next_end_ptr;
+		}
+		if (dev->stop_ptr == dev->end_ptr) {
+			return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
+		}
+		u8 *end = dev->stop_ptr - dev->end_ptr > REQUEST_SIZE ? dev->end_ptr + REQUEST_SIZE: dev->stop_ptr;
+		info("starting new xfer LBA 0x%08"PRIx32" buf 0x%"PRIx64"–0x%"PRIx64"\n", dev->next_lba, (u64)dev->end_ptr, (u64)end);
+		enum iost res = dwmmc_start_request(&dev->xfer, dev->next_lba);
+		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
+		_Bool success = dwmmc_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
+		assert(success);
+		res = dwmmc_start_xfer(&sdmmc_state, &dev->xfer);
+		info("res%u\n", (unsigned)res);
+		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
+		dev->next_lba += REQUEST_SIZE / 512;
+		dev->next_end_ptr = end;
+	}
+	return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
+}
 
 void boot_sd() {
 	infos("trying SD\n");
@@ -137,20 +175,6 @@ void boot_sd() {
 		boot_medium_exit(BOOT_MEDIUM_SD);
 		return;
 	}
-#if 0
-	struct sd_blockdev blk = {
-		.blk = {
-			.async = {pump},
-			.num_blocks = 0,
-			.block_size = 0,
-			.start = 0,
-		},
-		.address_shift = 0,
-		.readptr = 0,
-		.invalidate_ptr = 0,
-		/* don't init cardinfo */
-	};
-#endif
 	struct sd_cardinfo card;
 	if (!dwmmc_init_late(&sdmmc_state, &card)) {
 		boot_medium_exit(BOOT_MEDIUM_SD);
@@ -162,51 +186,27 @@ void boot_sd() {
 		boot_medium_exit(BOOT_MEDIUM_SD);
 		return;
 	}
-	struct dwmmc_xfer xfer = {
-		.desc = desc_buf,
-		.desc_addr = plat_virt_to_phys(desc_buf),
-		.desc_cap = ARRAY_SIZE(desc_buf),
-	};
-	enum iost res = dwmmc_start_request(&xfer, 0);
-	if (res != IOST_OK) {goto out;}
-	phys_addr_t dest = plat_virt_to_phys(test_buf);
-	puts("add buffer\n");
-	if (!dwmmc_add_phys_buffer(&xfer, dest, dest + sizeof(test_buf))) {goto out;}
-	puts("start_xfer\n");
-	res = dwmmc_start_xfer(&sdmmc_state, &xfer);
-	if (res != IOST_OK) {goto out;}
-	puts("wait_xfer\n");
-	res = dwmmc_wait_xfer(&sdmmc_state, &xfer);
-	if (res != IOST_OK) {goto out;}
-	invalidate_range(test_buf, sizeof(test_buf));
-	dump_mem(test_buf, sizeof(test_buf));
-#if 0
-	static const u32 sd_start_sector = 4 << 11; /* offset 4 MiB */
-
-#if !CONFIG_ELFLOADER_IRQ
-	dwmmc_read_poll_dma(sdmmc, sd_start_sector, blob_buffer.start, blob_buffer.end - blob_buffer.start);
-	struct async_dummy async = {
-		.async = {async_pump_dummy},
-		.buf = {blob_buffer.start, blob_buffer.end},
-	};
-#else
-	struct async_dummy async = {
+	struct sd_blockdev blk = {
 		.async = {pump},
-		.buf = {blob_buffer.start, blob_buffer.start},
+		.xfer = {
+			.desc = desc_buf,
+			.desc_addr = plat_virt_to_phys(desc_buf),
+			.desc_cap = ARRAY_SIZE(desc_buf),
+		},
+		.next_lba = 4 << 20 >> 9,
+		.consume_ptr = blob_buffer.start,
+		.end_ptr = blob_buffer.start,
+		.next_end_ptr = blob_buffer.start,
+		.stop_ptr = blob_buffer.end,
 	};
-	rk3399_sdmmc_start_irq_read(sd_start_sector, blob_buffer.start, blob_buffer.end);
-#endif
 
-	if (IOST_OK == decompress_payload(&async.async)) {
+	enum iost res = decompress_payload(&blk.async);
+	if (res == IOST_OK) {
 		boot_medium_loaded(BOOT_MEDIUM_SD);
-	}
+	} else {goto out;}
 
-#if CONFIG_ELFLOADER_IRQ
-	rk3399_sdmmc_end_irq_read();
-#endif
-
-	printf("had read %zu bytes\n", (size_t)(async.buf.end - blob_buffer.start));
-#endif
+	dwmmc_wait_xfer(&sdmmc_state, &blk.xfer);
+	printf("had read %zu bytes\n", (size_t)(blk.end_ptr - blob_buffer.start));
 out:
 	boot_medium_exit(BOOT_MEDIUM_SD);
 }

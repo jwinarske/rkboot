@@ -41,7 +41,6 @@ struct dwmmc_state {
 	struct sched_runnable_list interrupt_waiters;
 	u32 cmd_template;
 
-
 	_Atomic(struct dwmmc_xfer *) active_xfer;
 };
 

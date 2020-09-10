@@ -19,6 +19,9 @@ enum iost dwmmc_start_request(struct dwmmc_xfer *xfer, u32 block_addr) {
 		if (status == DWMMC_SUBMITTED) {return IOST_TRANSIENT;}
 	} while (atomic_compare_exchange_weak_explicit(&xfer->status, &status, DWMMC_CREATING, memory_order_acquire, memory_order_acquire));
 	xfer->block_addr = block_addr;
+	xfer->desc_size = 0;
+	xfer->xfer_bytes = 0;
+	xfer->second_buf = 0;
 	return IOST_OK;
 }
 
@@ -28,7 +31,7 @@ _Bool dwmmc_add_phys_buffer(struct dwmmc_xfer *xfer, phys_addr_t start, phys_add
 	while (1) {
 		if (start >= end) {return 1;}
 		if (xfer->desc_size >= xfer->desc_cap) {return 0;}
-		info("%s: %"PRIxPHYS": ", __FUNCTION__, start);
+		debug("%s: %"PRIxPHYS": ", __FUNCTION__, start);
 		u32 size = 4096;
 		if (end - start < 4096) {size = end - start;}
 		_Bool first_buf = xfer->second_buf ^ 1;
@@ -36,14 +39,14 @@ _Bool dwmmc_add_phys_buffer(struct dwmmc_xfer *xfer, phys_addr_t start, phys_add
 		struct dwmmc_idmac_desc *desc = xfer->desc + desc_idx;
 		u32 flags = DWMMC_DES_DISABLE_INTERRUPT | (desc_idx ? DWMMC_DES_OWN : DWMMC_DES_FIRST);
 		if (!first_buf) {
-			infos("second buffer\n");
+			debugs("second buffer\n");
 			atomic_store_explicit(&desc->control, flags, memory_order_relaxed);
 			desc->ptr2 = start;
 			desc->sizes |= size << 13;
 			xfer->desc_size = desc_idx + 1;
 			xfer->second_buf = 0;
 		} else if (plat_is_page_aligned(xfer->desc + xfer->desc_size + 1) || xfer->always_use_chaining) {
-			infos("chain\n");
+			debugs("chain\n");
 			desc->ptr1 = start;
 			desc->sizes = size;
 			desc->ptr2 = plat_virt_to_phys(xfer->desc + xfer->desc_size);
@@ -51,7 +54,7 @@ _Bool dwmmc_add_phys_buffer(struct dwmmc_xfer *xfer, phys_addr_t start, phys_add
 			xfer->desc_size = desc_idx + 1;
 			xfer->second_buf = 0;
 		} else {
-			infos("first buffer\n");
+			debugs("first buffer\n");
 			atomic_store_explicit(&desc->control, flags, memory_order_relaxed);
 			desc->sizes = size;
 			desc->ptr1 = start;
@@ -63,11 +66,12 @@ _Bool dwmmc_add_phys_buffer(struct dwmmc_xfer *xfer, phys_addr_t start, phys_add
 }
 
 enum iost dwmmc_start_xfer(struct dwmmc_state *state, struct dwmmc_xfer *xfer) {
+	info("dwmmc_start_xfer: %zu bytes\n", xfer->xfer_bytes);
 	if (xfer->xfer_bytes == 0 || (xfer->desc_size == 0 && !xfer->second_buf)) {return IOST_INVALID;}
 	size_t last = xfer->desc_size + xfer->second_buf - 1;
-	atomic_store_explicit(&xfer->desc[last].control, atomic_load_explicit(&xfer->desc[last].control, memory_order_relaxed) | DWMMC_DES_LAST | DWMMC_DES_END_OF_RING, memory_order_relaxed);
-	u32 ctrl = atomic_load_explicit(&xfer->desc[0].control, memory_order_relaxed);
-	atomic_store_explicit(&xfer->desc[0].control, (ctrl & ~DWMMC_DES_DISABLE_INTERRUPT) | DWMMC_DES_OWN, memory_order_release);
+	u32 ctrl = atomic_load_explicit(&xfer->desc[last].control, memory_order_relaxed);
+	atomic_store_explicit(&xfer->desc[last].control, (ctrl & ~DWMMC_DES_DISABLE_INTERRUPT) | DWMMC_DES_LAST | DWMMC_DES_END_OF_RING, memory_order_relaxed);
+	atomic_store_explicit(&xfer->desc[0].control, atomic_load_explicit(&xfer->desc[0].control, memory_order_relaxed) | DWMMC_DES_OWN, memory_order_release);
 	atomic_thread_fence(memory_order_release);
 	u8 status = DWMMC_CREATING;
 	_Bool success = atomic_compare_exchange_strong_explicit(&xfer->status, &status, DWMMC_SUBMITTED, memory_order_relaxed, memory_order_relaxed);
@@ -88,7 +92,7 @@ enum iost dwmmc_start_xfer(struct dwmmc_state *state, struct dwmmc_xfer *xfer) {
 	dwmmc->bmod = DWMMC_BMOD_IDMAC_ENABLE;
 	dwmmc->desc_list_base = (u32)xfer->desc_addr;
 	dwmmc->idmac_int_enable = DWMMC_IDMAC_INTMASK_ALL;
-	info("%zu bytes\n", xfer->xfer_bytes);
+	dwmmc->intmask = DWMMC_INTMASK_DMA;
 	assert(xfer->xfer_bytes % 512 == 0);
 	dwmmc->blksiz = 512;
 	dwmmc->bytcnt = xfer->xfer_bytes;
