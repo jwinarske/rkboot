@@ -58,11 +58,13 @@ static enum iost decompress(struct async_transfer *async, u8 *out, u8 **out_end)
 	struct decompressor_state *state = (struct decompressor_state *)decomp_state;;
 	u64 start = get_timestamp();
 	struct async_buf buf = async->pump(async, 0, 1);
+	if (buf.end < buf.start) {return buf.start - buf.end;}
 	size_t size;
 	for_array(i, formats) {
 		enum compr_probe_status status;
 		while ((status = formats[i].decomp->probe(buf.start, buf.end, &size)) == COMPR_PROBE_NOT_ENOUGH_DATA) {
 			buf = async->pump(async, 0, buf.end - buf.start + 1);
+			if (buf.end < buf.start) {return buf.start - buf.end;}
 		}
 		if (status <= COMPR_PROBE_LAST_SUCCESS) {
 			assert(sizeof(decomp_state) >= formats[i].decomp->state_size);
@@ -87,6 +89,7 @@ static enum iost decompress(struct async_transfer *async, u8 *out, u8 **out_end)
 				} else if (res > NUM_DECODE_STATUS) {
 					size_t consume = res - NUM_DECODE_STATUS;
 					buf = async->pump(async, consume, buf.end - buf.start - consume);
+					if (buf.end < buf.start) {return buf.start - buf.end;}
 					continue;
 				}
 				info("decompression failed, status: %zu (%s)\n", res, decode_status_msg[res]);
