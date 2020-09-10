@@ -118,6 +118,20 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 	return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
 }
 
+static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_end) {
+	struct sd_blockdev *dev = (struct sd_blockdev *)dev_;
+	if (buf_end < buf
+		|| (size_t)(buf_end - buf) % dev->blk.block_size != 0
+		|| addr >= dev->blk.num_blocks
+	) {return IOST_INVALID;}
+	enum iost res = wait_xfer(dev);
+	if (res != IOST_OK) {return res;}
+	dev->next_lba = (u32)addr;
+	dev->consume_ptr = dev->end_ptr = dev->next_end_ptr = buf;
+	dev->stop_ptr = buf_end;
+	return IOST_OK;
+}
+
 void boot_sd() {
 	infos("trying SD\n");
 	mmu_unmap_range((u64)desc_buf, (u64)desc_buf + 0xfff);
@@ -131,17 +145,13 @@ void boot_sd() {
 	struct sd_blockdev blk = {
 		.blk = {
 			.async = {pump},
+			.start = start,
 		},
 		.xfer = {
 			.desc = desc_buf,
 			.desc_addr = plat_virt_to_phys(desc_buf),
 			.desc_cap = ARRAY_SIZE(desc_buf),
 		},
-		.next_lba = 4 << 20 >> 9,
-		.consume_ptr = blob_buffer.start,
-		.end_ptr = blob_buffer.start,
-		.next_end_ptr = blob_buffer.start,
-		.stop_ptr = blob_buffer.end,
 	};
 	if (!dwmmc_init_late(&sdmmc_state, &blk.card)) {goto shut_down_mshc;}
 	if (!parse_cardinfo(&blk)) {goto out;}
@@ -151,7 +161,7 @@ void boot_sd() {
 		return;
 	}
 
-	enum iost res = decompress_payload(&blk.blk.async);
+	enum iost res = boot_blockdev(&blk.blk);
 	if (res == IOST_OK) {
 		boot_medium_loaded(BOOT_MEDIUM_SD);
 	} else if (res != IOST_GLOBAL) {
