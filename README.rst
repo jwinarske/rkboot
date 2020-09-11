@@ -35,6 +35,8 @@ What should work at this point:
   - from SD. This is described in _`Booting from SD`
   - from eMMC. This is described in _`Booting from eMMC`
 
+- providing entropy to the kernel (KASLR and RNG seeds) via the DTB
+
 What is intended to work by 1.0, but not implemented yet:
 
 - Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
