@@ -41,13 +41,23 @@ What is intended to work by 1.0, but not implemented yet:
 
 - Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
 
-- using the hardware RNG to provide `/chosen/kaslr-seed`
+- a new payload format, allowing uncompressed segments and moving certain memory layout decisions from pre-build or runtime to payload creation time.
 
-General TODOs and feature ideas, not assigned to a milestone:
+- booting from NVMe.
 
-- more boot medium options, e. g. NVMe
+General TODOs and feature ideas, post-1.0:
+
+- USB keyboard support (for selecting the boot medium)
+
+- more boot medium options: USB mass storage?
 
 - more image format options: filesystems, boot configurations, FIT containers, …
+
+- cryptographic verification of payloads
+
+- non-LPDDR4 DRAM init
+
+- along with non-LPDDR4 support, support for more boards (hardware donations welcome!)
 
 License
 =======
