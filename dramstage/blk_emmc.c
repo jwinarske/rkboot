@@ -19,6 +19,7 @@
 #include <die.h>
 #include <async.h>
 #include <iost.h>
+#include <dump_mem.h>
 
 static void UNUSED mmc_print_csd_cid(u32 *cxd) {
 	if ((cxd[3] >> 30) == 0) {
@@ -111,6 +112,9 @@ static struct emmc_blockdev blk = {
 };
 
 static _Bool parse_cardinfo() {
+#ifdef DEBUG_MSG
+	dump_mem(&blk.card.ext_csd, sizeof(blk.card.ext_csd));
+#endif
 	if (!mmc_cardinfo_understood(&blk.card)) {
 		infos("unknown CSD or EXT_CSD structure version");
 		return 0;
