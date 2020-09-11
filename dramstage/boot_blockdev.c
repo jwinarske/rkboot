@@ -35,7 +35,9 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 	buf = blk->async.pump(&blk->async, 512, 2 * blk->block_size - 512);
 	if (buf.end < buf.start) {return buf.start - buf.end;}
 	buf.start += blk->block_size - 512;
+#ifdef DEBUG_MSG
 	dump_mem(buf.start, 92);
+#endif
 	if (from_le64(*(u64 *)buf.start) != 0x5452415020494645) {
 		puts("wrong GPT signature\n");
 		return IOST_INVALID;
