@@ -2,7 +2,7 @@
 #include <sdhci.h>
 #include <sdhci_regs.h>
 #include <sdhci_helpers.h>
-#include <inttypes.h>
+#include <stdatomic.h>
 #include <assert.h>
 
 #include <log.h>
@@ -150,7 +150,7 @@ enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	sdhci->host_control1 = (
 		sdhci->host_control1
 		& ~(SDHCI_HOSTCTRL1_BUS_WIDTH_4 | SDHCI_HOSTCTRL1_DMA_MASK)
-	) | SDHCI_HOSTCTRL1_BUS_WIDTH_8 | SDHCI_HOSTCTRL1_SDMA;
+	) | SDHCI_HOSTCTRL1_BUS_WIDTH_8 | SDHCI_HOSTCTRL1_ADMA2_32;
 	sdhci->block_size = 512;
 	if (IOST_OK != (res = sdhci_read_ext_csd(sdhci, st, card))) {return res;}
 	if (IOST_LOCAL >= (res = sdhci_try_hs(st, card))) {return res;}
@@ -170,4 +170,81 @@ _Bool sdhci_try_abort(struct sdhci_state *st) {
 		sched_yield();
 	}
 	return 1;
+}
+
+_Bool sdhci_reset_xfer(struct sdhci_xfer *xfer) {
+	u8 status = atomic_load_explicit(&xfer->status, memory_order_acquire);
+	assert(status < NUM_IOST);
+	_Bool success = atomic_compare_exchange_strong_explicit(&xfer->status, &status, SDHCI_CREATING, memory_order_release, memory_order_relaxed);
+	assert(success);
+	if (!success) {return 0;}
+	xfer->desc_size = 0;
+	xfer->xfer_bytes = 0;
+	return 1;
+}
+
+_Bool sdhci_add_phys_buffer(struct sdhci_xfer *xfer, phys_addr_t buf, phys_addr_t buf_end) {
+	assert(atomic_load_explicit(&xfer->status, memory_order_relaxed) == SDHCI_CREATING);
+	assert(buf <= buf_end);
+	assert(buf_end <= 0xffffffff);
+	if (buf & 3 || buf_end & 3) {return 0;}
+
+	size_t size = xfer->desc_size;
+	for (;buf < buf_end; ++size) {
+		if (size >= xfer->desc_cap) {return 0;}
+		struct sdhci_adma2_desc8 *desc = xfer->desc8 + size;
+		desc->addr = (u32)buf;
+		u16 seg_size;
+		if (buf_end - buf >= 1 << 16) {
+			seg_size = 0;
+			buf += 1 << 16;
+			xfer->xfer_bytes += 1 << 16;
+		} else {
+			seg_size = buf_end - buf;
+			buf = buf_end;
+			xfer->xfer_bytes += seg_size;
+		}
+		u32 cmd = (u32)seg_size << 16 | SDHCI_DESC_TRAN;
+		if (size) {cmd |= SDHCI_DESC_VALID;}
+		spew("desc %08"PRIx32" %08"PRIx32"\n", cmd, desc->addr);
+		atomic_store_explicit(&desc->cmd, cmd, memory_order_relaxed);
+	}
+	xfer->desc_size = size;
+	return 1;
+}
+
+enum iost sdhci_start_xfer(struct sdhci_state *st, struct sdhci_xfer *xfer, u32 addr) {
+	assert(atomic_load_explicit(&xfer->status, memory_order_relaxed) == SDHCI_CREATING);
+	if (!xfer->desc_size) {return IOST_INVALID;}
+	struct sdhci_adma2_desc8 *desc = xfer->desc8 + xfer->desc_size - 1;
+	u32 cmd = atomic_load_explicit(&desc->cmd, memory_order_relaxed);
+	atomic_store_explicit(&desc->cmd, cmd | SDHCI_DESC_END, memory_order_relaxed);
+	cmd = atomic_load_explicit(&xfer->desc8->cmd, memory_order_relaxed);
+	atomic_store_explicit(&xfer->desc8->cmd, cmd | SDHCI_DESC_VALID, memory_order_release);
+	atomic_store_explicit(&xfer->status, SDHCI_SUBMITTED, memory_order_release);
+
+	struct sdhci_xfer *dummy = 0;
+	assert(xfer->xfer_bytes % 512 == 0);
+	_Bool success = atomic_compare_exchange_strong_explicit(&st->active_xfer, &dummy, xfer, memory_order_acq_rel, memory_order_relaxed);
+	if (!success) {return IOST_TRANSIENT;}
+	volatile struct sdhci_regs *sdhci = st->regs;
+	sdhci->adma_addr[0] = xfer->desc_addr;
+	sdhci->adma_addr[1] = (u64)xfer->desc_addr >> 32;
+	sdhci->block_count = xfer->xfer_bytes / 512;
+	sdhci->transfer_mode = SDHCI_TRANSMOD_READ
+		| SDHCI_TRANSMOD_BLOCK_COUNT
+		| SDHCI_TRANSMOD_MULTIBLOCK
+		| SDHCI_TRANSMOD_AUTO_CMD12
+		| SDHCI_TRANSMOD_DMA;
+	return sdhci_submit_cmd(st, SDHCI_CMD(18) | SDHCI_R1 | SDHCI_CMD_DATA, addr);
+}
+
+enum iost sdhci_wait_xfer(struct sdhci_state *st, struct sdhci_xfer *xfer) {
+	u8 status;
+	while ((status = atomic_load_explicit(&xfer->status, memory_order_acquire)) >= NUM_IOST) {
+		assert(status == SDHCI_SUBMITTED);
+		call_cc_ptr2_int2(sched_finish_u8, &xfer->status, &st->interrupt_waiters, 0xff, status);
+		spews("sdhci_wait_xfer: woke up");
+	}
+	return status;
 }

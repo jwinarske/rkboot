@@ -5,45 +5,28 @@
 
 #include <sdhci.h>
 #include <sdhci_regs.h>
+#include <sdhci_helpers.h>
 #include <log.h>
 #include <timer.h>
 #include <iost.h>
 
-static _Bool handle_sdma(volatile struct sdhci_regs *sdhci, struct sdhci_state *st) {
-	u8 *buf = atomic_load_explicit(&st->sdma_buf, memory_order_acquire);
-	spew("SDMA interrupt: %"PRIx64"\n", (u64)buf);
-	if (!buf) {return 0;}
-	assert((uintptr_t)buf <= 0xffffffff && ((uintptr_t)buf & (st->sdma_buffer_size - 1)) == 0 && ((uintptr_t)st->buf_end & (st->sdma_buffer_size - 1)) == 0);
-	buf += st->sdma_buffer_size;
-	if (buf >= st->buf_end) {return 0;}
-	sdhci->normal_int_st = SDHCI_INT_DMA;
-	sdhci->system_addr = (u32)(uintptr_t)buf;
-	atomic_store_explicit(&st->sdma_buf, buf, memory_order_release);
-	return 1;
-}
-
 void sdhci_irq(struct sdhci_state *st) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	debugs("?");
-	fflush(stdout);
-	u32 status = sdhci->int_st, status_remaining = status;
-	spew("SDHCI IRQ 0x%08"PRIx32"\n", status);
-	u16 insta_ack = SDHCI_INT_CMD_COMPLETE | SDHCI_INT_XFER_COMPLETE | SDHCI_INT_BUFFER_READ_READY | SDHCI_INT_BUFFER_WRITE_READY;
-	if (status & insta_ack) {
-		sdhci->normal_int_st = status & insta_ack;
-		if (status & SDHCI_INT_XFER_COMPLETE) {
-			atomic_store_explicit(&st->sdma_buf, 0, memory_order_release);
+	u32 int_st = sdhci->int_st;
+	spew("SDHCI IRQ 0x%08"PRIx32"\n", int_st);
+	sdhci->int_st = int_st;
+	u32 int_st_old = atomic_fetch_or_explicit(&st->int_st, int_st, memory_order_release);
+	if (int_st & SDHCI_INT_XFER_COMPLETE) {
+		struct sdhci_xfer *xfer = atomic_load_explicit(&st->active_xfer, memory_order_acquire);
+		if (xfer) {
+			debugs("ending xfer\n");
+			atomic_thread_fence(memory_order_release);
+			enum iost status = (int_st | int_st_old) >> 16 ? IOST_GLOBAL : IOST_OK;
+			atomic_store_explicit(&xfer->status, status, memory_order_relaxed);
+			atomic_store_explicit(&st->active_xfer, 0, memory_order_relaxed);
 		}
-		status_remaining &= ~(SDHCI_INT_CMD_COMPLETE | SDHCI_INT_XFER_COMPLETE);
 	}
-	if (status & SDHCI_INT_DMA) {
-		if (handle_sdma(sdhci, st)) {status_remaining &= ~SDHCI_INT_DMA;}
-	}
-	if (status_remaining) {
-		/* unexpected interrupt: signal-disable, let thread handle it */
-		sdhci->int_signal_enable &= ~status_remaining;
-	}
-	atomic_fetch_or_explicit(&st->int_st, status, memory_order_release);
 	sched_queue_list(CURRENT_RUNQUEUE, &st->interrupt_waiters);
 }
 

@@ -46,105 +46,103 @@ struct sdhci_state emmc_state = {
 
 struct emmc_blockdev {
 	struct async_blockdev blk;
-	u32 address_shift;
-	u8 *readptr, *invalidate_ptr;
+	struct sdhci_xfer xfer;
+	u8 *consume_ptr, *end_ptr, *next_end_ptr, *stop_ptr;
+	u32 next_lba;
+	unsigned address_shift : 4;
 	struct mmc_cardinfo card;
 };
 
-static _Alignas(4096) u32 adma2_32_desc[2048] = {};
+static u8 iost_u8[NUM_IOST];
 
-static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_end) {
-	if (IOST_OK != sdhci_wait_state(&emmc_state, SDHCI_PRESTS_CMD_INHIBIT, 0, USECS(10000), "transfer start ")) {return IOST_GLOBAL;}
-	if (emmc->present_state & SDHCI_PRESTS_DAT_INHIBIT) {
-		if (!sdhci_try_abort(&emmc_state)) {return IOST_GLOBAL;}
-	}
-	if (atomic_load_explicit(&emmc_state.int_st, memory_order_acquire) >> 16) {return IOST_GLOBAL;}
-	struct emmc_blockdev *dev = (struct emmc_blockdev *)dev_;
-	dev->invalidate_ptr = dev->readptr = buf;
-	puts("test");
-	if (addr >= dev->blk.num_blocks >> dev->address_shift) {return IOST_INVALID;}
-	size_t size = buf_end - buf;
-	if ((uintptr_t)buf_end > 0xffffffff && size > 0x10000 * ARRAY_SIZE(adma2_32_desc) / 2) {return IOST_INVALID;}
-	u8 *old_buf = atomic_exchange_explicit(&emmc_state.sdma_buf, 0, memory_order_acq_rel);
-	assert(!old_buf);
-	emmc_state.sdma_buffer_size = 4096;
-	emmc_state.buf_end = buf_end;
-	atomic_store_explicit(&emmc_state.sdma_buf, buf, memory_order_release);
-	emmc->normal_int_st = SDHCI_INT_DMA;
-	emmc->int_signal_enable = 0xfffff0ff;
-	emmc->block_count = size / 512;
-	emmc->transfer_mode = SDHCI_TRANSMOD_READ
-		| SDHCI_TRANSMOD_DMA
-		| SDHCI_TRANSMOD_AUTO_CMD12
-		| SDHCI_TRANSMOD_MULTIBLOCK
-		| SDHCI_TRANSMOD_BLOCK_COUNT;
-	emmc->system_addr = (u32)(uintptr_t)buf;
-	return sdhci_submit_cmd(&emmc_state,
-		SDHCI_CMD(18) | SDHCI_R1 | SDHCI_CMD_DATA, addr
-	);
+static enum iost wait_xfer(struct emmc_blockdev *dev) {
+	infos("waiting for xfer\n");
+	enum iost res = sdhci_wait_xfer(&emmc_state, &dev->xfer);
+	if (res != IOST_OK) {return res;}
+	invalidate_range(dev->end_ptr, dev->next_end_ptr - dev->end_ptr);
+	dev->end_ptr = dev->next_end_ptr;
+	return IOST_OK;
 }
+
+enum {REQUEST_SIZE = 1 << 20};
 
 static struct async_buf pump(struct async_transfer *async, size_t consume, size_t min_size) {
-	struct emmc_blockdev *blk = (struct emmc_blockdev *)async;
-	blk->readptr += consume;
-	while (1) {
-		struct async_buf res = {blk->readptr, atomic_load_explicit(&emmc_state.sdma_buf, memory_order_acquire)};
-		if (!res.end || (size_t)(res.end - res.start) >= min_size) {
-			if (!res.end) {res.end = emmc_state.buf_end;}
-			if (res.end > blk->invalidate_ptr) {
-				invalidate_range(blk->invalidate_ptr, res.end - blk->invalidate_ptr);
-				blk->invalidate_ptr = res.end;
-			}
-			return res;
+	struct emmc_blockdev *dev = (struct emmc_blockdev *)async;
+	assert((size_t)(dev->end_ptr - dev->consume_ptr) >= consume);
+	dev->consume_ptr += consume;
+	while ((size_t)(dev->end_ptr - dev->consume_ptr) < min_size) {
+		if (dev->end_ptr != dev->next_end_ptr) {
+			enum iost res = wait_xfer(dev);
+			if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
 		}
-		 debug("waiting for eMMC: %"PRIx64" end %"PRIx64"\n", (u64)res.end, (u64)emmc_state.buf_end);
-		call_cc_ptr2_int1(sched_finish_u8ptr, &emmc_state.sdma_buf, &emmc_state.interrupt_waiters, (uintptr_t)res.end);
-		debugs("eMMC woke up\n");
+		if (dev->stop_ptr == dev->end_ptr) {
+			return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
+		}
+		u8 *end = dev->stop_ptr - dev->end_ptr > REQUEST_SIZE ? dev->end_ptr + REQUEST_SIZE: dev->stop_ptr;
+		info("starting new xfer LBA 0x%08"PRIx32" buf 0x%"PRIx64"–0x%"PRIx64"\n", dev->next_lba, (u64)dev->end_ptr, (u64)end);
+		if (!sdhci_reset_xfer(&dev->xfer)) {return (struct async_buf) {iost_u8 + IOST_INVALID, iost_u8};}
+		_Bool success = sdhci_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
+		assert(success);
+		enum iost res = sdhci_start_xfer(&emmc_state, &dev->xfer, dev->next_lba);
+		info("res%u\n", (unsigned)res);
+		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
+		dev->next_lba += REQUEST_SIZE / dev->blk.block_size;
+		dev->next_end_ptr = end;
 	}
+	return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
 }
 
-static struct emmc_blockdev blk = {
-	.blk = {
-		.async = {pump},
-		.start = start,
-		.block_size = 512,
-	},
-	.readptr = 0,
-	.invalidate_ptr = 0,
-	.address_shift = 0,
-};
+static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_end) {
+	struct emmc_blockdev *dev = (struct emmc_blockdev *)dev_;
+	if (buf_end < buf
+		|| (size_t)(buf_end - buf) % dev->blk.block_size != 0
+		|| addr >= dev->blk.num_blocks
+	) {return IOST_INVALID;}
+	enum iost res = wait_xfer(dev);
+	if (res != IOST_OK) {return res;}
+	dev->next_lba = (u32)addr;
+	dev->consume_ptr = dev->end_ptr = dev->next_end_ptr = buf;
+	dev->stop_ptr = buf_end;
+	return IOST_OK;
+}
 
-static _Bool parse_cardinfo() {
+static _Alignas(4096) struct sdhci_adma2_desc8 desc_buf[4096 / sizeof(struct sdhci_adma2_desc8)];
+
+static _Bool parse_cardinfo(struct emmc_blockdev *dev) {
 #ifdef DEBUG_MSG
-	dump_mem(&blk.card.ext_csd, sizeof(blk.card.ext_csd));
+	dump_mem(&dev->card.ext_csd, sizeof(dev->card.ext_csd));
 #endif
-	if (!mmc_cardinfo_understood(&blk.card)) {
+	if (!mmc_cardinfo_understood(&dev->card)) {
 		infos("unknown CSD or EXT_CSD structure version");
 		return 0;
 	}
-	if (blk.card.ext_csd[EXTCSD_REV] < 2) {
+	if (dev->card.ext_csd[EXTCSD_REV] < 2) {
 		infos("EXT_CSD revision <2, cannot read sector count");
 		return 0;
-	} else if (blk.card.ext_csd[EXTCSD_REV] >= 6) {
-		if (blk.card.ext_csd[EXTCSD_DATA_SECTOR_SIZE] == 1) {
-			blk.blk.block_size = 4096;
-		} else if (blk.card.ext_csd[EXTCSD_DATA_SECTOR_SIZE] != 0) {
+	} else if (dev->card.ext_csd[EXTCSD_REV] >= 6) {
+		if (dev->card.ext_csd[EXTCSD_DATA_SECTOR_SIZE] == 1) {
+			dev->blk.block_size = 4096;
+		} else if (dev->card.ext_csd[EXTCSD_DATA_SECTOR_SIZE] != 0) {
 			infos("unknown data sector size");
 			return 0;
+		} else {
+			dev->blk.block_size = 512;
 		}
+	} else {
+		dev->blk.block_size = 512;
 	}
-	blk.blk.num_blocks = mmc_sector_count(&blk.card);
-	info("eMMC has %"PRIu64" %"PRIu32"-byte sectors\n", blk.blk.num_blocks, blk.blk.block_size);
-	if (~blk.card.rocr & 1 << 30) {blk.address_shift = 9;}
+	dev->blk.num_blocks = mmc_sector_count(&dev->card);
+	info("eMMC has %"PRIu64" %"PRIu32"-byte sectors\n", dev->blk.num_blocks, dev->blk.block_size);
+	if (~dev->card.rocr & 1 << 30) {dev->address_shift = 9;}
 	return 1;
 }
 
 void boot_emmc() {
 	infos("trying eMMC\n");
 	mmu_map_mmio_identity(0xfe330000, 0xfe33ffff);
-	mmu_unmap_range((u64)&adma2_32_desc, (u64)&adma2_32_desc + sizeof(adma2_32_desc) - 1);
+	mmu_unmap_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1);
 	dsb_ish();
-	mmu_map_range((u64)&adma2_32_desc, (u64)&adma2_32_desc + sizeof(adma2_32_desc) - 1, (u64)&adma2_32_desc, MEM_TYPE_WRITE_THROUGH);
+	mmu_map_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1, (u64)&desc_buf, MEM_TYPE_UNCACHED);
 	dsb_ishst();
 	
 	if (cru[CRU_CLKGATE_CON+6] & 7 << 12) {
@@ -152,11 +150,23 @@ void boot_emmc() {
 		boot_medium_exit(BOOT_MEDIUM_EMMC);
 		return;
 	}
+
+	struct emmc_blockdev blk = {
+		.blk = {
+			.async = {pump},
+			.start = start,
+		},
+		.xfer = {
+			.desc8 = desc_buf,
+			.desc_addr = plat_virt_to_phys(&desc_buf),
+			.desc_cap = ARRAY_SIZE(desc_buf),
+		},
+	};
 	if (IOST_OK != sdhci_init_late(&emmc_state, &blk.card)) {
 		infos("eMMC init failed\n");
 		goto shut_down_emmc;
 	}
-	if (!parse_cardinfo()) {goto out;}
+	if (!parse_cardinfo(&blk)) {goto out;}
 
 	infos("eMMC init done\n");
 	if (!wait_for_boot_cue(BOOT_MEDIUM_EMMC)) {goto out;}

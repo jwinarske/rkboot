@@ -50,7 +50,7 @@ struct sdhci_regs {
 	u16 force_event_auto_cmd;
 	u16 force_event;
 	u16 adma_error_st;
-	u64 adma_addr;
+	u32 adma_addr[2];
 	u16 preset_value[7];
 	u32 boot_timeout;
 	u16 preset_value_hs400;
@@ -76,7 +76,7 @@ CHECK_OFFSET(sdhci_regs, version, 0xfe);
 enum {
 	SDHCI_TRANSMOD_MULTIBLOCK = 32,
 	SDHCI_TRANSMOD_READ = 16,
-	SDHCI_TRANSMOD_WRITE = 8,
+	SDHCI_TRANSMOD_WRITE = 0,
 	SDHCI_TRANSMOD_NO_AUTO_CMD = 0,
 	SDHCI_TRANSMOD_AUTO_CMD12 = 1 << 2,
 	SDHCI_TRANSMOD_AUTO_CMD23 = 2 << 2,
@@ -212,4 +212,13 @@ struct sdhci_cq_regs {
 	u32 capabilities;
 	u32 configuration;
 	/* … */
+};
+
+enum {
+	SDHCI_DESC_TRAN = 32,
+	SDHCI_DESC_LINK = 48,
+	SDHCI_DESC_TASK = 40,
+	SDHCI_DESC_INT = 4,
+	SDHCI_DESC_END = 2,
+	SDHCI_DESC_VALID = 1,
 };
