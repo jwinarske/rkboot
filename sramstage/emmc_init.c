@@ -44,7 +44,7 @@ _Bool sdhci_init_early(struct sdhci_state *st) {
 	puts("submitting CMD0\n");
 	sdhci->cmd = 0;
 	/* dramstage will poll the card for init complete, just kick off init here */
-	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(1) | SDHCI_R3, 0x40ff8000)) {return 0;}
+	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(1) | SDHCI_R3, 0x40000080)) {return 0;}
 	return 1;
 }
 

@@ -143,11 +143,13 @@ enum {
 };
 
 enum {
+	SDHCI_CLKCTRL_MULT_EN = 32,
+	/* bits 3, 4 reserved */
 	SDHCI_CLKCTRL_SDCLK_EN = 4,
 	SDHCI_CLKCTRL_INTCLK_STABLE = 2,
 	SDHCI_CLKCTRL_INTCLK_EN = 1
 };
-#define SDHCI_CLKCTRL_DIV(div) ((u16)(div) >> 1 << 8 | ((u16)(div) >> 3 & 0xc0))
+#define SDHCI_CLKCTRL_DIV(div) ((u16)(div) << 8 | ((u16)(div) >> 3 & 0xc0))
 
 enum {
 	SDHCI_SWRST_DAT = 4,

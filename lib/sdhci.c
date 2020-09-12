@@ -25,9 +25,22 @@ static enum iost sdhci_set_clock(struct sdhci_state *st, u32 khz) {
 	sdhci->clock_control = 0;
 	usleep(10);
 	u32 baseclock_mhz = st->caps >> 8 & 0xff;
-	u32 div = baseclock_mhz * 1000 / khz;
-	assert(div < 0x400);
-	u16 clkctrl = sdhci->clock_control = SDHCI_CLKCTRL_DIV(div) | SDHCI_CLKCTRL_INTCLK_EN;
+	u16 clkctrl = SDHCI_CLKCTRL_INTCLK_EN;
+	u32 multiplier = 0; // should be st->caps >> 48 & 0xff;
+	/* only use clock multiplier if target frequency high enough */
+	if (multiplier && khz >= (multiplier += 1) * baseclock_mhz) {
+		u32 div = baseclock_mhz * multiplier * 1000 / khz;
+		assert(div > 0 && div <= 0x400);
+		clkctrl |= SDHCI_CLKCTRL_MULT_EN | SDHCI_CLKCTRL_DIV(div - 1);
+	} else {
+		u32 div = (baseclock_mhz * 1000 + khz - 1) / khz;
+		assert(div < 0x7ff);
+		if (div != 1) {
+			clkctrl |= SDHCI_CLKCTRL_DIV((div + 1) >> 1);
+		}
+	}
+	debug("clkctrl: 0x%04"PRIx16"\n", clkctrl);
+	sdhci->clock_control = clkctrl;
 	if (khz > 20000) {
 		sdhci->host_control1 |= SDHCI_HOSTCTRL1_HIGH_SPEED_MODE;
 	} else {
@@ -45,6 +58,8 @@ static enum iost sdhci_read_ext_csd(volatile struct sdhci_regs *sdhci, struct sd
 	sdhci->transfer_mode = SDHCI_TRANSMOD_READ;
 	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(8) | SDHCI_R1 | SDHCI_CMD_DATA, 0)) {return IOST_LOCAL;}
 	if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_READ_READY, SDHCI_PRESTS_READ_READY, USECS(10000), "CMD8")) {return IOST_LOCAL;}
+	sdhci->int_st = SDHCI_INT_BUFFER_READ_READY;
+	sdhci->int_signal_enable = 0xfffff0ff;
 	for_range(i, 0, 32) {
 		debug("%3"PRIu32":", i * 16);
 		for_range(j, 0, 4) {
@@ -62,7 +77,7 @@ static enum iost sdhci_read_ext_csd(volatile struct sdhci_regs *sdhci, struct sd
 	return IOST_OK;
 }
 
-static enum iost sdhci_try_hs(struct sdhci_state *st, struct mmc_cardinfo *card) {
+static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	enum iost res;
 	timestamp_t cmd6_timeout = USECS(100000);
@@ -73,26 +88,49 @@ static enum iost sdhci_try_hs(struct sdhci_state *st, struct mmc_cardinfo *card)
 	}
 	u8 card_type = card->ext_csd[EXTCSD_CARD_TYPE];
 	info("card type: 0x%02"PRIx8"\n", card_type);
-	if ((card_type & (MMC_CARD_TYPE_HS26 | MMC_CARD_TYPE_HS52)) == 0) {return IOST_OK;}
 
-	infos("card supports HS, trying to enable\n");
-	if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
-		MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, MMC_TIMING_HS)
-	))) {return res;}
-	if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD6")) {return IOST_LOCAL;}
-	if (res != IOST_OK) {return res;}
-	if (IOST_OK != (res =sdhci_set_clock(st, card_type & MMC_CARD_TYPE_HS52 ? 52000 : 26000))) {return res;}
-	if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(13) | SDHCI_R1, 2 << 16))) {return res;}
-	if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD13")) {return IOST_LOCAL;}
-	info("CSR: %08"PRIx32"\n", sdhci->resp[0]);
-	/*info("hostctrl2: %"PRIx8"\n", sdhci->host_control2);
-	do {
+	if (card_type & MMC_CARD_TYPE_HS200_1V8) {
+		infos("card supports HS200, trying to enable\n");
+		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
+			MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, MMC_TIMING_HS200)
+		))) {return res;}
+		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD6")) {return IOST_LOCAL;}
+		if (res != IOST_OK) {return res;}
+		info("CMD6 response: %08"PRIx32"\n", sdhci->resp[0]);
+		/* FIXME: seems to hang if 200MHz is used, unless the multiplier in sdhci_set_clock is uncommented, in which case 100MHz is broken, and 200MHz seems to run extremely slowly */
+		if (IOST_OK != (res =sdhci_set_clock(st, 100000))) {return res;}
+		usleep(100);
+		sdhci->host_control2 = SDHCI_HOSTCTRL2_SDR104;
+		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(13) | SDHCI_R1, 2 << 16))) {return res;}
+		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD13")) {return IOST_LOCAL;}
+		info("CSR: %08"PRIx32"\n", sdhci->resp[0]);
+		sdhci->host_control2 = SDHCI_HOSTCTRL2_EXECUTE_TUNING | SDHCI_HOSTCTRL2_SDR104;
+		info("hostctrl2: %"PRIx8"\n", sdhci->host_control2);
+		sdhci->int_signal_enable = 0;
 		sdhci->block_size = 128;
 		sdhci->transfer_mode = SDHCI_TRANSMOD_READ;
-		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(sdhci, st, SDHCI_CMD(21) | SDHCI_R1 | SDHCI_CMD_DATA, 0))) {return res;}
-		if (IOST_OK != sdhci_wait_state(sdhci, st, SDHCI_PRESTS_READ_READY, SDHCI_PRESTS_READ_READY, USECS(100000), "CMD21")) {return IOST_LOCAL;}
-	} while (sdhci->host_control2 & SDHCI_HOSTCTRL2_EXECUTE_TUNING);
-	info("hostctrl2: %"PRIx8"\n", sdhci->host_control2);*/
+		sdhci->arg;
+		do {
+			while (sdhci->present_state & SDHCI_PRESTS_CMD_INHIBIT) {sched_yield();}
+			sdhci->cmd = SDHCI_CMD(21) | SDHCI_R1 | SDHCI_CMD_DATA;
+			while (~sdhci->int_st & SDHCI_INT_BUFFER_READ_READY) {sched_yield();}
+			sdhci->int_st = SDHCI_INT_BUFFER_READ_READY;
+		} while (sdhci->host_control2 & SDHCI_HOSTCTRL2_EXECUTE_TUNING);
+		sdhci->block_size = 512;
+		sdhci->int_signal_enable = 0xfffff0ff;
+		info("hostctrl2: %"PRIx8"\n", sdhci->host_control2);
+	} else if (card_type & (MMC_CARD_TYPE_HS26 | MMC_CARD_TYPE_HS52)) {
+		infos("card supports HS, trying to enable\n");
+		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
+			MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, MMC_TIMING_HS)
+		))) {return res;}
+		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD6")) {return IOST_LOCAL;}
+		if (res != IOST_OK) {return res;}
+		if (IOST_OK != (res =sdhci_set_clock(st, card_type & MMC_CARD_TYPE_HS52 ? 52000 : 26000))) {return res;}
+		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(13) | SDHCI_R1, 2 << 16))) {return res;}
+		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD13")) {return IOST_LOCAL;}
+		info("CSR: %08"PRIx32"\n", sdhci->resp[0]);
+	}
 	if (IOST_OK != (res = sdhci_read_ext_csd(sdhci, st, card))) {return IOST_GLOBAL;}
 	return IOST_OK;
 }
@@ -116,7 +154,7 @@ enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 			return 0;
 		}
 		usleep(1000);
-		if (IOST_OK != (res = sdhci_submit_cmd(st, SDHCI_CMD(1) | SDHCI_R3, 0x40ff8000))) {return res;}
+		if (IOST_OK != (res = sdhci_submit_cmd(st, SDHCI_CMD(1) | SDHCI_R3, 0x40000080))) {return res;}
 	}
 	card->rocr = ocr;
 	if (~ocr & 1 << 30) {
@@ -153,7 +191,7 @@ enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	) | SDHCI_HOSTCTRL1_BUS_WIDTH_8 | SDHCI_HOSTCTRL1_ADMA2_32;
 	sdhci->block_size = 512;
 	if (IOST_OK != (res = sdhci_read_ext_csd(sdhci, st, card))) {return res;}
-	if (IOST_LOCAL >= (res = sdhci_try_hs(st, card))) {return res;}
+	if (IOST_LOCAL >= (res = sdhci_try_higher_speeds(st, card))) {return res;}
 	return IOST_OK;
 }
 
