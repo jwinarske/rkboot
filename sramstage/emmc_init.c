@@ -17,7 +17,8 @@
 #include <gic.h>
 #include <iost.h>
 
-_Bool sdhci_init_early(volatile struct sdhci_regs *sdhci, struct sdhci_state *st, struct sdhci_phy *phy) {
+_Bool sdhci_init_early(struct sdhci_state *st) {
+	volatile struct sdhci_regs *sdhci = st->regs;
 	puts("SDHCI init\n");
 	st->version = sdhci->sdhci_version;
 	st->caps = (u64)sdhci->capabilities[1] << 32 | sdhci->capabilities[0];
@@ -33,6 +34,7 @@ _Bool sdhci_init_early(volatile struct sdhci_regs *sdhci, struct sdhci_state *st
 	assert(div400k < 0x400);
 	u16 clkctrl = sdhci->clock_control = SDHCI_CLKCTRL_DIV(div400k) | SDHCI_CLKCTRL_INTCLK_EN;
 	wait_u16_set(&sdhci->clock_control, SDHCI_CLKCTRL_INTCLK_STABLE, USECS(100), "SDHCI internal clock");
+	struct sdhci_phy *phy = st->phy;
 	if (!phy->setup(phy, SDHCI_PHY_START)) {return 0;}
 	if (!phy->lock_freq(phy, 400)) {return 0;}
 	sdhci->clock_control = clkctrl |= SDHCI_CLKCTRL_SDCLK_EN;
@@ -42,11 +44,15 @@ _Bool sdhci_init_early(volatile struct sdhci_regs *sdhci, struct sdhci_state *st
 	puts("submitting CMD0\n");
 	sdhci->cmd = 0;
 	/* dramstage will poll the card for init complete, just kick off init here */
-	if (IOST_OK != sdhci_submit_cmd(sdhci, st, SDHCI_CMD(1) | SDHCI_R3, 0x40ff8000)) {return 0;}
+	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(1) | SDHCI_R3, 0x40ff8000)) {return 0;}
 	return 1;
 }
 
 extern struct sdhci_phy emmc_phy;
+struct sdhci_state emmc_state = {
+	.regs = emmc,
+	.phy = &emmc_phy,
+};
 
 void emmc_init(struct sdhci_state *st) {
 	mmu_map_mmio_identity(0xfe330000, 0xfe33ffff);
@@ -66,7 +72,7 @@ void emmc_init(struct sdhci_state *st) {
 	cru[CRU_SOFTRST_CON+6] = SET_BITS16(3, 0) << 12;
 	usleep(100);
 
-	if (!sdhci_init_early(emmc, st, &emmc_phy)) {
+	if (!sdhci_init_early(st)) {
 		gicv2_disable_spi(gic500d, 43);
 		gicv2_wait_disabled(gic500d);
 		/* shut down phy */

@@ -56,7 +56,7 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 	switch (grp0_intid) {
 #if CONFIG_EMMC
 	case 43:
-		sdhci_irq(emmc, &emmc_state);
+		sdhci_irq(&emmc_state);
 		break;
 #endif
 #if CONFIG_SPI

@@ -43,7 +43,7 @@ void sync_exc_handler(struct exc_state_save UNUSED *save) {
 static struct ddrinit_state ddrinit_st;
 
 #if CONFIG_EMMC
-static struct sdhci_state emmc_state;
+extern struct sdhci_state emmc_state;
 #endif
 extern struct dwmmc_state sdmmc_state;
 
@@ -58,7 +58,7 @@ void irq_handler(struct exc_state_save UNUSED *save) {
 		break;
 #if CONFIG_EMMC
 	case 43:
-		sdhci_irq(emmc, &emmc_state);
+		sdhci_irq(&emmc_state);
 		break;
 #endif
 #if CONFIG_SD

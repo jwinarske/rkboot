@@ -39,7 +39,10 @@ static void UNUSED mmc_print_csd_cid(u32 *cxd) {
 }
 
 extern struct sdhci_phy emmc_phy;
-struct sdhci_state emmc_state = {};
+struct sdhci_state emmc_state = {
+	.regs = emmc,
+	.phy = &emmc_phy,
+};
 
 struct emmc_blockdev {
 	struct async_blockdev blk;
@@ -51,9 +54,9 @@ struct emmc_blockdev {
 static _Alignas(4096) u32 adma2_32_desc[2048] = {};
 
 static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_end) {
-	if (IOST_OK != sdhci_wait_state(emmc, &emmc_state, SDHCI_PRESTS_CMD_INHIBIT, 0, USECS(10000), "transfer start ")) {return IOST_GLOBAL;}
+	if (IOST_OK != sdhci_wait_state(&emmc_state, SDHCI_PRESTS_CMD_INHIBIT, 0, USECS(10000), "transfer start ")) {return IOST_GLOBAL;}
 	if (emmc->present_state & SDHCI_PRESTS_DAT_INHIBIT) {
-		if (!sdhci_try_abort(emmc, &emmc_state)) {return IOST_GLOBAL;}
+		if (!sdhci_try_abort(&emmc_state)) {return IOST_GLOBAL;}
 	}
 	if (atomic_load_explicit(&emmc_state.int_st, memory_order_acquire) >> 16) {return IOST_GLOBAL;}
 	struct emmc_blockdev *dev = (struct emmc_blockdev *)dev_;
@@ -76,7 +79,7 @@ static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_e
 		| SDHCI_TRANSMOD_MULTIBLOCK
 		| SDHCI_TRANSMOD_BLOCK_COUNT;
 	emmc->system_addr = (u32)(uintptr_t)buf;
-	return sdhci_submit_cmd(emmc, &emmc_state,
+	return sdhci_submit_cmd(&emmc_state,
 		SDHCI_CMD(18) | SDHCI_R1 | SDHCI_CMD_DATA, addr
 	);
 }
@@ -149,7 +152,7 @@ void boot_emmc() {
 		boot_medium_exit(BOOT_MEDIUM_EMMC);
 		return;
 	}
-	if (IOST_OK != sdhci_init_late(emmc, &emmc_state, &emmc_phy, &blk.card)) {
+	if (IOST_OK != sdhci_init_late(&emmc_state, &blk.card)) {
 		infos("eMMC init failed\n");
 		goto shut_down_emmc;
 	}
@@ -161,7 +164,7 @@ void boot_emmc() {
 	if (res == IOST_OK) {boot_medium_loaded(BOOT_MEDIUM_EMMC);}
 	if (res == IOST_GLOBAL) {goto shut_down_emmc;}
 
-	if (sdhci_try_abort(emmc, &emmc_state)) {
+	if (sdhci_try_abort(&emmc_state)) {
 		infos("eMMC transfers ended\n");
 		boot_medium_exit(BOOT_MEDIUM_EMMC);
 		return;
