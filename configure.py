@@ -184,15 +184,23 @@ buildfile = open("build.ninja", "w", encoding='utf-8')
 sys.stdout = buildfile
 
 cc = os.getenv('CC', 'cc')
-cflags = os.getenv('CFLAGS', '-O3')
-cflags += " -Wall -Wextra -Werror=all -Wno-error=unused-parameter  -Wno-error=comment -Werror=incompatible-pointer-types"
-if cc.endswith('gcc'):
-    cflags += '  -Werror=discarded-qualifiers -mcpu=cortex-a72.cortex-a53+crc'
+warnflags = os.getenv('WARNFLAGS')
+if not warnflags:
+    warnflags = "-Wall -Wextra -Werror=all -Wno-error=unused-parameter  -Wno-error=comment -Werror=incompatible-pointer-types -Wmissing-declarations"
+    if cc.endswith('gcc'):
+        warnflags += '  -Werror=discarded-qualifiers -mcpu=cortex-a72.cortex-a53+crc'
+cflags = (
+    os.getenv('EXTRACFLAGS', '-fno-pic -ffreestanding -nodefaultlibs -nostdlib -march=armv8-a+crc')
+    + " -isystem . " + " ".join("-isystem " + path.join(srcdir, p) for p in (
+        'include', 'compression', 'include/std'
+    ))
+    + " " + os.getenv('CFLAGS', '-O3')
+    + " " + warnflags)
 
 genld = path.join(srcdir, 'gen_linkerscript.sh')
 
 print('''
-cflags = -fno-pic -ffreestanding -fno-builtin -nodefaultlibs -nostdlib -isystem {src}/include -isystem {src}/compression -isystem {src}/include/std -isystem . {cflags} -march=armv8-a+crc
+cflags ={cflags}
 ldflags = {ldflags}
 
 incbin_flags = --rename-section .data=.rodata,alloc,load,readonly,data,contents
@@ -223,7 +231,7 @@ rule lz4
 build idbtool: buildcc {src}/tools/idbtool.c
 build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 '''.format(
-    cflags=cflags,
+    cflags=esc(cflags),
     ldflags=os.getenv('LDFLAGS', ''),
     src=esc(srcdir),
     cc=cc,
