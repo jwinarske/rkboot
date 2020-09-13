@@ -64,7 +64,7 @@ static enum iost wait_xfer(struct emmc_blockdev *dev) {
 	return IOST_OK;
 }
 
-enum {REQUEST_SIZE = 1 << 20};
+enum {REQUEST_SIZE = 2 << 20};
 
 static struct async_buf pump(struct async_transfer *async, size_t consume, size_t min_size) {
 	struct emmc_blockdev *dev = (struct emmc_blockdev *)async;
