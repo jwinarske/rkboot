@@ -312,7 +312,7 @@ _Noreturn u32 main(u64 sctlr) {
 
 			if (state & loaded_bit) {
 				u64 xfer_end = get_timestamp();
-				printf("payload loaded in %zu μs\n", (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
+				printf("[%"PRIuTS"] payload loaded in %"PRIuTS" μs\n", xfer_end, (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 				/* leave the user at least 500 ms to let go for each payload  */
 				while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
 				if ((~gpio0->read & 32) && available_boot_media >> 1 >> boot_medium != 0) {
