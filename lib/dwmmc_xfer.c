@@ -11,8 +11,6 @@ enum {
 	DWMMC_SUBMITTED,
 };
 
-const u8 iost_u8[NUM_IOST];
-
 enum iost dwmmc_start_request(struct dwmmc_xfer *xfer, u32 block_addr) {
 	u8 status = atomic_load_explicit(&xfer->status, memory_order_acquire);
 	do {
