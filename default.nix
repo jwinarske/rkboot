@@ -16,7 +16,7 @@ in
 {
   levinboot = aarch64.stdenv.mkDerivation {
     pname = "levinboot";
-    version = "0.7.1";
+    version = "0.7.2";
     nativeBuildInputs = [host.ninja host.python3 host.lz4];
     configurePhase = ''
       mkdir build
