@@ -83,7 +83,7 @@ enum {REQUEST_SIZE = 1 << 18};
 static u8 iost_u8[NUM_IOST];
 
 static enum iost wait_xfer(struct sd_blockdev *dev) {
-	infos("waiting for xfer\n");
+	debugs("waiting for xfer\n");
 	enum iost res = dwmmc_wait_xfer(&sdmmc_state, &dev->xfer);
 	if (res != IOST_OK) {return res;}
 	invalidate_range(dev->end_ptr, dev->next_end_ptr - dev->end_ptr);
@@ -104,13 +104,12 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 			return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
 		}
 		u8 *end = dev->stop_ptr - dev->end_ptr > REQUEST_SIZE ? dev->end_ptr + REQUEST_SIZE: dev->stop_ptr;
-		info("starting new xfer LBA 0x%08"PRIx32" buf 0x%"PRIx64"–0x%"PRIx64"\n", dev->next_lba, (u64)dev->end_ptr, (u64)end);
+		debug("starting new xfer LBA 0x%08"PRIx32" buf 0x%"PRIx64"–0x%"PRIx64"\n", dev->next_lba, (u64)dev->end_ptr, (u64)end);
 		enum iost res = dwmmc_start_request(&dev->xfer, dev->next_lba);
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
 		_Bool success = dwmmc_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
 		assert(success);
 		res = dwmmc_start_xfer(&sdmmc_state, &dev->xfer);
-		info("res%u\n", (unsigned)res);
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
 		dev->next_lba += REQUEST_SIZE / dev->blk.block_size;
 		dev->next_end_ptr = end;
