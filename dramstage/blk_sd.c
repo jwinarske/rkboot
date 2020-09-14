@@ -78,7 +78,7 @@ static _Bool parse_cardinfo(struct sd_blockdev *dev) {
 
 static _Alignas(4096) struct dwmmc_idmac_desc desc_buf[4096 / sizeof(struct dwmmc_idmac_desc)];
 
-enum {REQUEST_SIZE = 1 << 18};
+enum {REQUEST_SIZE = 1 << 19};
 
 static u8 iost_u8[NUM_IOST];
 
