@@ -17,7 +17,7 @@ void sdhci_irq(struct sdhci_state *st) {
 	spew("SDHCI IRQ 0x%08"PRIx32"\n", int_st);
 	sdhci->int_st = int_st;
 	u32 int_st_old = atomic_fetch_or_explicit(&st->int_st, int_st, memory_order_release);
-	if (int_st & SDHCI_INT_XFER_COMPLETE) {
+	if ((int_st & SDHCI_INT_XFER_COMPLETE) || int_st >> 16) {
 		struct sdhci_xfer *xfer = atomic_load_explicit(&st->active_xfer, memory_order_acquire);
 		if (xfer) {
 			debugs("ending xfer\n");
