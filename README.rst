@@ -9,7 +9,7 @@ The levinboot bootloader
 
 levinboot (name always lowercase) is a bootloader for (currently) RK3399 platforms with LPDDR4 memory.
 
-The project is currently in a β-state. Basic features work, but formats and features are still in flux. As a non-commercial project, no warranty is given for any breakage.
+The project is currently in a β-state. Basic features work, but formats and features are still in flux. As a non-commercial project, no warranty is given for any breakage. *Note to pre-0.7.2 users loading the payload from SD: remember to set the partition type for the payload before updating the bootloader.*
 
 Important project goals include:
 
@@ -32,8 +32,7 @@ What should work at this point:
 - Booting Linux from a boot medium. levinboot is currently agnostic about what medium it itself was loaded from (there might be optimization potential in adding medium-specific code to take over from mask ROM earlier – TODO: evaluate).
 
   - from SPI. This is described in _`Booting from SPI`
-  - from SD. This is described in _`Booting from SD`
-  - from eMMC. This is described in _`Booting from eMMC`
+  - from SD or eMMC. This is described in _`Booting from SD/eMMC`
 
 - providing entropy to the kernel (KASLR and RNG seeds) via the DTB
 
@@ -106,7 +105,7 @@ Important command-line arguments for :src:`configure.py` are:
 
 --payload-spi, --payload-sd, --payload-emmc  configures :output:`elfloader.bin` to load payload images from SPI flash, SD cards or eMMC storage (respectively) instead of expecting them preloaded at specific addresses.
   This process requires decompression support to be enabled.
-  See _`Booting from SPI`, _`Booting from SD` and  _`Booting from eMMC` for more information.
+  See _`Booting from SPI` and _`Booting from SD/eMMC` for more information.
 
   These options can be combined. See _`Boot Order` for a description for which payload is loaded in which case.
 
@@ -139,6 +138,8 @@ Primary build targets are:
 
 The Payload Blob
 ================
+
+*Note: the payload format will change with the release of version 0.8. The old format may not be supported anymore.*
 
 The current payload format used by levinboot consists of 3 or 4 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image. If configured with :cmdargs:`--elfloader-initcpio`, a compressed initcpio must be appended.
 Depending on your configuration, arbitrary combinations of LZ4, gzip and zstd frames are supported.
@@ -246,24 +247,10 @@ Flashing SPI
 You can write to SPI anytime you can boot via USB, as described above: :output:`usbstage.bin` implements a command to write a block of data (such as a levinboot image) to any erase-block-(typically 4k-)aligned address in SPI flash.
 Run :command:`usbtool --call sramstage.bin --run usbstage.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
 
-Booting from SD
-===============
-
-levinboot can load payload images from SDHC and SDXC cards.
-Compared to SPI payload loading, this offers potentially better performance and the ability to load larger payloads (currently limited to 60 MiB compressed, with the decompressed kernel needing to stay under 61.5 MiB because of the elfloader memory layout) than e. g. the 16 MiB flash chip of the Pinebook Pro or RockPro64.
-
-Configure the build with :cmdargs:`--elfloader-sd` in addition to your choice of preferred compression format (you need at least one).
-
-The output images (:output:`levinboot-sd.img` and :output:`levinboot-usb.bin`) will initialize the SDMMC block and try to start an SDHC/SDXC card connected to it, currently at 25 MHz bus frequency, and load up to 60 MiB of payload starting at sector 8192 (4 MiB offset), as needed for decompression.
-
-Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash.
-
-While levinboot does not read partition tables on SD at this point, it may be advisable to create partitions starting at sectors 64 and 8192, for easier and potentially safer upgrades of levinboot and the payload, respectively.
-
-Booting from eMMC
+Booting from SD/eMMC
 =================
 
-levinboot can load payload images from eMMC storage. Configure it with :cmdargs:`--payload-emmc` to enable this.
+levinboot can load payload images from SDHC/SDXC cards or eMMC storage. Configure it with :cmdargs:`--payload-emmc` for eMMC or :cmdargs:`--payload-sd` for SDHC/SDXC.
 
 The drive has to be partitioned using GPT. levinboot will then load a compressed payload blob from a partition with one of these special partition type GUIDs (not partition UUIDs!):
 
@@ -281,6 +268,6 @@ For each type, it will ignore all but the first one present in partition table o
 
 It might be apparent from the enumeration that these are cyclical. The idea behind this rule set is to allow the following scheme to update payloads atomically by using 2 payload partitions: write the new payload to the partition that is currently unused, then (atomically) change the type of the old payload partition to the type that was not present before.
 
-As with SD and USB compressed payload booting, the maximum size is 60 MiB, so reserving more space for the partitions does not make sense (typical payloads tend to stay under 30MB).
+As with USB compressed payload booting, the maximum size is 60 MiB, so reserving more space for the partitions does not make sense (typical payloads tend to stay under 30MB with gzip or zstd compression and around 30MB with LZ4 compression).
 
 Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash.
