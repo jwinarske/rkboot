@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
+#include <log.h>
+#include <die.h>
+#include "rk3399-dmc.h"
 
 _Bool test_mirror(u32 addr, u32 bit) {
 	volatile u32 *base = (volatile u32*)(uintptr_t)addr, *mirror = (volatile u32*)(uintptr_t)(addr ^ (1 << bit));

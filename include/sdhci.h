@@ -34,6 +34,8 @@ HEADER_FUNC void sdhci_wake_threads(struct sdhci_state *st) {
 	sched_queue_list(CURRENT_RUNQUEUE, &st->interrupt_waiters);
 }
 
+_Bool sdhci_init_early(struct sdhci_state *st);
+
 struct mmc_cardinfo;
 enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card);
 

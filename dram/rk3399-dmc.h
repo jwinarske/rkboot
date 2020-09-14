@@ -276,6 +276,7 @@ void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct 
 void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
 void set_phy_io(volatile u32 *phy, u32 delta, const struct odt_settings *odt);
 
+void ddrinit_set_channel_stride(u32 val);
 _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy);
 
 #define MIRROR_TEST_ADDR 0x100

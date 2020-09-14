@@ -24,3 +24,5 @@ HEADER_FUNC phys_addr_t plat_virt_to_phys(void *ptr) {
 	if ((uintptr_t)ptr > 0xffffffff) {return PLAT_INVALID_PHYS_ADDR;}
 	return (phys_addr_t)(uintptr_t)ptr;
 }
+
+struct sched_runqueue *get_runqueue();

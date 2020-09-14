@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <rk3399.h>
+#include <rk3399/sramstage.h>
 #include <inttypes.h>
 
 #include <log.h>
@@ -6,7 +8,6 @@
 #include <die.h>
 #include <aarch64.h>
 #include <rkpll.h>
-#include <rk3399.h>
 
 void pmu_cru_setup() {
 	const u32 pd_busses = 0x20c00e79, pd_domains = 0x93cf833e;

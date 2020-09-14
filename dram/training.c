@@ -171,10 +171,6 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 	return !training_fail;
 }
 
-void ddrinit_set_channel_stride(u32 val);
-
-
-
 static void training_task(struct ddrinit_state *st, u32 ch) {
 	puts("training started\n");
 	assert_msg(train_channel(ch, st->geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");

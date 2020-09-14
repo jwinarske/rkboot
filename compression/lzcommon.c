@@ -1,12 +1,10 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include "../include/defs.h"
+#include "compression.h"
 #include <assert.h>
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
-
-enum {LZCOMMON_BLOCK = 8};
 
 #define debug(...) /*fprintf(stderr, __VA_ARGS__)*/
 

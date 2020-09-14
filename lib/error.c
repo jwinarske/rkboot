@@ -1,9 +1,12 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
+#include <stdlib.h>
+#include <die.h>
+#include <plat.h>
 #include <uart.h>
 
 FORCE_USED uintptr_t __stack_chk_guard = 0x595e9fbd94fda766;
 
+_Noreturn void __stack_chk_fail();
 FORCE_USED  _Noreturn void NO_ASAN __stack_chk_fail() {
 	const char *text = "STACK CORRUPTION\r\n";
 	for (char c; (c = *text) ; ++text) {

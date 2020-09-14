@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399.h>
+#include <rk3399/sramstage.h>
 #include <mmu.h>
 #include <rktimer_regs.h>
 #include <rkcrypto_v1_regs.h>
