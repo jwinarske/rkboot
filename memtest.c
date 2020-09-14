@@ -152,7 +152,7 @@ static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
-_Bool memtest(u64 salt) {
+static _Bool memtest(u64 salt) {
 	_Bool res = 1;
 	for_range(block, 0, 31) {
 		u64 block_start = block * 0x08000000;

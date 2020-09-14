@@ -10,7 +10,7 @@
 #include "rk3399-dmc.h"
 #include "ddrinit.h"
 
-void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
+static void set_per_cs_training_index(volatile struct phy_regs *phy, u32 rank) {
 	debug("training idx %"PRIu32"\n", rank);
 	if (phy->dslice[0][84] & (1 << 16)) {
 		debugs("set per-cs training\n");

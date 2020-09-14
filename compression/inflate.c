@@ -37,7 +37,7 @@ enum {
 			num_bits += 8;\
 			info("bits 0x%x/%u @ %u\n", bits, (unsigned)num_bits, (unsigned)(ptr - *in))
 
-void construct_codes(u16 num_symbols, const u8 *lengths, u16 *codes) {
+static void construct_codes(u16 num_symbols, const u8 *lengths, u16 *codes) {
 	u16 active_syms = 0;
 	for_range(sym, 0, num_symbols) {
 		if (lengths[sym]) {
@@ -65,7 +65,7 @@ void construct_codes(u16 num_symbols, const u8 *lengths, u16 *codes) {
 	assert(active_syms == codes_allocated);
 }
 
-void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u16 *dectable, u16 *overlength_offsets, u32 *overlength_symbols) {
+static void construct_dectable(u16 num_symbols, const u8 *lengths, const u16 *codes, u16 *dectable, u16 *overlength_offsets, u32 *overlength_symbols) {
 	u16 overlength_count[4];
 	for_array(i, overlength_count) {overlength_count[i] = 0;}
 	for_range(i, 0, 2048) {dectable[i] = 10;}

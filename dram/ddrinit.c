@@ -62,7 +62,7 @@ static u32 mrr_cmd(u8 mr, u8 cs) {
 
 enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
 
-enum mrrresult read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
+static enum mrrresult UNUSED read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
 	pctl[PCTL_READ_MODEREG] = mrr_cmd(mr, cs);
 	u32 status;
 	u64 start_time = get_timestamp();
@@ -99,7 +99,7 @@ static void dump_mrs(volatile u32 UNUSED *pctl) {
 #endif
 }
 
-void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd, u32 speed) {
+static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd, u32 speed) {
 	phy->PHY_GLOBAL(896) = (u32)upd->grp_shift01 << 16 | bank << 8;
 	phy->PHY_GLOBAL(911) = upd->pll_ctrl;
 	apply32v(&phy->PHY_GLOBAL(913), SET_BITS32(1, upd->negedge_pll_switch));
@@ -124,7 +124,7 @@ void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_u
 }
 
 /* this function seems very prone to system hangs if we try to yield inbetween, probably because of the bus idle. it usually finishes in around 25 μs, so that sholudn't be a problem */
-void fast_freq_switch(u8 freqset, u32 freq) {
+static void fast_freq_switch(u8 freqset, u32 freq) {
 	irq_save_t irq = irq_save_mask();	/* just for safety */
 	grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
 	pmu[PMU_NOC_AUTO_ENA] |= 0x180;
@@ -162,7 +162,7 @@ void fast_freq_switch(u8 freqset, u32 freq) {
 	irq_restore(irq);
 }
 
-void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
+static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
 	log("switching to %u MHz … ", mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
@@ -189,7 +189,7 @@ void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *
 	printf("switched (%"PRIuTS" ticks) … ", get_timestamp() - start);
 }
 
-void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
+static void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
 	copy_reg_range(&cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
 	for_dslice(i) {
 		copy_reg_range(&cfg->dslice[0], &phy->dslice[i][0], PHY_CALVL_VREF_DRIVING_SLICE);

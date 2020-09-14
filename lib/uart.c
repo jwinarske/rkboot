@@ -69,7 +69,7 @@ static u32 fmt_hex(u64 val, char pad, u8 width, u32 queue_space) {
 	}
 }
 
-u32 fmt_dec(u64 val, char pad, u8 width, u32 queue_space) {
+static u32 fmt_dec(u64 val, char pad, u8 width, u32 queue_space) {
 	char buf[24];
 	buf[23] = 0;
 	char *ptr = &buf[23];

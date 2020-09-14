@@ -242,12 +242,12 @@ const u8 _Alignas(64) conf_desc[32] = {
 		0,	/* interval value 0 */
 };
 
-buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req) {
+static buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req) {
 	u8 *buf = ((struct usbstage_bufs *)setup->bufs)->desc;
 	const u8 descriptor_type = from_le16(req->wValue) >> 8;
 	st->ep0_buf_addr = (u64)buf;
 	u16 max_packet_size = usb_max_packet_size[st->speed];
-	
+
 	if (descriptor_type == USB_DEVICE_DESC) {
 		for_array(i, device_desc) {buf[i] = device_desc[i];}
 		if (max_packet_size < 64) {buf[7] = max_packet_size;}
@@ -270,7 +270,7 @@ buf_id_t prepare_descriptor(const struct dwc3_setup *setup, struct dwc3_state *s
 	} else {return 0;}
 }
 
-_Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req) {
+static _Bool set_configuration(const struct dwc3_setup *setup, struct dwc3_state *st, const struct usb_setup *req) {
 	assert(from_le16(req->wValue) == 1);
 	volatile struct dwc3_regs *dwc3 = setup->dwc3;
 	struct usbstage_state *ust = (struct usbstage_state *)st;
