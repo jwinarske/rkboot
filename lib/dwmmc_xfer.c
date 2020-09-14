@@ -66,7 +66,7 @@ _Bool dwmmc_add_phys_buffer(struct dwmmc_xfer *xfer, phys_addr_t start, phys_add
 }
 
 enum iost dwmmc_start_xfer(struct dwmmc_state *state, struct dwmmc_xfer *xfer) {
-	info("dwmmc_start_xfer: %zu bytes\n", xfer->xfer_bytes);
+	debug("dwmmc_start_xfer: %zu bytes\n", xfer->xfer_bytes);
 	if (xfer->xfer_bytes == 0 || (xfer->desc_size == 0 && !xfer->second_buf)) {return IOST_INVALID;}
 	size_t last = xfer->desc_size + xfer->second_buf - 1;
 	u32 ctrl = atomic_load_explicit(&xfer->desc[last].control, memory_order_relaxed);
