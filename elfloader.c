@@ -174,7 +174,7 @@ _Bool wait_for_boot_cue(enum boot_medium medium) {
 	}
 }
 
-static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_DRAMSTAGE_VSTACK][4096];
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[3*NUM_DRAMSTAGE_VSTACK][4096];
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[20][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
@@ -255,8 +255,8 @@ _Noreturn u32 main(u64 sctlr) {
 		}
 
 		for_range(i, 0, NUM_DRAMSTAGE_VSTACK) {
-			u64 limit = 0x100005000 + i * 0x2000;
-			mmu_map_range(limit, limit + 0xfff, (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
+			u64 limit = 0x100005000 + i * 0x4000;
+			mmu_map_range(limit, limit + 0x2fff, (u64)&vstack_frames[3*i][0], MEM_TYPE_NORMAL);
 		}
 		dsb_ishst();
 

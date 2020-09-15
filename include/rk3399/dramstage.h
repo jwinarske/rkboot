@@ -60,5 +60,5 @@ enum dramstage_vstack {
 };
 
 HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
-	return 0x100006000 + 0x2000 * vstack;
+	return 0x100008000 + 0x4000 * vstack;
 }
