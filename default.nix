@@ -25,6 +25,7 @@ in
     '';
     installPhase = "mkdir -p $out; cp sramstage.bin memtest.bin usbstage.bin levinboot-usb.bin levinboot-sd.img levinboot-spi.img teststage.bin $out";
     depsBuildBuild = [host.buildPackages.stdenv.cc];
+    hardeningDisable = ["fortify"];
     src = builtins.filterSource
       (path: type:
         type == "directory"

@@ -184,17 +184,26 @@ buildfile = open("build.ninja", "w", encoding='utf-8')
 sys.stdout = buildfile
 
 cc = os.getenv('CC', 'cc')
+is_gcc = cc.endswith('gcc')
 warnflags = os.getenv('WARNFLAGS')
 if not warnflags:
     warnflags = "-Wall -Wextra -Werror=all -Wno-error=unused-parameter  -Wno-error=comment -Werror=incompatible-pointer-types -Wmissing-declarations"
-    if cc.endswith('gcc'):
-        warnflags += '  -Werror=discarded-qualifiers -mcpu=cortex-a72.cortex-a53+crc'
+    if is_gcc:
+        warnflags += '  -Werror=discarded-qualifiers'
+cflags = os.getenv('CFLAGS')
+if not cflags:
+	cflags = '-O3'
+	if is_gcc:
+		cflags += ' -mcpu=cortex-a72.cortex-a53+crc'
+extracflags = os.getenv('EXTRACFLAGS')
+if not extracflags:
+	extracflags = '-fno-pic -ffreestanding -nodefaultlibs -nostdlib -march=armv8-a+crc -mgeneral-regs-only'
 cflags = (
-    os.getenv('EXTRACFLAGS', '-fno-pic -ffreestanding -nodefaultlibs -nostdlib -march=armv8-a+crc')
+    extracflags
     + " -isystem . " + " ".join("-isystem " + path.join(srcdir, p) for p in (
         'include', 'compression', 'include/std'
     ))
-    + " " + os.getenv('CFLAGS', '-O3')
+    + " " + cflags
     + " " + warnflags)
 
 genld = path.join(srcdir, 'gen_linkerscript.sh')
