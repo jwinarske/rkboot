@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399/sramstage.h>
+#include <rkpcie_regs.h>
 #include <stdatomic.h>
 #include <inttypes.h>
 
@@ -8,6 +9,7 @@
 #include <timer.h>
 #include <log.h>
 #include <aarch64.h>
+#include <rkgpio_regs.h>
 
 enum {
 	RKPCIEPHY_PROBE_CLOCK_TEST = 0x10,
@@ -67,8 +69,30 @@ static _Bool wait_pll_lock() {
 	return 1;
 }
 
+enum {
+	PCIE_RCCONF_LCS = 0xd0 >> 2,
+};
+
+enum {
+	PCIE_RCCONF_LCS_L0S = 1,
+	PCIE_RCCONF_LCS_L1 = 2,
+	/* bit 2 RsvdP */
+	PCIE_RCCONF_LCS_RCB = 8,
+	PCIE_RCCONF_LCS_LD = 16,
+	PCIE_RCCONF_LCS_LR = 32,
+	/* … */
+	PCIE_RCCONF_LCS_SCC = 1 << 28,
+};
+
+#define CLRSET16(clear, set) ((u32)((clear) | (set)) << 16 | (set))
+
 void pcie_init() {
 	infos("initializing PCIe\n");
+	gpio2->port &= ~((u32)1 << 28);
+	gpio2->direction |= 1 << 28;
+	/* enable regulator */
+	gpio1->port |= 1 << 24;
+	gpio1->direction |= 1 << 24;
 	cru[CRU_SOFTRST_CON+8] = SET_BITS16(8, 0xff);
 	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 0) << 6;	/* clk_pciephy_ref100m */
 	cru[CRU_CLKGATE_CON+20] = SET_BITS16(2, 0) << 10	/* {a,p}clk_pcie */
@@ -95,7 +119,27 @@ void pcie_init() {
 	info("PCIe PHY clock active: %"PRIx32"\n", sts);
 	if (!wait_pll_lock()) {goto shut_down_phy;}
 
-	cru[CRU_SOFTRST_CON+8] = SET_BITS16(8, 0);
+	cru[CRU_SOFTRST_CON+8] = SET_BITS16(2, 0)	/* {a,p}resetn_pcie */
+		| SET_BITS16(1, 0) << 6;	/* resetn_pcie_pm */
+	volatile u32 *pcie_client = regmap_base(SRAMSTAGE_REGMAP_PCIE_CLIENT);
+	pcie_client[RKPCIE_CLIENT_CONF] = SET_BITS16(16,
+		RKPCIE_CLI_CONF_EN
+		| RKPCIE_CLI_LINK_TRAIN_EN
+		| RKPCIE_CLI_LANE_COUNT_SHIFT(2)
+		| RKPCIE_CLI_ROOT_PORT
+		| RKPCIE_CLI_GEN2
+	);
+	cru[CRU_SOFTRST_CON+8] = SET_BITS16(6, 0) << 2;	/* resetn_pcie_{core,mgmt,mgmt_sticky,pipe} */
+
+	volatile u32 *pcie_local_mgmt = regmap_base(SRAMSTAGE_REGMAP_PCIE_MGMT);
+	pcie_local_mgmt[RKPCIE_CORE_MGMT_PLC1] |= 0x00ffff00;	/* set transmitted FTS count to max for both Gen1 and Gen2 */
+	volatile u32 *pcie_conf_setup = regmap_base(SRAMSTAGE_REGMAP_PCIE_CONF_SETUP);
+	/* no power limits known, otherwise set them here (in DCR) */
+	pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_SCC;
+	pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_RCB;
+	pcie_client[RKPCIE_CLIENT_CONF] = CLRSET16(0, RKPCIE_CLI_LINK_TRAIN_EN);
+	gpio2->port |= 1 << 28;
+	/* detection and link training takes ~100ms without CPU intervention, do the rest in dramstage */
 	rk3399_set_init_flags(RK3399_INIT_PCIE);
 	return;
 shut_down_phy:

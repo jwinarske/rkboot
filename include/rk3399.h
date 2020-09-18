@@ -96,6 +96,10 @@ static volatile struct rksaradc_regs *const saradc = (volatile struct rksaradc_r
 
 struct rkgpio_regs;
 static volatile struct rkgpio_regs *const gpio0 = (volatile struct rkgpio_regs *)0xff720000;
+static volatile struct rkgpio_regs *const gpio1 = (volatile struct rkgpio_regs *)0xff730000;
+static volatile struct rkgpio_regs *const gpio2 = (volatile struct rkgpio_regs *)0xff780000;
+static volatile struct rkgpio_regs *const gpio3 = (volatile struct rkgpio_regs *)0xff788000;
+static volatile struct rkgpio_regs *const gpio4 = (volatile struct rkgpio_regs *)0xff790000;
 
 struct dwmmc_regs;
 static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0xfe320000;

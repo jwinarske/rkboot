@@ -10,6 +10,7 @@ HEADER_FUNC u32 dram_size() {return 0xf8000000;}
 void boot_sd();
 void boot_emmc();
 void boot_spi();
+void boot_nvme();
 
 extern u32 entropy_buffer[];
 extern u16 entropy_words;
@@ -37,7 +38,7 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store);
 
 /* this enumeration defines the boot order */
-#define DEFINE_BOOT_MEDIUM X(SD) X(EMMC) X(SPI)
+#define DEFINE_BOOT_MEDIUM X(SD) X(EMMC) X(NVME) X(SPI)
 enum boot_medium {
 #define X(name) BOOT_MEDIUM_##name,
 	DEFINE_BOOT_MEDIUM
@@ -50,7 +51,7 @@ _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
 
-#define DEFINE_DRAMSTAGE_VSTACKS X(SD) X(EMMC) X(SPI)
+#define DEFINE_DRAMSTAGE_VSTACKS X(SD) X(EMMC) X(NVME) X(SPI)
 
 enum dramstage_vstack {
 #define X(name) DRAMSTAGE_VSTACK_##name,
@@ -61,4 +62,18 @@ enum dramstage_vstack {
 
 HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
 	return 0x100008000 + 0x4000 * vstack;
+}
+
+#define DEFINE_DRAMSTAGE_REGMAP\
+	MMIO(PCIE_CLIENT, 0xfd000000)
+
+enum dramstage_regmap {
+#define MMIO(name, addr) DRAMSTAGE_REGMAP_##name,
+	DEFINE_DRAMSTAGE_REGMAP
+#undef MMIO
+	NUM_DRAMSTAGE_REGMAP
+};
+
+HEADER_FUNC void *regmap_base(enum dramstage_regmap map) {
+	return (void *)(uintptr_t)(0xfffff000 - 0x1000 * map);
 }

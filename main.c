@@ -128,6 +128,18 @@ int32_t NO_ASAN main(u64 sctlr) {
 	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
 	/* map PMU{,SGRF,GRF} */
 	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
+	/* map GPIOs */
+	mmu_map_mmio_identity(0xff720000, 0xff730fff);
+	mmu_map_mmio_identity(0xff780000, 0xff790fff);
+	for_range(i, 0, NUM_SRAMSTAGE_REGMAP) {
+		static const u32 addrs[NUM_SRAMSTAGE_REGMAP] = {
+#define MMIO(name, addr) addr,
+			DEFINE_SRAMSTAGE_REGMAP
+#undef MMIO
+		};
+		u64 base = (u64)regmap_base(i);
+		mmu_map_range(base, base + 0xfff, addrs[i], MEM_TYPE_DEV_nGnRnE);
+	}
 	__asm__("dsb ishst");
 
 	pmu_cru_setup();

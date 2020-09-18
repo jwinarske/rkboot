@@ -26,6 +26,22 @@ HEADER_FUNC u64 vstack_base(enum sramstage_vstack vstack) {
 	return 0x100005400 + 0x2000 * vstack;
 }
 
+#define DEFINE_SRAMSTAGE_REGMAP\
+	MMIO(PCIE_CLIENT, 0xfd000000)\
+	MMIO(PCIE_MGMT, 0xfd900000)\
+	MMIO(PCIE_CONF_SETUP, 0xfda00000)
+
+enum sramstage_regmap {
+#define MMIO(name, addr) SRAMSTAGE_REGMAP_##name,
+	DEFINE_SRAMSTAGE_REGMAP
+#undef MMIO
+	NUM_SRAMSTAGE_REGMAP
+};
+
+HEADER_FUNC void *regmap_base(enum sramstage_regmap map) {
+	return (void *)(uintptr_t)(0xfffff000 - 0x1000 * map);
+}
+
 #define DEFINE_RK3399_INIT_FLAGS\
 	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\
 	X(DDRC0_READY, 30) X(DDRC1_READY, 30)\

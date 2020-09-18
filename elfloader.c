@@ -124,6 +124,9 @@ static const size_t available_boot_media = 0
 #if CONFIG_EMMC
 	| 1 << BOOT_MEDIUM_EMMC
 #endif
+#if CONFIG_NVME
+	| 1 << BOOT_MEDIUM_NVME
+#endif
 #if CONFIG_SPI
 	| 1 << BOOT_MEDIUM_SPI
 #endif
@@ -193,6 +196,15 @@ _Noreturn u32 main(u64 sctlr) {
 	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
 	mmu_map_mmio_identity((u64)gpio0, (u64)gpio0 + 0xfff);
 	mmu_map_mmio_identity((u64)crypto1, (u64)crypto1 + 0xfff);
+	for_range(i, 0, NUM_DRAMSTAGE_REGMAP) {
+		static const u32 addrs[NUM_DRAMSTAGE_REGMAP] = {
+#define MMIO(name, addr) addr,
+			DEFINE_DRAMSTAGE_REGMAP
+#undef MMIO
+		};
+		u64 base = (u64)regmap_base(i);
+		mmu_map_range(base, base + 0xfff, addrs[i], MEM_TYPE_DEV_nGnRnE);
+	}
 	mmu_flush();
 
 	/* set DRAM as Non-Secure; needed for DMA */
@@ -277,6 +289,16 @@ _Noreturn u32 main(u64 sctlr) {
 			.pad = 0,
 			.args = {},
 		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_EMMC) - sizeof(struct sched_thread_start));
+		*runnable = thread_start;
+		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
+#endif
+#if CONFIG_NVME
+		{struct sched_thread_start thread_start = {
+			.runnable = {.next = 0, .run = sched_start_thread},
+			.pc = (u64)boot_nvme,
+			.pad = 0,
+			.args = {},
+		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_NVME) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
