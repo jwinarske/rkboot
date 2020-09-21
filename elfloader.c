@@ -196,10 +196,10 @@ _Noreturn u32 main(u64 sctlr) {
 	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
 	mmu_map_mmio_identity((u64)gpio0, (u64)gpio0 + 0xfff);
 	mmu_map_mmio_identity((u64)crypto1, (u64)crypto1 + 0xfff);
-	for_range(i, 0, NUM_DRAMSTAGE_REGMAP) {
-		static const u32 addrs[NUM_DRAMSTAGE_REGMAP] = {
+	for_range(i, 0, NUM_REGMAP) {
+		static const u32 addrs[NUM_REGMAP] = {
 #define MMIO(name, addr) addr,
-			DEFINE_DRAMSTAGE_REGMAP
+			DEFINE_REGMAP
 #undef MMIO
 		};
 		u64 base = (u64)regmap_base(i);

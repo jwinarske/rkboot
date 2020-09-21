@@ -64,14 +64,14 @@ HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
 	return 0x100008000 + 0x4000 * vstack;
 }
 
-#define DEFINE_DRAMSTAGE_REGMAP\
-	MMIO(PCIE_CLIENT, 0xfd000000)
+#define DEFINE_REGMAP\
+	MMIO(PCIE_CLIENT, 0xfd000000)\
 
 enum dramstage_regmap {
-#define MMIO(name, addr) DRAMSTAGE_REGMAP_##name,
-	DEFINE_DRAMSTAGE_REGMAP
+#define MMIO(name, addr) REGMAP_##name,
+	DEFINE_REGMAP
 #undef MMIO
-	NUM_DRAMSTAGE_REGMAP
+	NUM_REGMAP
 };
 
 HEADER_FUNC void *regmap_base(enum dramstage_regmap map) {
