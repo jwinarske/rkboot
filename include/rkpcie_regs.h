@@ -25,11 +25,6 @@ enum {
 };
 
 enum {
-	RKPCIE_CORE_MGMT_PLC0 = 0,
-	RKPCIE_CORE_MGMT_PLC1,
-};
-
-enum {
 	RKPCIE_CLI_GEN2 = 1 << 7,
 	RKPCIE_CLI_ROOT_PORT = 64,
 #define RKPCIE_CLI_LANE_COUNT_SHIFT(shift) ((shift) << 4 & 0x30)
@@ -37,4 +32,19 @@ enum {
 	RKPCIE_CLI_SR_IOV_EN = 4,
 	RKPCIE_CLI_LINK_TRAIN_EN = 2,
 	RKPCIE_CLI_CONF_EN = 1,
+};
+
+enum {
+	RKPCIE_MGMT_PLC0 = 0,
+	RKPCIE_MGMT_PLC1,
+
+	RKPCIE_MGMT_LWC = 0x50 >> 2,
+
+	RKPCIE_MGMT_RCBAR = 0x300 >> 2,
+};
+
+enum {RKPCIE_MGMT_PLC0_LINK_TRAINED = 1};
+
+enum {
+	RKPCIE_RCCONF_PCIECAP = 0xc0 >> 2,
 };

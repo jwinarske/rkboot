@@ -132,7 +132,7 @@ void pcie_init() {
 	cru[CRU_SOFTRST_CON+8] = SET_BITS16(6, 0) << 2;	/* resetn_pcie_{core,mgmt,mgmt_sticky,pipe} */
 
 	volatile u32 *pcie_local_mgmt = regmap_base(SRAMSTAGE_REGMAP_PCIE_MGMT);
-	pcie_local_mgmt[RKPCIE_CORE_MGMT_PLC1] |= 0x00ffff00;	/* set transmitted FTS count to max for both Gen1 and Gen2 */
+	pcie_local_mgmt[RKPCIE_MGMT_PLC1] |= 0x00ffff00;	/* set transmitted FTS count to max for both Gen1 and Gen2 */
 	volatile u32 *pcie_conf_setup = regmap_base(SRAMSTAGE_REGMAP_PCIE_CONF_SETUP);
 	/* no power limits known, otherwise set them here (in DCR) */
 	pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_SCC;

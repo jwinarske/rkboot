@@ -66,6 +66,9 @@ HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
 
 #define DEFINE_REGMAP\
 	MMIO(PCIE_CLIENT, 0xfd000000)\
+	MMIO(PCIE_MGMT, 0xfd900000)\
+	MMIO(PCIE_RCCONF, 0xfd800000)\
+	MMIO(PCIE_ADDR_XLATION, 0xfdc00000)\
 
 enum dramstage_regmap {
 #define MMIO(name, addr) REGMAP_##name,
