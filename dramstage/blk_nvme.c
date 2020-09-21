@@ -221,11 +221,11 @@ void boot_nvme() {
 	info("Controller ready after %"PRIuTS"  μs\n", (t_ready - t_idle) / TICKS_PER_MICROSECOND);
 	volatile _Atomic u32 *sqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000), *cqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + (4 << nvme_extr_cap_dstrd(nvme_cap)));
 	memset(sq, 0, sizeof(*sq));
-	sq->opc = 0x06;
+	sq->opc = NVME_ADMIN_IDENTIFY;
 	sq->cid = 0;
 	sq->dptr[0] = (u64)((uintptr_t)&uncached_buf + 0x1000);
 	sq->dptr[1] = 0;
-	sq->cmd_spec[0] = 1;
+	sq->cmd_spec[0] = NVME_IDENTIFY_CONTROLLER;
 	dsb_sy();
 	atomic_store_explicit(sqdb, 1, memory_order_release);
 	timestamp_t shutdown_timeout = MSECS(1000);

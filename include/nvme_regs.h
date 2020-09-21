@@ -136,3 +136,28 @@ HEADER_FUNC u32 nvme_extr_csts_shst(u32 csts) {return csts >> 2 & 3;}
 #undef BYTE
 #undef U16
 #undef U32
+
+#define DEFINE_NVME_ADMIN\
+	NWR(0, DEL_IOSQ, CREATE_IOSQ, GET_LOG_PAGE)\
+	NWR(1, DEL_IOCQ, CREATE_IOCQ, IDENTIFY)\
+	NWR(2, ABORT, SET_FEATURES, GET_FEATURES)\
+	NW(3, ASYNC_EV_REQ, NS_MGMT)\
+	NW(4, FW_COMMIT, FW_IMG_DOWNLOAD)\
+	NW(5, SELF_TEST, NS_ATTACHMENT)\
+	NWR(6, KEEP_ALIVE, DIRECTIVE_SEND, DIRECTIVE_RECV)\
+	NWR(7, VIRT_MGMT, MGMT_IF_SEND, MGMT_IF_RECV)
+
+enum nvme_admin_opc {
+#define NWR(func, nodata, write, read) NVME_ADMIN_##nodata = func << 2, NVME_ADMIN_##write, NVME_ADMIN_##read,
+#define NW(func, nodata, write) NVME_ADMIN_##nodata = func << 2, NVME_ADMIN_##write,
+	DEFINE_NVME_ADMIN
+#undef NWR
+#undef NW
+};
+
+enum {
+	NVME_IDENTIFY_NS = 0,
+	NVME_IDENTIFY_CONTROLLER,
+	NVME_IDENTIFY_ACTIVE_NSID_LIST,
+	NVME_IDENTIFY_NSID_DESC_LIST,
+};
