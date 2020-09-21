@@ -30,7 +30,17 @@ struct nvme_cmd {
 	u64 reserved;
 	u64 mptr;
 	u64 dptr[2];
-	u64 cmd_spec[3];
+	union {
+		u64 cmd_spec[3];
+		struct {
+			u32 dw10;
+			u32 dw11;
+			u32 dw12;
+			u32 dw13;
+			u32 dw14;
+			u32 dw15;
+		};
+	};
 };
 _Static_assert(sizeof(struct nvme_cmd) == 64, "NVMe command struct must be 64 bytes long");
 
@@ -44,6 +54,7 @@ struct nvme_completion {
 };
 _Static_assert(sizeof(struct nvme_completion) == 16, "NVMe completion struct must be 16 bytes long");
 
+/* used for CC.CSS and as bit position in CAP.CSS */
 enum nvme_command_sets {
 	NVME_CMDSET_NVM,
 };
@@ -125,14 +136,36 @@ HEADER_FUNC u32 nvme_extr_csts_shst(u32 csts) {return csts >> 2 & 3;}
 #define DEFINE_NVME_IDCTL\
 	U32(RTD3E, rtd3e, "RTD3 Entry Latency", 88)\
 	BYTE(SQES, sqes, "Submission Queue Entry Size", 512)\
-	BYTE(CQES, sqes, "Completion Queue Entry Size", 513)\
+	BYTE(CQES, cqes, "Completion Queue Entry Size", 513)\
 	U16(MAXCMD, maxcmd, "Maximum Outstanding Commands", 514)\
 	U32(NN, nn, "Number of Namespaces", 516)
 
-#define BYTE(caps, snake, desc, offset)
-#define U16(caps, snake, desc, offset) HEADER_FUNC u16 nvme_extr_idctl_##snake(const u8 *idctl) {return idctl[offset] | (u16)idctl[(offset) + 1] << 8;}
-#define U32(caps, snake, desc, offset) HEADER_FUNC u32 nvme_extr_idctl_##snake(const u8 *idctl) {return idctl[offset] | (u32)idctl[(offset) + 1] << 8 | (u32)idctl[(offset) + 2] << 16 | (u32)idctl[(offset) + 3] << 24;}
+#define DEFINE_NVME_IDNS\
+	U64(NSZE, nsze, "Namespace Size", 0)\
+	BYTE(FLBAS, flbas, "Formatted LBA Size", 26)
+
+#define NVME_BYTE(snake, strct, offset) HEADER_FUNC u8 nvme_extr_##snake(const u8 *strct) {return strct[offset];}
+#define NVME_U16(snake, strct, offset) HEADER_FUNC u16 nvme_extr_##snake(const u8 *strct) {return strct[offset] | (u16)strct[(offset) + 1] << 8;}
+#define NVME_U32(snake, strct, offset) HEADER_FUNC u32 nvme_extr_##snake(const u8 *strct) {return strct[offset] | (u32)strct[(offset) + 1] << 8 | (u32)strct[(offset) + 2] << 16 | (u32)strct[(offset) + 3] << 24;}
+#define NVME_U64(snake, strct, offset) HEADER_FUNC u64 nvme_extr_##snake(const u8 *strct) {\
+	return strct[0] | (u64)strct[1] << 8 | (u64)strct[2] << 16 | (u64)strct[3] << 24\
+		| (u64)strct[4] << 32 | (u64)strct[5] << 40 | (u64)strct[6] << 48 | (u64)strct[7] << 56;\
+}
+
+#define BYTE(caps, snake, desc, offset) NVME_BYTE(idctl_##snake, idctl, offset)
+#define U16(caps, snake, desc, offset) NVME_U16(idctl_##snake, idctl, offset)
+#define U32(caps, snake, desc, offset) NVME_U32(idctl_##snake, idctl, offset)
 	DEFINE_NVME_IDCTL
+#undef BYTE
+#undef U16
+#undef U32
+
+#define BYTE(caps, snake, desc, offset) NVME_BYTE(idns_##snake, idns, offset)
+#define U64(caps, snake, desc, offset) NVME_U64(idns_##snake, idns, offset)
+	DEFINE_NVME_IDNS
+#undef BYTE
+#undef U64
+
 #undef BYTE
 #undef U16
 #undef U32
@@ -155,9 +188,48 @@ enum nvme_admin_opc {
 #undef NW
 };
 
+#define DEFINE_NVME_NVM\
+	NWR(0, FLUSH, WRITE, READ)\
+	NW(1, WRITE_UNCORRECTABLE, COMPARE)\
+	NW(2, WRITE_ZEROES, DATASET_MGMT)\
+	WR(3, RESV_REGISTER, RESV_REPORT)\
+	W(4, RESV_ACQUIRE)\
+	W(5, RESV_RELEASE)
+
+enum nvme_nvm_opc {
+#define NWR(func, nodata, write, read) NVME_NVM_##nodata = func << 2, NVME_NVM_##write, NVME_NVM_##read,
+#define NW(func, nodata, write) NVME_NVM_##nodata = func << 2, NVME_NVM_##write,
+#define WR(func, nodata, write) NVME_NVM_##write = func << 2 | 1, NVME_NVM_##read,
+#define W(func, write) NVME_NVM_##write = func << 2 | 1,
+	DEFINE_NVME_NVM
+#undef NWR
+#undef NW
+#undef WR
+#undef W
+};
+
+enum nvme_psdt {
+	NVME_PSDT_PRP = 0,
+	NVME_PSDT_SGL_DIRECT = 1 << 6,
+	NVME_PSDT_SGL_INDIRECT = 2 << 6,
+};
+
 enum {
 	NVME_IDENTIFY_NS = 0,
 	NVME_IDENTIFY_CONTROLLER,
 	NVME_IDENTIFY_ACTIVE_NSID_LIST,
 	NVME_IDENTIFY_NSID_DESC_LIST,
+};
+
+#define DEFINE_NVME_FEATURE\
+	X(ZERO) X(ARBITRATION) X(POWER_MGMT) X(LBA_RANGE_TYPE)\
+	X(TEMP_THRESH) X(ERROR_RECOVERY) X(WRITE_CACHE) X(NUM_QUEUES)\
+	X(INT_COALESCING) X(INT_VEC_CFG) X(WRITE_ATOMICITY_NORMAL) X(ASYNC_EV_CFG)\
+	X(APST) X(HOST_MEM_BUF) X(TIMESTAMP) X(KEEP_ALIVE_TIMER)\
+	X(HCTM) X(NOPSC)
+
+enum nvme_feature {
+#define X(name) NVME_FEATURE_##name,
+	DEFINE_NVME_FEATURE
+#undef X
 };

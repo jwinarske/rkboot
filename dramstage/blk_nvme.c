@@ -3,6 +3,7 @@
 #include <rk3399/dramstage.h>
 #include <stdatomic.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include <pci_regs.h>
 #include <rkpcie_regs.h>
@@ -13,6 +14,7 @@
 #include <aarch64.h>
 #include <mmu.h>
 #include <dump_mem.h>
+#include <iost.h>
 
 struct rkpcie_ob_desc {
 	u32 addr[2];
@@ -30,8 +32,39 @@ struct rkpcie_addr_xlation {
 };
 CHECK_OFFSET(rkpcie_addr_xlation, link_down_indication, 0x828);
 
-static _Alignas(4096) u8 wt_buf[4096];
-static _Alignas(0x1000) u8 uncached_buf[0x2000];
+enum {
+	WTBUF_ASQ,
+	WTBUF_IOSQ,
+	NUM_WTBUF
+};
+
+enum {
+	UBUF_ACQ,
+	UBUF_IOCQ,
+	UBUF_IDCTL,
+	UBUF_IDNS,
+	UBUF_DATA,
+	NUM_UBUF
+};
+
+static UNINITIALIZED _Alignas(0x1000) u8 wt_buf[NUM_WTBUF][0x1000];
+static UNINITIALIZED _Alignas(0x1000) u8 uncached_buf[NUM_UBUF][0x1000];
+
+static enum iost wait_single_command(volatile struct nvme_regs *nvme, struct nvme_completion *cqe, _Bool phase) {
+	u16 cmd_st;
+	while (((cmd_st = atomic_load_explicit(&cqe->status, memory_order_acquire)) & 1) != phase) {
+		u32 status = nvme->status;
+		info("waiting %08"PRIx32"\n", status);
+		if (status & NVME_CSTS_CFS) {return IOST_GLOBAL;}
+		usleep(1000);
+	}
+	if ((cmd_st & 0xfffe) || cqe->cid) {
+		dump_mem(cqe, sizeof(*cqe));
+		infos("completion error\n");
+		return IOST_LOCAL;
+	}
+	return IOST_OK;
+}
 
 void boot_nvme() {
 	if ((cru[CRU_CLKGATE_CON+12] & 1 << 6) || (cru[CRU_CLKGATE_CON+20] & 3 << 10)) {
@@ -87,6 +120,7 @@ void boot_nvme() {
 	xlat->ob[1].desc[2] = 0;
 	xlat->ob[1].desc[3] = 0;
 	dsb_sy();
+	usleep(10);
 	volatile u32 *conf = (u32 *)0xfa000000;
 	for_range(dev, 0, 32) {
 		u32 id = conf[dev << 13];
@@ -200,8 +234,9 @@ void boot_nvme() {
 		usleep(1000);
 	}
 	nvme->adminq_attr = 3 << 16 | 3;
-	struct nvme_cmd *sq = (struct nvme_cmd *)wt_buf;
-	struct nvme_completion *cq = (struct nvme_completion *)uncached_buf;
+	struct nvme_cmd *sq = (struct nvme_cmd *)wt_buf[WTBUF_ASQ];
+	struct nvme_completion *cq = (struct nvme_completion *)uncached_buf[UBUF_ACQ];
+	memset(cq, 0, sizeof(*cq) * 4);
 	nvme->adminsq_base = (u64)(uintptr_t)sq;
 	nvme->admincq_base = (u64)(uintptr_t)cq;
 	nvme->config = cfg |= NVME_CMDSET_NVM << NVME_CC_CSS_SHIFT | 0 << NVME_CC_MPS_SHIFT | 0 << NVME_CC_AMS_SHIFT;
@@ -219,28 +254,135 @@ void boot_nvme() {
 		usleep(1000);
 	}
 	info("Controller ready after %"PRIuTS"  μs\n", (t_ready - t_idle) / TICKS_PER_MICROSECOND);
-	volatile _Atomic u32 *sqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000), *cqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + (4 << nvme_extr_cap_dstrd(nvme_cap)));
+	u32 dstrd = 4 << nvme_extr_cap_dstrd(nvme_cap);
+	volatile _Atomic u32 *sqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000), *cqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + dstrd);
 	memset(sq, 0, sizeof(*sq));
 	sq->opc = NVME_ADMIN_IDENTIFY;
 	sq->cid = 0;
-	sq->dptr[0] = (u64)((uintptr_t)&uncached_buf + 0x1000);
+	const u8 *idctl = uncached_buf[UBUF_IDCTL];
+	sq->dptr[0] = (u64)(uintptr_t)idctl;
 	sq->dptr[1] = 0;
-	sq->cmd_spec[0] = NVME_IDENTIFY_CONTROLLER;
-	dsb_sy();
+	sq->dw10 = NVME_IDENTIFY_CONTROLLER;
 	atomic_store_explicit(sqdb, 1, memory_order_release);
 	timestamp_t shutdown_timeout = MSECS(1000);
-	while (~atomic_load_explicit(&cq->status, memory_order_acquire) & 1) {
-		u32 status = nvme->status;
-		info("waiting %08"PRIx32" %08"PRIx32" %08"PRIx32"\n", status, conf[PCI_CMDSTS], pcie_rcconf[PCI1_IO_2STS]);
-		if (status & NVME_CSTS_CFS) {goto shut_down_nvme;}
-		usleep(1000);
+	switch (wait_single_command(nvme, cq + 0, 1)) {
+	case IOST_OK: break;
+	case IOST_LOCAL: case IOST_GLOBAL: goto shut_down_nvme;
+	default: abort();
 	}
-	dump_mem(cq, sizeof(*cq));
+	dump_mem(cq + 0, sizeof(*cq));
 	atomic_store_explicit(cqdb, 1, memory_order_release);
-	const u8 *idctl = uncached_buf + 0x1000;
 	dump_mem(idctl, 0x1000);
-	shutdown_timeout = nvme_extr_idctl_rtd3e(idctl) * TICKS_PER_MICROSECOND;
+	timestamp_t rtd3e = nvme_extr_idctl_rtd3e(idctl);
+	info("RTD3E: %"PRIuTS" μs\n", rtd3e);
+	shutdown_timeout = rtd3e * TICKS_PER_MICROSECOND;
 	if (!shutdown_timeout) {shutdown_timeout = MSECS(1000);}
+	u32 num_ns = nvme_extr_idctl_nn(idctl);
+	if (!num_ns) {
+		infos("controller has no valid NSIDs\n");
+		goto shut_down_nvme;
+	}
+	memset(sq + 1, 0, sizeof(*sq));
+	sq[1].opc = NVME_ADMIN_IDENTIFY;
+	sq[1].cid = 0;
+	sq[1].nsid = 1;
+	const u8 *idns = uncached_buf[UBUF_IDNS];
+	sq[1].dptr[0] = (u64)(uintptr_t)idns;
+	sq[1].dptr[1] = 0;
+	sq[1].dw10 = NVME_IDENTIFY_NS;
+	atomic_store_explicit(sqdb, 2, memory_order_release);
+	switch (wait_single_command(nvme, cq + 1, 1)) {
+	case IOST_OK: break;
+	case IOST_LOCAL: case IOST_GLOBAL: goto shut_down_nvme;
+	default: abort();
+	}
+	atomic_store_explicit(cqdb, 2, memory_order_release);
+	dump_mem(idns, 0x180);
+	u64 ns_size = nvme_extr_idns_nsze(idns);
+	u8 flbas = nvme_extr_idns_flbas(idns);
+	const u8 *lbaf = idns + 128 + 4 * (flbas & 15);
+	if (lbaf[0] || lbaf[1]) {
+		infos("formatted LBAF has metadata, don't know how to deal with it\n");
+		goto shut_down_nvme;
+	}
+	if (lbaf[2] > 12 || lbaf[2] < 9) {
+		info("unexpected LBA size 1 << %"PRIu8"\n", lbaf[2]);
+		goto shut_down_nvme;
+	}
+	u32 block_size = 1 << lbaf[2];
+	info("namespace has %"PRIu64" (0x%"PRIx64") %"PRIu32"-byte sectors\n", ns_size, ns_size, block_size);
+	if ((nvme_extr_idctl_sqes(idctl) & 15) > 6 || (nvme_extr_idctl_cqes(idctl) & 15) > 4) {
+		info("unsupported queue entry sizes\n");
+		goto shut_down_nvme;
+	}
+	nvme->config = cfg |= 4 << NVME_CC_IOCQES_SHIFT | 6 << NVME_CC_IOSQES_SHIFT;
+	memset(sq+2, 0, sizeof(*sq));
+	sq[2].opc = NVME_ADMIN_SET_FEATURES;
+	sq[2].cid = 0;
+	sq[2].dw10 = NVME_FEATURE_NUM_QUEUES;
+	sq[2].dw11 = (1 - 1) << 16 | (1 - 1);
+	atomic_store_explicit(sqdb, 3, memory_order_release);
+	switch (wait_single_command(nvme, cq + 2, 1)) {
+	case IOST_OK: break;
+	case IOST_LOCAL: case IOST_GLOBAL: goto shut_down_nvme;
+	default: abort();
+	}
+	dump_mem(cq + 2, sizeof(*cq));
+	atomic_store_explicit(cqdb, 3, memory_order_release);
+	struct nvme_cmd *cmd;
+	cmd = sq + 3;
+	memset(cmd, 0, sizeof(*cmd));
+	cmd->opc = NVME_ADMIN_CREATE_IOCQ;
+	cmd->cid = 0;
+	struct nvme_completion *iocq = (struct nvme_completion *)(uncached_buf + UBUF_IOCQ);
+	memset(iocq, 0, sizeof(*iocq) * 4);
+	cmd->dptr[0] = (u64)(uintptr_t)iocq;
+	cmd->dw10 = 1 | 3 << 16;
+	cmd->dw11 = 1;
+	atomic_store_explicit(sqdb, 0, memory_order_release);
+	switch (wait_single_command(nvme, cq + 3, 1)) {
+	case IOST_OK: break;
+	case IOST_LOCAL: case IOST_GLOBAL: goto shut_down_nvme;
+	default: abort();
+	}
+	dump_mem(cq + 3, sizeof(*cq));
+	atomic_store_explicit(cqdb, 0, memory_order_release);
+	cmd = sq;
+	memset(cmd, 0, sizeof(*cmd));
+	cmd->opc = NVME_ADMIN_CREATE_IOSQ;
+	cmd->cid = 0;
+	struct nvme_cmd *iosq = (struct nvme_cmd *)(wt_buf + WTBUF_IOSQ);
+	cmd->dptr[0] = (u64)(uintptr_t)iosq;
+	cmd->dw10 = 1 | 3 << 16;
+	cmd->dw11 = 1 << 16 | 1;
+	atomic_store_explicit(sqdb, 1, memory_order_release);
+	switch (wait_single_command(nvme, cq + 0, 0)) {
+	case IOST_OK: break;
+	case IOST_LOCAL: case IOST_GLOBAL: goto shut_down_nvme;
+	default: abort();
+	}
+	dump_mem(cq + 0, sizeof(*cq));
+	atomic_store_explicit(cqdb, 1, memory_order_release);
+
+	volatile _Atomic u32 *iosqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 2 * dstrd), *iocqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 3 * dstrd);
+	cmd = iosq + 0;
+	memset(cmd, 0, sizeof(*cmd));
+	cmd->opc = NVME_NVM_READ;
+	cmd->fuse_psdt = NVME_PSDT_PRP;
+	cmd->cid = 0;
+	cmd->nsid = 1;
+	cmd->dptr[0] = (u64)(uintptr_t)uncached_buf[UBUF_DATA];
+	cmd->cmd_spec[0] = 1 << 16 >> 9;
+	atomic_store_explicit(iosqdb, 1, memory_order_release);
+	switch (wait_single_command(nvme, iocq + 0, 1)) {
+	case IOST_OK: break;
+	case IOST_LOCAL: case IOST_GLOBAL: goto shut_down_nvme;
+	default: abort();
+	}
+	dump_mem(iocq + 0, sizeof(*iocq));
+	atomic_store_explicit(iocqdb, 1, memory_order_release);
+	dump_mem(uncached_buf[UBUF_DATA], block_size);
+
 shut_down_nvme:
 	nvme->config = cfg | 1 << NVME_CC_SHN_SHIFT;
 	timestamp_t t_wait_shutdown = get_timestamp(), t_shutdown;
