@@ -56,7 +56,7 @@ static enum iost wait_single_command(volatile struct nvme_regs *nvme, struct nvm
 		u32 status = nvme->status;
 		info("waiting %08"PRIx32"\n", status);
 		if (status & NVME_CSTS_CFS) {return IOST_GLOBAL;}
-		usleep(1000);
+		usleep(100);
 	}
 	if ((cmd_st & 0xfffe) || cqe->cid) {
 		dump_mem(cqe, sizeof(*cqe));
@@ -288,7 +288,7 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 	return IOST_OK;
 }
 
-enum iost nvme_read_wait(struct nvme_state *st) {
+enum iost nvme_read_wait(struct nvme_state *st, u64 lba, u16 blocks, phys_addr_t addr) {
 	volatile struct nvme_regs *nvme = st->regs;
 	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
 	volatile _Atomic u32 *iosqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 2 * dstrd), *iocqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 3 * dstrd);
@@ -298,15 +298,18 @@ enum iost nvme_read_wait(struct nvme_state *st) {
 	cmd->fuse_psdt = NVME_PSDT_PRP;
 	cmd->cid = 0;
 	cmd->nsid = 1;
-	cmd->dptr[0] = (u64)(uintptr_t)uncached_buf[UBUF_DATA];
-	cmd->cmd_spec[0] = 1 << 16 >> 9;
+	cmd->dptr[0] = (u64)addr;
+	cmd->cmd_spec[0] = lba;
+	cmd->dw12 = blocks;
 	atomic_store_explicit(iosqdb, 1, memory_order_release);
 
+	timestamp_t t_submit = get_timestamp();
 	struct nvme_completion *cpl = st->iocq + 0;
 	enum iost res = wait_single_command(nvme, cpl, 1);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
 	atomic_store_explicit(iocqdb, 1, memory_order_release);
+	info("read finished after %"PRIuTS" μs\n", (get_timestamp() - t_submit) / TICKS_PER_MICROSECOND);
 	return IOST_OK;
 }
 
@@ -460,8 +463,8 @@ void boot_nvme() {
 	default: goto shut_down_log;
 	}
 	if (IOST_OK != nvme_init_queues(&st)) {goto shut_down_nvme;}
-	if (IOST_OK != nvme_read_wait(&st)) {goto shut_down_nvme;}
-	dump_mem(uncached_buf[UBUF_DATA], 1 << st.lba_shift);
+	if (IOST_OK != nvme_read_wait(&st, 0, (4096 >> st.lba_shift) - 1, plat_virt_to_phys(uncached_buf[UBUF_DATA]))) {goto shut_down_nvme;}
+	dump_mem(uncached_buf[UBUF_DATA], 4096);
 
 shut_down_nvme:
 	nvme_reset(&st);
