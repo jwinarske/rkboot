@@ -15,6 +15,7 @@
 #include <mmu.h>
 #include <dump_mem.h>
 #include <iost.h>
+#include <plat.h>
 
 struct rkpcie_ob_desc {
 	u32 addr[2];
@@ -108,6 +109,13 @@ static _Bool finish_pcie_link() {
 	return 1;
 }
 
+struct nvme_cq {
+	volatile _Atomic u32 *doorbell;
+	struct nvme_completion *buf;
+	unsigned phase : 1;
+	u16 size, pos;
+};
+
 /* info and state for a single controller with a single namespace … we don't handle more enterprisey setups here */
 struct nvme_state {
 	volatile struct nvme_regs *regs;
@@ -116,7 +124,7 @@ struct nvme_state {
 	u32 rtd3e;
 	u8 lba_shift;
 	struct nvme_cmd *asq, *iosq;
-	struct nvme_completion *acq, *iocq;
+	struct nvme_cq acq, iocq;
 };
 
 enum iost nvme_init(struct nvme_state *st) {
@@ -149,9 +157,14 @@ enum iost nvme_init(struct nvme_state *st) {
 		}
 		usleep(1000);
 	}
+	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
+	st->acq.doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + dstrd);
+	st->acq.phase = 1;
+	st->acq.pos = 0;
+	memset(st->acq.buf, 0, sizeof(struct nvme_completion) * ((size_t)st->acq.size + 1));
 	nvme->adminq_attr = 3 << 16 | 3;
 	nvme->adminsq_base = (u64)(uintptr_t)st->asq;
-	nvme->admincq_base = (u64)(uintptr_t)st->acq;
+	nvme->admincq_base = (u64)plat_virt_to_phys(st->acq.buf);
 	nvme->config = cfg |= NVME_CMDSET_NVM << NVME_CC_CSS_SHIFT | 0 << NVME_CC_MPS_SHIFT | 0 << NVME_CC_AMS_SHIFT;
 	nvme->config = cfg |= NVME_CC_EN;
 	timestamp_t t_ready;
@@ -175,7 +188,7 @@ enum iost nvme_init(struct nvme_state *st) {
 enum iost nvme_init_queues(struct nvme_state *st) {
 	volatile struct nvme_regs *nvme = st->regs;
 	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
-	volatile _Atomic u32 *sqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000), *cqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + dstrd);
+	volatile _Atomic u32 *sqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000);
 	struct nvme_cmd *cmd;
 	cmd = st->asq + 0;
 	memset(cmd, 0, sizeof(*cmd));
@@ -187,11 +200,11 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 	cmd->dw10 = NVME_IDENTIFY_CONTROLLER;
 	atomic_store_explicit(sqdb, 1, memory_order_release);
 
-	struct nvme_completion *cpl = st->acq + 0;
+	struct nvme_completion *cpl = st->acq.buf + 0;
 	enum iost res = wait_single_command(nvme, cpl, 1);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
-	atomic_store_explicit(cqdb, 1, memory_order_release);
+	atomic_store_explicit(st->acq.doorbell, 1, memory_order_release);
 
 	dump_mem(idctl, 0x1000);
 	u32 rtd3e = nvme_extr_idctl_rtd3e(idctl);
@@ -214,11 +227,11 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 	cmd->dw10 = NVME_IDENTIFY_NS;
 	atomic_store_explicit(sqdb, 2, memory_order_release);
 
-	cpl = st->acq + 1;
+	cpl = st->acq.buf + 1;
 	res = wait_single_command(nvme, cpl, 1);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
-	atomic_store_explicit(cqdb, 2, memory_order_release);
+	atomic_store_explicit(st->acq.doorbell, 2, memory_order_release);
 
 	dump_mem(idns, 0x180);
 	u64 ns_size = nvme_extr_idns_nsze(idns);
@@ -250,26 +263,30 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 	cmd->dw11 = (1 - 1) << 16 | (1 - 1);
 	atomic_store_explicit(sqdb, 3, memory_order_release);
 
-	cpl = st->acq + 2;
+	cpl = st->acq.buf + 2;
 	res = wait_single_command(nvme, cpl, 1);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
-	atomic_store_explicit(cqdb, 3, memory_order_release);
+	atomic_store_explicit(st->acq.doorbell, 3, memory_order_release);
 
+	st->iocq.doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 3 * dstrd);
+	st->iocq.phase = 1;
+	st->iocq.pos = 0;
+	memset(st->iocq.buf, 0, sizeof(struct nvme_completion) * ((size_t)st->iocq.size + 1));
 	cmd = st->asq + 3;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_CREATE_IOCQ;
 	cmd->cid = 0;
-	cmd->dptr[0] = (u64)(uintptr_t)st->iocq;
-	cmd->dw10 = 1 | 3 << 16;
+	cmd->dptr[0] = (u64)plat_virt_to_phys(st->iocq.buf);
+	cmd->dw10 = 1 | (u32)st->iocq.size << 16;
 	cmd->dw11 = 1;
 	atomic_store_explicit(sqdb, 0, memory_order_release);
 
-	cpl = st->acq + 3;
+	cpl = st->acq.buf + 3;
 	res = wait_single_command(nvme, cpl, 1);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
-	atomic_store_explicit(cqdb, 0, memory_order_release);
+	atomic_store_explicit(st->acq.doorbell, 0, memory_order_release);
 
 	cmd = st->asq;
 	memset(cmd, 0, sizeof(*cmd));
@@ -280,18 +297,18 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 	cmd->dw11 = 1 << 16 | 1;
 	atomic_store_explicit(sqdb, 1, memory_order_release);
 
-	cpl = st->acq + 0;
+	cpl = st->acq.buf + 0;
 	res = wait_single_command(nvme, cpl, 0);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
-	atomic_store_explicit(cqdb, 1, memory_order_release);
+	atomic_store_explicit(st->acq.doorbell, 1, memory_order_release);
 	return IOST_OK;
 }
 
 enum iost nvme_read_wait(struct nvme_state *st, u64 lba, u16 blocks, phys_addr_t addr) {
 	volatile struct nvme_regs *nvme = st->regs;
 	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
-	volatile _Atomic u32 *iosqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 2 * dstrd), *iocqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 3 * dstrd);
+	volatile _Atomic u32 *iosqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 2 * dstrd);
 	struct nvme_cmd *cmd = st->iosq + 0;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_NVM_READ;
@@ -304,11 +321,11 @@ enum iost nvme_read_wait(struct nvme_state *st, u64 lba, u16 blocks, phys_addr_t
 	atomic_store_explicit(iosqdb, 1, memory_order_release);
 
 	timestamp_t t_submit = get_timestamp();
-	struct nvme_completion *cpl = st->iocq + 0;
+	struct nvme_completion *cpl = st->iocq.buf + 0;
 	enum iost res = wait_single_command(nvme, cpl, 1);
 	if (res != IOST_OK) {return res;}
 	dump_mem(cpl, sizeof(*cpl));
-	atomic_store_explicit(iocqdb, 1, memory_order_release);
+	atomic_store_explicit(st->iocq.doorbell, 1, memory_order_release);
 	info("read finished after %"PRIuTS" μs\n", (get_timestamp() - t_submit) / TICKS_PER_MICROSECOND);
 	return IOST_OK;
 }
@@ -451,12 +468,16 @@ void boot_nvme() {
 	struct nvme_state st = {
 		.regs = (struct nvme_regs *)0xfa100000,
 		.asq = (struct nvme_cmd *)wt_buf[WTBUF_ASQ],
-		.acq = (struct nvme_completion *)uncached_buf[UBUF_ACQ],
+		.acq = {
+			.buf = (struct nvme_completion *)uncached_buf[UBUF_ACQ],
+			.size = 3,
+		},
 		.iosq = (struct nvme_cmd *)(wt_buf + WTBUF_IOSQ),
-		.iocq = (struct nvme_completion *)(uncached_buf + UBUF_IOCQ),
+		.iocq = {
+			.buf =(struct nvme_completion *)(uncached_buf + UBUF_IOCQ),
+			.size = 3,
+		}
 	};
-	memset(st.acq, 0, sizeof(*st.acq) * 4);
-	memset(st.iocq, 0, sizeof(*st.iocq) * 4);
 	switch (nvme_init(&st)) {
 	case IOST_OK: break;
 	case IOST_INVALID: goto out;
