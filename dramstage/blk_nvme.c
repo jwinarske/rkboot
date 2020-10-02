@@ -4,6 +4,7 @@
 #include <stdatomic.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include <pci_regs.h>
 #include <rkpcie_regs.h>
@@ -16,6 +17,7 @@
 #include <dump_mem.h>
 #include <iost.h>
 #include <plat.h>
+#include <byteorder.h>
 
 struct rkpcie_ob_desc {
 	u32 addr[2];
@@ -93,6 +95,26 @@ static _Bool finish_pcie_link() {
 	return 1;
 }
 
+enum {
+	NVME_CREATING = 0,
+	NVME_SUBMITTED = 2,
+};
+
+struct nvme_req {
+	u32 data[2];
+	u16 aux;
+	_Atomic(u16) status;
+};
+
+struct nvme_sq {
+	volatile _Atomic u32 *doorbell;
+	struct nvme_cmd *buf;
+	u16 size, tail, cq;
+	_Atomic(u16) head;
+	u16 max_cid;
+	_Atomic(struct nvme_req *) *cmd;
+};
+
 struct nvme_cq {
 	volatile _Atomic u32 *doorbell;
 	struct nvme_completion *buf;
@@ -107,8 +129,9 @@ struct nvme_state {
 	u32 cfg;
 	u32 rtd3e;
 	u8 lba_shift;
-	struct nvme_cmd *asq, *iosq;
-	struct nvme_cq acq, iocq;
+	u16 num_iosq, num_iocq;
+	struct nvme_sq *sq;
+	struct nvme_cq *cq;
 };
 
 enum iost nvme_init(struct nvme_state *st) {
@@ -129,9 +152,11 @@ enum iost nvme_init(struct nvme_state *st) {
 		return IOST_INVALID;
 	}
 	timestamp_t timeout = nvme_extr_cap_to(nvme_cap) * MSECS(500), t_wait_idle = get_timestamp(), t_idle;
-	u32 cfg = nvme->config = 0;
+	u32 cfg = 0;
+	atomic_store_explicit(&nvme->config, 0, memory_order_relaxed);
+	atomic_thread_fence(memory_order_seq_cst);
 	while (1) {
-		u32 status = nvme->status;
+		u32 status = atomic_load_explicit(&nvme->status, memory_order_acquire);
 		info("CSTS: %08"PRIx32"\n", status);
 		t_idle = get_timestamp();
 		if (~status & NVME_CSTS_RDY) {break;}
@@ -142,18 +167,28 @@ enum iost nvme_init(struct nvme_state *st) {
 		usleep(1000);
 	}
 	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
-	st->acq.doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + dstrd);
-	st->acq.phase = 1;
-	st->acq.pos = 0;
-	memset(st->acq.buf, 0, sizeof(struct nvme_completion) * ((size_t)st->acq.size + 1));
-	nvme->adminq_attr = 3 << 16 | 3;
-	nvme->adminsq_base = (u64)(uintptr_t)st->asq;
-	nvme->admincq_base = (u64)plat_virt_to_phys(st->acq.buf);
-	nvme->config = cfg |= NVME_CMDSET_NVM << NVME_CC_CSS_SHIFT | 0 << NVME_CC_MPS_SHIFT | 0 << NVME_CC_AMS_SHIFT;
-	nvme->config = cfg |= NVME_CC_EN;
+	st->num_iocq = 0;
+	st->num_iosq = 0;
+	st->cq[0].doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + dstrd);
+	st->cq[0].phase = 1;
+	st->cq[0].pos = 0;
+	memset(st->cq[0].buf, 0, sizeof(struct nvme_completion) * ((size_t)st->cq[0].size + 1));
+	st->sq[0].doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000);
+	st->sq[0].tail = 0;
+	st->sq[0].cq = 0;
+	atomic_store_explicit(&st->sq[0].head, 0, memory_order_relaxed);
+	nvme->adminq_attr = st->cq[0].size << 16 | st->sq[0].size;
+	nvme->adminsq_base = (u64)plat_virt_to_phys(st->sq[0].buf);
+	nvme->admincq_base = (u64)plat_virt_to_phys(st->cq[0].buf);
+	cfg |= NVME_CMDSET_NVM << NVME_CC_CSS_SHIFT | 0 << NVME_CC_MPS_SHIFT | 0 << NVME_CC_AMS_SHIFT;
+	atomic_store_explicit(&nvme->config, cfg, memory_order_relaxed);
+	cfg |= NVME_CC_EN;
+	/* release because clearing the ACQ memory has to be cleared before enabling */
+	atomic_store_explicit(&nvme->config, cfg, memory_order_release);
+	atomic_thread_fence(memory_order_seq_cst);
 	timestamp_t t_ready;
 	while (1) {
-		u32 status = nvme->status;
+		u32 status = atomic_load_explicit(&nvme->status, memory_order_acquire);
 		info("CSTS: %08"PRIx32"\n", status);
 		t_ready = get_timestamp();
 		if (status & NVME_CSTS_RDY) {break;}
@@ -174,48 +209,112 @@ static void nvme_dump_completion(struct nvme_completion *cqe, u16 status) {
 	info("%04"PRIx16" %04"PRIx16"%04"PRIx16" %04"PRIx16" %"PRIx32" %"PRIx32"\n", status, cqe->sqid, cqe->cid, cqe->sqhd, cqe->cmd_spec, cqe->reserved);
 }
 
-static enum iost wait_single_command(volatile struct nvme_regs *nvme, struct nvme_cq *cq) {
+static enum iost nvme_process_cqe(volatile struct nvme_state *st, u16 cqid) {
+	struct nvme_cq *cq = st->cq + cqid;
 	u16 pos = cq->pos;
 	_Bool phase = cq->phase;
 	struct nvme_completion *cqe = cq->buf + pos;
 	u16 cmd_st;
-	while (((cmd_st = atomic_load_explicit(&cqe->status, memory_order_acquire)) & 1) != phase) {
-		u32 status = nvme->status;
-		info("waiting %08"PRIx32"\n", status);
-		if (status & NVME_CSTS_CFS) {return IOST_GLOBAL;}
-		usleep(100);
-	}
-	if ((cmd_st & 0xfffe) || cqe->cid) {
+	if (((cmd_st = from_le16(atomic_load_explicit(&cqe->status, memory_order_acquire))) & 1) != phase) {return IOST_TRANSIENT;}
+	if (cqe->sqid > st->num_iosq) {
+		infos("unexpected SQID: ");
 		nvme_dump_completion(cqe, cmd_st);
-		infos("completion error\n");
-		return IOST_LOCAL;
+		return IOST_GLOBAL;
 	}
+	struct nvme_sq *sq = st->sq + cqe->sqid;
+	if (sq->cq != cqid) {
+		infos("completion for unassociated SQ: ");
+		nvme_dump_completion(cqe, cmd_st);
+		return IOST_GLOBAL;
+	}
+	if (!sq->cmd || sq->max_cid < cqe->cid) {
+		infos("command ID out of range: ");
+		nvme_dump_completion(cqe, cmd_st);
+		return IOST_GLOBAL;
+	}
+	struct nvme_req *cmd = atomic_load_explicit(sq->cmd + cqe->cid, memory_order_acquire);
 	nvme_dump_completion(cqe, cmd_st);
+	cmd->data[0] = from_le32(cqe->cmd_spec);
+	cmd->data[1] = from_le32(cqe->reserved);
+	cmd->aux = 0;
+	u16 sqhd = cqe->sqhd;
+	atomic_thread_fence(memory_order_release);
+	atomic_store_explicit(sq->cmd + cqe->cid, 0, memory_order_relaxed);
+	atomic_store_explicit(&cmd->status, cmd_st | 1, memory_order_relaxed);
+	atomic_store_explicit(&sq->head, sqhd, memory_order_relaxed);
+
 	if (pos < cq->size) {
 		cq->pos = ++pos;
 	} else {
 		cq->pos = pos = 0;
 		cq->phase = !phase;
 	}
-	atomic_store_explicit(cq->doorbell, pos, memory_order_release);
+	atomic_store_explicit(cq->doorbell, pos, memory_order_relaxed);
 	return IOST_OK;
 }
 
-enum iost nvme_init_queues(struct nvme_state *st) {
+static enum iost wait_single_command(struct nvme_state *st, u16 sqid) {
+	assert(sqid <= st->num_iosq);
+	struct nvme_sq *sq = st->sq + sqid;
+	u16 tail = sq->tail, head = atomic_load_explicit(&sq->head, memory_order_acquire);
+	u16 next = tail == sq->size ? 0 : tail + 1;
+	if (next == head) {	/* TODO: wait on full queue */
+		infos("queue full\n");
+		return IOST_TRANSIENT;
+	}
+	struct nvme_req req;
+	memset(&req, 0, sizeof(req));
+	atomic_store_explicit(&req.status, NVME_SUBMITTED, memory_order_relaxed);
+	u16 cid;
+	for_range(i, 0, (u32)sq->max_cid + 1) {
+		struct nvme_req *ptr = 0;
+		if (atomic_compare_exchange_strong_explicit(sq->cmd + i, &ptr, &req, memory_order_release, memory_order_relaxed)) {
+			cid = i;
+			goto cid_assigned;
+		}
+	}
+	infos("no free command ID found\n");
+	return IOST_TRANSIENT;
+cid_assigned:
+	sq->buf[tail].cid = to_le16(cid);
+
+	sq->tail = next;
+	atomic_store_explicit(sq->doorbell, next, memory_order_release);
+	u16 cmd_st;
 	volatile struct nvme_regs *nvme = st->regs;
-	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
-	volatile _Atomic u32 *sqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000);
+	while (1) {
+		for_range(cqid, 0, (u32)st->num_iocq + 1) {
+			nvme_process_cqe(st, cqid);
+		}
+		cmd_st = atomic_load_explicit(&req.status, memory_order_acquire);
+		if (cmd_st != NVME_SUBMITTED) {break;}
+		u32 status = nvme->status;
+		info("waiting cid%04"PRIx16" st%08"PRIx32"\n", cid, status);
+		if (status & NVME_CSTS_CFS) {return IOST_GLOBAL;}
+		usleep(100);
+	}
+	if (cmd_st & 0xfffe) {
+		info("completion error: %03"PRIx16" %08"PRIx32" %"PRIx32"\n",
+			(cmd_st & 0xf000) | (cmd_st >> 1 & 0x07ff),
+			req.data[0], req.data[1]
+		);
+		return IOST_LOCAL;
+	}
+	return IOST_OK;
+}
+
+enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq) {
+	volatile struct nvme_regs *nvme = st->regs;
+	assert(num_iocq && num_iosq);
 	struct nvme_cmd *cmd;
-	cmd = st->asq + 0;
+	cmd = st->sq[0].buf + st->sq[0].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_IDENTIFY;
-	cmd->cid = 0;
 	const u8 *idctl = uncached_buf[UBUF_IDCTL];
 	cmd->dptr[0] = (u64)(uintptr_t)idctl;
 	cmd->dptr[1] = 0;
 	cmd->dw10 = NVME_IDENTIFY_CONTROLLER;
-	atomic_store_explicit(sqdb, 1, memory_order_release);
-	enum iost res = wait_single_command(nvme, &st->acq);
+	enum iost res = wait_single_command(st, 0);
 	if (res != IOST_OK) {return res;}
 
 	dump_mem(idctl, 0x1000);
@@ -228,17 +327,15 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 		return IOST_INVALID;
 	}
 
-	cmd = st->asq + 1;
+	cmd = st->sq[0].buf + st->sq[0].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_IDENTIFY;
-	cmd->cid = 0;
 	cmd->nsid = 1;
 	const u8 *idns = uncached_buf[UBUF_IDNS];
 	cmd->dptr[0] = (u64)(uintptr_t)idns;
 	cmd->dptr[1] = 0;
 	cmd->dw10 = NVME_IDENTIFY_NS;
-	atomic_store_explicit(sqdb, 2, memory_order_release);
-	res = wait_single_command(nvme, &st->acq);
+	res = wait_single_command(st, 0);
 	if (res != IOST_OK) {return res;}
 
 	dump_mem(idns, 0x180);
@@ -263,61 +360,57 @@ enum iost nvme_init_queues(struct nvme_state *st) {
 
 	nvme->config = st->cfg |= 4 << NVME_CC_IOCQES_SHIFT | 6 << NVME_CC_IOSQES_SHIFT;
 
-	cmd = st->asq + 2;
+	cmd = st->sq[0].buf + st->sq[0].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_SET_FEATURES;
-	cmd->cid = 0;
 	cmd->dw10 = NVME_FEATURE_NUM_QUEUES;
-	cmd->dw11 = (1 - 1) << 16 | (1 - 1);
-	atomic_store_explicit(sqdb, 3, memory_order_release);
-	res = wait_single_command(nvme, &st->acq);
+	cmd->dw11 = to_le32((num_iocq - 1) << 16 | (num_iosq - 1));
+	res = wait_single_command(st, 0);
 	if (res != IOST_OK) {return res;}
 
-	st->iocq.doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 3 * dstrd);
-	st->iocq.phase = 1;
-	st->iocq.pos = 0;
-	memset(st->iocq.buf, 0, sizeof(struct nvme_completion) * ((size_t)st->iocq.size + 1));
-	cmd = st->asq + 3;
+	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
+	st->cq[1].doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 3 * dstrd);
+	st->cq[1].phase = 1;
+	st->cq[1].pos = 0;
+	memset(st->cq[1].buf, 0, sizeof(struct nvme_completion) * ((size_t)st->cq[1].size + 1));
+	cmd = st->sq[0].buf + st->sq[0].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_CREATE_IOCQ;
 	cmd->cid = 0;
-	cmd->dptr[0] = (u64)plat_virt_to_phys(st->iocq.buf);
-	cmd->dw10 = 1 | (u32)st->iocq.size << 16;
+	cmd->dptr[0] = (u64)plat_virt_to_phys(st->cq[1].buf);
+	cmd->dw10 = 1 | (u32)st->cq[1].size << 16;
 	cmd->dw11 = 1;
-	atomic_store_explicit(sqdb, 0, memory_order_release);
-	res = wait_single_command(nvme, &st->acq);
+	res = wait_single_command(st, 0);
 	if (res != IOST_OK) {return res;}
+	st->num_iocq = 1;
 
-	cmd = st->asq;
+	st->sq[1].doorbell = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 2 * dstrd);
+	cmd = st->sq[0].buf + st->sq[0].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_CREATE_IOSQ;
 	cmd->cid = 0;
-	cmd->dptr[0] = (u64)(uintptr_t)st->iosq;
+	cmd->dptr[0] = (u64)plat_virt_to_phys(st->sq[1].buf);
 	cmd->dw10 = 1 | 3 << 16;
 	cmd->dw11 = 1 << 16 | 1;
-	atomic_store_explicit(sqdb, 1, memory_order_release);
-	res = wait_single_command(nvme, &st->acq);
+	res = wait_single_command(st, 0);
 	if (res != IOST_OK) {return res;}
+	st->sq[1].cq = 1;
+	st->num_iosq = 1;
 	return IOST_OK;
 }
 
 enum iost nvme_read_wait(struct nvme_state *st, u64 lba, u16 blocks, phys_addr_t addr) {
-	volatile struct nvme_regs *nvme = st->regs;
-	u32 dstrd = 4 << nvme_extr_cap_dstrd(st->cap);
-	volatile _Atomic u32 *iosqdb = (_Atomic u32 *)((uintptr_t)nvme + 0x1000 + 2 * dstrd);
-	struct nvme_cmd *cmd = st->iosq + 0;
+	struct nvme_cmd *cmd = st->sq[1].buf + st->sq[1].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_NVM_READ;
 	cmd->fuse_psdt = NVME_PSDT_PRP;
-	cmd->cid = 0;
 	cmd->nsid = 1;
 	cmd->dptr[0] = (u64)addr;
 	cmd->cmd_spec[0] = lba;
 	cmd->dw12 = blocks;
-	atomic_store_explicit(iosqdb, 1, memory_order_release);
 
 	timestamp_t t_submit = get_timestamp();
-	enum iost res = wait_single_command(nvme, &st->iocq);
+	enum iost res = wait_single_command(st, 1);
 	if (res != IOST_OK) {return res;}
 	info("read finished after %"PRIuTS" μs\n", (get_timestamp() - t_submit) / TICKS_PER_MICROSECOND);
 	return IOST_OK;
@@ -354,6 +447,39 @@ void nvme_reset(struct nvme_state *st) {
 	}
 	nvme->config = st->cfg & ~NVME_CC_EN;
 }
+
+static struct nvme_cq cqs[] = {
+	{
+		.buf = (struct nvme_completion *)uncached_buf[UBUF_ACQ],
+		.size = 3,
+	}, {
+		.buf =(struct nvme_completion *)uncached_buf[UBUF_IOCQ],
+		.size = 3,
+	},
+};
+static _Atomic(struct nvme_req *) admin_cmd[2];
+static _Atomic(struct nvme_req *) io_cmd[4];
+static struct nvme_sq sqs[] = {
+	{
+		.buf = (struct nvme_cmd *)wt_buf[WTBUF_ASQ],
+		.size = 3,
+		.max_cid = 1,
+		.cq = 0,
+		.cmd = admin_cmd
+	}, {
+		.buf = (struct nvme_cmd *)wt_buf[WTBUF_IOSQ],
+		.size = 3,
+		.max_cid = 3,
+		.cmd = io_cmd,
+	},
+};
+static struct nvme_state st = {
+	.regs = (struct nvme_regs *)0xfa100000,
+	.num_iocq = 0,
+	.num_iosq = 0,
+	.cq = cqs,
+	.sq = sqs,
+};
 
 void boot_nvme() {
 	if ((cru[CRU_CLKGATE_CON+12] & 1 << 6) || (cru[CRU_CLKGATE_CON+20] & 3 << 10)) {
@@ -458,25 +584,14 @@ void boot_nvme() {
 	mmu_map_range((u64)(uintptr_t)&uncached_buf, (u64)(uintptr_t)&uncached_buf + sizeof(uncached_buf) - 1, (u64)(uintptr_t)&uncached_buf, MEM_TYPE_UNCACHED);
 	mmu_flush();
 
-	struct nvme_state st = {
-		.regs = (struct nvme_regs *)0xfa100000,
-		.asq = (struct nvme_cmd *)wt_buf[WTBUF_ASQ],
-		.acq = {
-			.buf = (struct nvme_completion *)uncached_buf[UBUF_ACQ],
-			.size = 3,
-		},
-		.iosq = (struct nvme_cmd *)(wt_buf + WTBUF_IOSQ),
-		.iocq = {
-			.buf =(struct nvme_completion *)(uncached_buf + UBUF_IOCQ),
-			.size = 3,
-		}
-	};
 	switch (nvme_init(&st)) {
 	case IOST_OK: break;
 	case IOST_INVALID: goto out;
 	default: goto shut_down_log;
 	}
-	if (IOST_OK != nvme_init_queues(&st)) {goto shut_down_nvme;}
+	infos("NVMe MMIO init complete\n");
+	if (IOST_OK != nvme_init_queues(&st, 1, 1)) {goto shut_down_nvme;}
+	infos("NVMe queue init complete\n");
 	if (IOST_OK != nvme_read_wait(&st, 0, (4096 >> st.lba_shift) - 1, plat_virt_to_phys(uncached_buf[UBUF_DATA]))) {goto shut_down_nvme;}
 	dump_mem(uncached_buf[UBUF_DATA], 4096);
 

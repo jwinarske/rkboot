@@ -7,9 +7,9 @@ struct nvme_regs {
 	u32 version;
 	u32 int_en;
 	u32 int_dis;
-	u32 config;
+	_Atomic u32 config;
 	u32 reserved;
-	u32 status;
+	_Atomic u32 status;
 	u32 nvm_ss_reset;
 	u32 adminq_attr;
 	u64 adminsq_base;
