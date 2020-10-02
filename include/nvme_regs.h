@@ -47,8 +47,8 @@ _Static_assert(sizeof(struct nvme_cmd) == 64, "NVMe command struct must be 64 by
 struct nvme_completion {
 	u32 cmd_spec;
 	u32 reserved;
+	u16 sqhd;
 	u16 sqid;
-	u16 sdhd;
 	u16 cid;
 	_Atomic u16 status;
 };

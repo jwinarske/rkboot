@@ -169,6 +169,11 @@ enum iost nvme_init(struct nvme_state *st) {
 	return IOST_OK;
 }
 
+static void nvme_dump_completion(struct nvme_completion *cqe, u16 status) {
+	status = (status & 0xf000) | (status >> 1 & 0x07ff);
+	info("%04"PRIx16" %04"PRIx16"%04"PRIx16" %04"PRIx16" %"PRIx32" %"PRIx32"\n", status, cqe->sqid, cqe->cid, cqe->sqhd, cqe->cmd_spec, cqe->reserved);
+}
+
 static enum iost wait_single_command(volatile struct nvme_regs *nvme, struct nvme_cq *cq) {
 	u16 pos = cq->pos;
 	_Bool phase = cq->phase;
@@ -181,11 +186,11 @@ static enum iost wait_single_command(volatile struct nvme_regs *nvme, struct nvm
 		usleep(100);
 	}
 	if ((cmd_st & 0xfffe) || cqe->cid) {
-		dump_mem(cqe, sizeof(*cqe));
+		nvme_dump_completion(cqe, cmd_st);
 		infos("completion error\n");
 		return IOST_LOCAL;
 	}
-	dump_mem(cqe, sizeof(*cqe));
+	nvme_dump_completion(cqe, cmd_st);
 	if (pos < cq->size) {
 		cq->pos = ++pos;
 	} else {
