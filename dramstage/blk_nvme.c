@@ -38,6 +38,7 @@ CHECK_OFFSET(rkpcie_addr_xlation, link_down_indication, 0x828);
 enum {
 	WTBUF_ASQ,
 	WTBUF_IOSQ,
+	WTBUF_PRP,
 	NUM_WTBUF
 };
 
@@ -50,8 +51,8 @@ enum {
 	NUM_UBUF
 };
 
-static UNINITIALIZED _Alignas(0x1000) u8 wt_buf[NUM_WTBUF][0x1000];
-static UNINITIALIZED _Alignas(0x1000) u8 uncached_buf[NUM_UBUF][0x1000];
+static UNINITIALIZED _Alignas(1 << PLAT_PAGE_SHIFT) u8 wt_buf[NUM_WTBUF][1 << PLAT_PAGE_SHIFT];
+static UNINITIALIZED _Alignas(1 << PLAT_PAGE_SHIFT) u8 uncached_buf[NUM_UBUF][1 << PLAT_PAGE_SHIFT];
 
 static _Bool finish_pcie_link() {
 	timestamp_t start = get_timestamp(), gen1_trained, retrained;
@@ -399,23 +400,6 @@ enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq) {
 	return IOST_OK;
 }
 
-enum iost nvme_read_wait(struct nvme_state *st, u64 lba, u16 blocks, phys_addr_t addr) {
-	struct nvme_cmd *cmd = st->sq[1].buf + st->sq[1].tail;
-	memset(cmd, 0, sizeof(*cmd));
-	cmd->opc = NVME_NVM_READ;
-	cmd->fuse_psdt = NVME_PSDT_PRP;
-	cmd->nsid = 1;
-	cmd->dptr[0] = (u64)addr;
-	cmd->cmd_spec[0] = lba;
-	cmd->dw12 = blocks;
-
-	timestamp_t t_submit = get_timestamp();
-	enum iost res = wait_single_command(st, 1);
-	if (res != IOST_OK) {return res;}
-	info("read finished after %"PRIuTS" μs\n", (get_timestamp() - t_submit) / TICKS_PER_MICROSECOND);
-	return IOST_OK;
-}
-
 void nvme_reset(struct nvme_state *st) {
 	volatile struct nvme_regs *nvme = st->regs;
 	nvme->config = st->cfg | 1 << NVME_CC_SHN_SHIFT;
@@ -447,6 +431,107 @@ void nvme_reset(struct nvme_state *st) {
 	}
 	nvme->config = st->cfg & ~NVME_CC_EN;
 }
+
+struct nvme_xfer {
+	struct nvme_req req;
+	phys_addr_t prp_list_addr;
+	phys_addr_t first_prp_entry, last_prp_entry;
+	size_t prp_size, prp_cap, xfer_bytes;
+	u64 *prp_list;
+};
+
+enum iost nvme_xfer_reset(struct nvme_xfer *xfer) {
+	u16 status = atomic_load_explicit(&xfer->req.status, memory_order_acquire);
+	do {
+		if (status == NVME_SUBMITTED) {return IOST_TRANSIENT;}
+	} while (atomic_compare_exchange_weak_explicit(&xfer->req.status, &status, NVME_CREATING, memory_order_acquire, memory_order_acquire));
+	xfer->prp_size = 0;
+	xfer->first_prp_entry = xfer->last_prp_entry = 0;
+	return IOST_OK;
+}
+
+_Bool nvme_add_phys_buffer(struct nvme_xfer *xfer, phys_addr_t start, phys_addr_t end) {
+	assert(atomic_load_explicit(&xfer->req.status, memory_order_relaxed) == NVME_CREATING);
+	assert(!(start & 3 || end & 3 || end < start));
+	const phys_addr_t page_mask = (1 << PLAT_PAGE_SHIFT) - 1;
+	if (!xfer->prp_size) {
+		xfer->first_prp_entry = start;
+		xfer->prp_size = 1;
+		if (start >> PLAT_PAGE_SHIFT >= end >> PLAT_PAGE_SHIFT) {
+			infos("first page\n");
+			xfer->xfer_bytes = end - start;
+			return 1;
+		} else {
+			/* run to the end of the page */
+			xfer->xfer_bytes = (1 << PLAT_PAGE_SHIFT) - (start & page_mask);
+			start = (start & ~page_mask) + (1 << PLAT_PAGE_SHIFT);
+		}
+	} else {
+		/* make sure the last buffer went to the end of the page */
+		assert((xfer->xfer_bytes & page_mask) == (1 << PLAT_PAGE_SHIFT) - (xfer->first_prp_entry & page_mask));
+	}
+	/* all but the first buffer must be page-aligned */
+	assert(!(start & page_mask));
+	if (start >= end) {return 1;}
+	if (xfer->prp_size < 2) {
+		infos("second page\n");
+		assert(xfer->prp_size == 1);
+		xfer->last_prp_entry = start;
+		xfer->prp_size = 2;
+		if (end - start <= 1 << PLAT_PAGE_SHIFT) {
+			xfer->xfer_bytes += end - start;
+			return 1;
+		}
+		start += 1 << PLAT_PAGE_SHIFT;
+		xfer->xfer_bytes += 1 << PLAT_PAGE_SHIFT;
+	}
+	assert(xfer->prp_size >= 2);
+	assert(start < end);
+	while (1) {
+		size_t idx = xfer->prp_size - 2;
+		if (idx >= xfer->prp_cap - 1) {return 0;}
+		if (plat_is_page_aligned(xfer->prp_list + idx + 1)) {
+			xfer->prp_list[idx] = plat_virt_to_phys(xfer->prp_list + idx + 1);
+			idx += 1;
+			if (idx >= xfer->prp_cap - 1) {return 0;}
+		}
+		xfer->prp_list[idx] = xfer->last_prp_entry;
+		xfer->prp_size = idx + 3;
+		xfer->last_prp_entry = start;
+		if (end - start <= (1 << PLAT_PAGE_SHIFT)) {
+			xfer->xfer_bytes += end - start;
+			return 1;
+		}
+		start += 1 << PLAT_PAGE_SHIFT;
+		xfer->xfer_bytes += 1 << PLAT_PAGE_SHIFT;
+	}
+}
+
+enum iost nvme_read_wait(struct nvme_state *st, u16 sqid, struct nvme_xfer *xfer, u64 lba) {
+	if (xfer->xfer_bytes & ((1 << st->lba_shift) - 1)) {return IOST_INVALID;}
+	struct nvme_cmd *cmd = st->sq[sqid].buf + st->sq[sqid].tail;
+	memset(cmd, 0, sizeof(*cmd));
+	cmd->opc = NVME_NVM_READ;
+	cmd->fuse_psdt = NVME_PSDT_PRP;
+	cmd->nsid = 1;
+	cmd->dptr[0] = xfer->first_prp_entry;
+	if (xfer->prp_size == 2) {
+		cmd->dptr[1] = xfer->last_prp_entry;
+	} else if (xfer->prp_size > 2) {
+		cmd->dptr[1] = xfer->prp_list_addr;
+		/* add last entry at the end, even if it is the last on the page */
+		xfer->prp_list[xfer->prp_size - 2] = xfer->last_prp_entry;
+	}
+	cmd->cmd_spec[0] = lba;
+	cmd->dw12 = (xfer->xfer_bytes >> st->lba_shift) - 1;
+
+	timestamp_t t_submit = get_timestamp();
+	enum iost res = wait_single_command(st, sqid);
+	if (res != IOST_OK) {return res;}
+	info("read finished after %"PRIuTS" μs\n", (get_timestamp() - t_submit) / TICKS_PER_MICROSECOND);
+	return IOST_OK;
+}
+
 
 static struct nvme_cq cqs[] = {
 	{
@@ -592,8 +677,24 @@ void boot_nvme() {
 	infos("NVMe MMIO init complete\n");
 	if (IOST_OK != nvme_init_queues(&st, 1, 1)) {goto shut_down_nvme;}
 	infos("NVMe queue init complete\n");
-	if (IOST_OK != nvme_read_wait(&st, 0, (4096 >> st.lba_shift) - 1, plat_virt_to_phys(uncached_buf[UBUF_DATA]))) {goto shut_down_nvme;}
-	dump_mem(uncached_buf[UBUF_DATA], 4096);
+	struct nvme_xfer xfer = {
+		.prp_list = (u64 *)wt_buf[WTBUF_PRP],
+		.prp_list_addr = plat_virt_to_phys(wt_buf[WTBUF_PRP]),
+		.prp_cap = 1 << PLAT_PAGE_SHIFT >> 3
+	};
+	if (IOST_OK != nvme_xfer_reset(&xfer)) {goto shut_down_nvme;}
+	infos("xfer reset\n");
+	phys_addr_t buf = plat_virt_to_phys(uncached_buf[UBUF_DATA]);
+	if (!nvme_add_phys_buffer(&xfer, buf, buf + (1 << PLAT_PAGE_SHIFT))) {goto shut_down_nvme;}
+	info("buffer added; first=%"PRIx64" last=%"PRIx64"\n", xfer.first_prp_entry, xfer.last_prp_entry);
+	if (xfer.prp_size > 2) {
+		for_range(i, 0, xfer.prp_size - 2) {
+			info("%"PRIx64"\n", xfer.prp_list[i]);
+		}
+	}
+	if (IOST_OK != nvme_read_wait(&st, 1, &xfer, 0)) {goto shut_down_nvme;}
+	infos("data read\n");
+	dump_mem(uncached_buf[UBUF_DATA], 1 << PLAT_PAGE_SHIFT);
 
 shut_down_nvme:
 	nvme_reset(&st);
