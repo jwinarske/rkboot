@@ -16,9 +16,15 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 	assert(blk->block_size <= 8192 && blk->block_size >= 128);
 	assert(blk->block_size % 128 == 0);
 	enum iost res;
-	if (IOST_OK != (res = blk->start(blk, 0, partition_table_buffer, partition_table_buffer + sizeof(partition_table_buffer)))) {return res;}
+	if (IOST_OK != (res = blk->start(blk, 0, partition_table_buffer, partition_table_buffer + sizeof(partition_table_buffer)))) {
+		infos("couldn't kick off partition table read\n");
+		return res;
+	}
 	struct async_buf buf = blk->async.pump(&blk->async, 0, blk->block_size);
-	if (buf.end < buf.start) {return buf.start - buf.end;}
+	if (buf.end < buf.start) {
+		infos("LBA0 read failure\n");
+		return buf.start - buf.end;
+	}
 	dump_mem(partition_table_buffer, 512);
 	if (buf.start[510] != 0x55 || buf.start[511] != 0xaa) {
 		puts("no MBR found\n");
