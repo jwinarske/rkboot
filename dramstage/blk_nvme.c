@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399.h>
 #include <rk3399/dramstage.h>
+#include <rk3399/payload.h>
 #include <stdatomic.h>
 #include <string.h>
 #include <stdlib.h>
@@ -254,54 +255,64 @@ static enum iost nvme_process_cqe(volatile struct nvme_state *st, u16 cqid) {
 	return IOST_OK;
 }
 
-static enum iost wait_single_command(struct nvme_state *st, u16 sqid) {
+static _Bool nvme_submit_single_command(struct nvme_state *st, u16 sqid, struct nvme_req *req) {
 	assert(sqid <= st->num_iosq);
 	struct nvme_sq *sq = st->sq + sqid;
 	u16 tail = sq->tail, head = atomic_load_explicit(&sq->head, memory_order_acquire);
 	u16 next = tail == sq->size ? 0 : tail + 1;
 	if (next == head) {	/* TODO: wait on full queue */
 		infos("queue full\n");
-		return IOST_TRANSIENT;
+		return 0;
 	}
-	struct nvme_req req;
-	memset(&req, 0, sizeof(req));
-	atomic_store_explicit(&req.status, NVME_SUBMITTED, memory_order_relaxed);
+	atomic_store_explicit(&req->status, NVME_SUBMITTED, memory_order_relaxed);
 	u16 cid;
 	for_range(i, 0, (u32)sq->max_cid + 1) {
 		struct nvme_req *ptr = 0;
-		if (atomic_compare_exchange_strong_explicit(sq->cmd + i, &ptr, &req, memory_order_release, memory_order_relaxed)) {
+		if (atomic_compare_exchange_strong_explicit(sq->cmd + i, &ptr, req, memory_order_release, memory_order_relaxed)) {
 			cid = i;
 			goto cid_assigned;
 		}
 	}
 	infos("no free command ID found\n");
-	return IOST_TRANSIENT;
+	return 0;
 cid_assigned:
 	sq->buf[tail].cid = to_le16(cid);
-
 	sq->tail = next;
 	atomic_store_explicit(sq->doorbell, next, memory_order_release);
+	info("submitted %04"PRIx16"%04"PRIx16"\n", sqid, cid);
+	dump_mem(sq->buf + tail, sizeof(struct nvme_cmd));
+	return 1;
+}
+
+enum iost nvme_wait_req(struct nvme_state *st, struct nvme_req *req) {
 	u16 cmd_st;
 	volatile struct nvme_regs *nvme = st->regs;
 	while (1) {
 		for_range(cqid, 0, (u32)st->num_iocq + 1) {
 			nvme_process_cqe(st, cqid);
 		}
-		cmd_st = atomic_load_explicit(&req.status, memory_order_acquire);
+		cmd_st = atomic_load_explicit(&req->status, memory_order_acquire);
 		if (cmd_st != NVME_SUBMITTED) {break;}
 		u32 status = nvme->status;
-		info("waiting cid%04"PRIx16" st%08"PRIx32"\n", cid, status);
+		info("waiting st%08"PRIx32"\n", status);
 		if (status & NVME_CSTS_CFS) {return IOST_GLOBAL;}
 		usleep(100);
 	}
 	if (cmd_st & 0xfffe) {
 		info("completion error: %03"PRIx16" %08"PRIx32" %"PRIx32"\n",
 			(cmd_st & 0xf000) | (cmd_st >> 1 & 0x07ff),
-			req.data[0], req.data[1]
+			req->data[0], req->data[1]
 		);
 		return IOST_LOCAL;
 	}
 	return IOST_OK;
+}
+
+enum iost wait_single_command(struct nvme_state *st, u16 sqid) {
+	struct nvme_req req;
+	memset(&req, 0, sizeof(req));
+	if (!nvme_submit_single_command(st, sqid, &req)) {return IOST_TRANSIENT;}
+	return nvme_wait_req(st, &req);
 }
 
 enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq) {
@@ -440,7 +451,7 @@ struct nvme_xfer {
 	u64 *prp_list;
 };
 
-enum iost nvme_xfer_reset(struct nvme_xfer *xfer) {
+enum iost nvme_reset_xfer(struct nvme_xfer *xfer) {
 	u16 status = atomic_load_explicit(&xfer->req.status, memory_order_acquire);
 	do {
 		if (status == NVME_SUBMITTED) {return IOST_TRANSIENT;}
@@ -507,9 +518,9 @@ _Bool nvme_add_phys_buffer(struct nvme_xfer *xfer, phys_addr_t start, phys_addr_
 	}
 }
 
-enum iost nvme_read_wait(struct nvme_state *st, u16 sqid, struct nvme_xfer *xfer, u64 lba) {
-	if (xfer->xfer_bytes & ((1 << st->lba_shift) - 1)) {return IOST_INVALID;}
-	struct nvme_cmd *cmd = st->sq[sqid].buf + st->sq[sqid].tail;
+_Bool nvme_emit_read(struct nvme_state *st, struct nvme_sq *sq, struct nvme_xfer *xfer, u64 lba) {
+	if (xfer->xfer_bytes & ((1 << st->lba_shift) - 1)) {return 0;}
+	struct nvme_cmd *cmd = sq->buf + sq->tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_NVM_READ;
 	cmd->fuse_psdt = NVME_PSDT_PRP;
@@ -524,6 +535,11 @@ enum iost nvme_read_wait(struct nvme_state *st, u16 sqid, struct nvme_xfer *xfer
 	}
 	cmd->cmd_spec[0] = lba;
 	cmd->dw12 = (xfer->xfer_bytes >> st->lba_shift) - 1;
+	return 1;
+}
+
+enum iost nvme_read_wait(struct nvme_state *st, u16 sqid, struct nvme_xfer *xfer, u64 lba) {
+	if (!nvme_emit_read(st, st->sq + sqid, xfer, lba)) {return IOST_INVALID;}
 
 	timestamp_t t_submit = get_timestamp();
 	enum iost res = wait_single_command(st, sqid);
@@ -682,19 +698,28 @@ void boot_nvme() {
 		.prp_list_addr = plat_virt_to_phys(wt_buf[WTBUF_PRP]),
 		.prp_cap = 1 << PLAT_PAGE_SHIFT >> 3
 	};
-	if (IOST_OK != nvme_xfer_reset(&xfer)) {goto shut_down_nvme;}
+	if (IOST_OK != nvme_reset_xfer(&xfer)) {goto shut_down_nvme;}
 	infos("xfer reset\n");
-	phys_addr_t buf = plat_virt_to_phys(uncached_buf[UBUF_DATA]);
-	if (!nvme_add_phys_buffer(&xfer, buf, buf + (1 << PLAT_PAGE_SHIFT))) {goto shut_down_nvme;}
-	info("buffer added; first=%"PRIx64" last=%"PRIx64"\n", xfer.first_prp_entry, xfer.last_prp_entry);
+	phys_addr_t buf = plat_virt_to_phys(blob_buffer.start);
+	u8 read_shift = 17;
+	_Static_assert(PLAT_PAGE_SHIFT <= 17, "page size larger than transfer size");
+	u8 mdts = nvme_extr_idctl_mdts(uncached_buf[UBUF_IDCTL]);
+	u8 mpsmin = nvme_extr_cap_mpsmin(st.cap) + 12;
+	if (mdts && mdts < read_shift - mpsmin) {
+		read_shift = mdts + mpsmin;
+	}
+	phys_addr_t read_bytes = 1 << read_shift;
+	if (!nvme_add_phys_buffer(&xfer, buf, buf + read_bytes)) {goto shut_down_nvme;}
+	info("buffer added; first=%"PRIxPHYS" last=%"PRIxPHYS"\n", xfer.first_prp_entry, xfer.last_prp_entry);
 	if (xfer.prp_size > 2) {
 		for_range(i, 0, xfer.prp_size - 2) {
 			info("%"PRIx64"\n", xfer.prp_list[i]);
 		}
 	}
-	if (IOST_OK != nvme_read_wait(&st, 1, &xfer, 0)) {goto shut_down_nvme;}
+	fflush(stdout);
+	if (IOST_OK != nvme_read_wait(&st, 1, &xfer, 1 << 11)) {goto shut_down_nvme;}
 	infos("data read\n");
-	dump_mem(uncached_buf[UBUF_DATA], 1 << PLAT_PAGE_SHIFT);
+	dump_mem(blob_buffer.start, 0x1000);
 
 shut_down_nvme:
 	nvme_reset(&st);

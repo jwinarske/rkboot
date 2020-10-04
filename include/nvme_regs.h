@@ -134,6 +134,7 @@ enum {
 HEADER_FUNC u32 nvme_extr_csts_shst(u32 csts) {return csts >> 2 & 3;}
 
 #define DEFINE_NVME_IDCTL\
+	BYTE(MDTS, mdts, "Maximum Data Transfer Size", 77)\
 	U32(RTD3E, rtd3e, "RTD3 Entry Latency", 88)\
 	BYTE(SQES, sqes, "Submission Queue Entry Size", 512)\
 	BYTE(CQES, cqes, "Completion Queue Entry Size", 513)\
