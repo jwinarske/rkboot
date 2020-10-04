@@ -280,8 +280,10 @@ cid_assigned:
 	sq->buf[tail].cid = to_le16(cid);
 	sq->tail = next;
 	atomic_store_explicit(sq->doorbell, next, memory_order_release);
-	info("submitted %04"PRIx16"%04"PRIx16"\n", sqid, cid);
+	debug("submitted %04"PRIx16"%04"PRIx16"\n", sqid, cid);
+#ifdef SPEW_MSG
 	dump_mem(sq->buf + tail, sizeof(struct nvme_cmd));
+#endif
 	return 1;
 }
 
@@ -329,7 +331,9 @@ enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq, u8
 	enum iost res = wait_single_command(st, 0);
 	if (res != IOST_OK) {return res;}
 
+#ifdef DEBUG_MSG
 	dump_mem(idctl, 0x1000);
+#endif
 	u32 rtd3e = nvme_extr_idctl_rtd3e(idctl);
 	info("RTD3E: %"PRIu32" μs\n", rtd3e);
 	if (!rtd3e) {st->rtd3e = rtd3e;}
@@ -757,7 +761,9 @@ void boot_nvme() {
 		enum iost res = wait_single_command(&st, 0);
 		if (res != IOST_OK) {goto shut_down_nvme;}
 
+#ifdef DEBUG_MSG
 		dump_mem(idns, 0x180);
+#endif
 		u64 ns_size = nvme_extr_idns_nsze(idns);
 		u8 flbas = nvme_extr_idns_flbas(idns);
 		const u8 *lbaf = idns + 128 + 4 * (flbas & 15);
