@@ -17,6 +17,7 @@
 #include <mmu.h>
 #include <dump_mem.h>
 #include <iost.h>
+#include <async.h>
 #include <plat.h>
 #include <byteorder.h>
 
@@ -315,14 +316,13 @@ enum iost wait_single_command(struct nvme_state *st, u16 sqid) {
 	return nvme_wait_req(st, &req);
 }
 
-enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq) {
+enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq, u8 *idctl) {
 	volatile struct nvme_regs *nvme = st->regs;
 	assert(num_iocq && num_iosq);
 	struct nvme_cmd *cmd;
 	cmd = st->sq[0].buf + st->sq[0].tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_ADMIN_IDENTIFY;
-	const u8 *idctl = uncached_buf[UBUF_IDCTL];
 	cmd->dptr[0] = (u64)(uintptr_t)idctl;
 	cmd->dptr[1] = 0;
 	cmd->dw10 = NVME_IDENTIFY_CONTROLLER;
@@ -333,38 +333,7 @@ enum iost nvme_init_queues(struct nvme_state *st, u16 num_iocq, u16 num_iosq) {
 	u32 rtd3e = nvme_extr_idctl_rtd3e(idctl);
 	info("RTD3E: %"PRIu32" μs\n", rtd3e);
 	if (!rtd3e) {st->rtd3e = rtd3e;}
-	u32 num_ns = nvme_extr_idctl_nn(idctl);
-	if (!num_ns) {
-		infos("controller has no valid NSIDs\n");
-		return IOST_INVALID;
-	}
 
-	cmd = st->sq[0].buf + st->sq[0].tail;
-	memset(cmd, 0, sizeof(*cmd));
-	cmd->opc = NVME_ADMIN_IDENTIFY;
-	cmd->nsid = 1;
-	const u8 *idns = uncached_buf[UBUF_IDNS];
-	cmd->dptr[0] = (u64)(uintptr_t)idns;
-	cmd->dptr[1] = 0;
-	cmd->dw10 = NVME_IDENTIFY_NS;
-	res = wait_single_command(st, 0);
-	if (res != IOST_OK) {return res;}
-
-	dump_mem(idns, 0x180);
-	u64 ns_size = nvme_extr_idns_nsze(idns);
-	u8 flbas = nvme_extr_idns_flbas(idns);
-	const u8 *lbaf = idns + 128 + 4 * (flbas & 15);
-	if (lbaf[0] || lbaf[1]) {
-		infos("formatted LBAF has metadata, don't know how to deal with it\n");
-		return IOST_INVALID;
-	}
-	if (lbaf[2] > 12 || lbaf[2] < 9) {
-		info("unexpected LBA size 1 << %"PRIu8"\n", lbaf[2]);
-		return IOST_INVALID;
-	}
-	st->lba_shift = lbaf[2];
-	u32 block_size = 1 << lbaf[2];
-	info("namespace has %"PRIu64" (0x%"PRIx64") %"PRIu32"-byte sectors\n", ns_size, ns_size, block_size);
 	if ((nvme_extr_idctl_sqes(idctl) & 15) > 6 || (nvme_extr_idctl_cqes(idctl) & 15) > 4) {
 		info("unsupported queue entry sizes\n");
 		return IOST_INVALID;
@@ -469,7 +438,7 @@ _Bool nvme_add_phys_buffer(struct nvme_xfer *xfer, phys_addr_t start, phys_addr_
 		xfer->first_prp_entry = start;
 		xfer->prp_size = 1;
 		if (start >> PLAT_PAGE_SHIFT >= end >> PLAT_PAGE_SHIFT) {
-			infos("first page\n");
+			debugs("first page\n");
 			xfer->xfer_bytes = end - start;
 			return 1;
 		} else {
@@ -485,7 +454,7 @@ _Bool nvme_add_phys_buffer(struct nvme_xfer *xfer, phys_addr_t start, phys_addr_
 	assert(!(start & page_mask));
 	if (start >= end) {return 1;}
 	if (xfer->prp_size < 2) {
-		infos("second page\n");
+		debugs("second page\n");
 		assert(xfer->prp_size == 1);
 		xfer->last_prp_entry = start;
 		xfer->prp_size = 2;
@@ -518,13 +487,13 @@ _Bool nvme_add_phys_buffer(struct nvme_xfer *xfer, phys_addr_t start, phys_addr_
 	}
 }
 
-_Bool nvme_emit_read(struct nvme_state *st, struct nvme_sq *sq, struct nvme_xfer *xfer, u64 lba) {
+_Bool nvme_emit_read(struct nvme_state *st, struct nvme_sq *sq, struct nvme_xfer *xfer, u32 nsid, u64 lba) {
 	if (xfer->xfer_bytes & ((1 << st->lba_shift) - 1)) {return 0;}
 	struct nvme_cmd *cmd = sq->buf + sq->tail;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->opc = NVME_NVM_READ;
 	cmd->fuse_psdt = NVME_PSDT_PRP;
-	cmd->nsid = 1;
+	cmd->nsid = nsid;
 	cmd->dptr[0] = xfer->first_prp_entry;
 	if (xfer->prp_size == 2) {
 		cmd->dptr[1] = xfer->last_prp_entry;
@@ -538,8 +507,8 @@ _Bool nvme_emit_read(struct nvme_state *st, struct nvme_sq *sq, struct nvme_xfer
 	return 1;
 }
 
-enum iost nvme_read_wait(struct nvme_state *st, u16 sqid, struct nvme_xfer *xfer, u64 lba) {
-	if (!nvme_emit_read(st, st->sq + sqid, xfer, lba)) {return IOST_INVALID;}
+enum iost nvme_read_wait(struct nvme_state *st, u16 sqid, struct nvme_xfer *xfer, u32 nsid, u64 lba) {
+	if (!nvme_emit_read(st, st->sq + sqid, xfer, nsid, lba)) {return IOST_INVALID;}
 
 	timestamp_t t_submit = get_timestamp();
 	enum iost res = wait_single_command(st, sqid);
@@ -580,6 +549,70 @@ static struct nvme_state st = {
 	.num_iosq = 0,
 	.cq = cqs,
 	.sq = sqs,
+};
+
+struct nvme_blockdev {
+	struct async_blockdev blk;
+	struct nvme_state *st;
+	struct nvme_xfer xfer;
+	u8 *consume_ptr, *end_ptr, *next_end_ptr, *stop_ptr;
+	u64 next_lba;
+	u8 xfer_shift;
+	u32 nsid;
+};
+
+static u8 iost_u8[NUM_IOST];
+
+static struct async_buf pump(struct async_transfer *async, size_t consume, size_t min_size) {
+	struct nvme_blockdev *dev = (struct nvme_blockdev *)async;
+	assert((size_t)(dev->end_ptr - dev->consume_ptr) >= consume);
+	dev->consume_ptr += consume;
+	while ((size_t)(dev->end_ptr - dev->consume_ptr) < min_size) {
+		if (dev->end_ptr != dev->next_end_ptr) {
+			enum iost res = nvme_wait_req(dev->st, &dev->xfer.req);
+			if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
+			dev->end_ptr = dev->next_end_ptr;
+		}
+		if (dev->stop_ptr == dev->end_ptr) {
+			return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
+		}
+		u32 xfer_size = UINT32_C(1) << dev->xfer_shift;
+		u8 *end = dev->stop_ptr - dev->end_ptr > xfer_size ? dev->end_ptr + xfer_size: dev->stop_ptr;
+		debug("starting new xfer LBA 0x%08"PRIx64" buf 0x%"PRIx64"–0x%"PRIx64"\n", dev->next_lba, (u64)dev->end_ptr, (u64)end);
+		enum iost res = nvme_reset_xfer(&dev->xfer);
+		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
+		_Bool success = nvme_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
+		assert(success);
+		if (!nvme_emit_read(dev->st, dev->st->sq + 1, &dev->xfer, dev->nsid, dev->next_lba)) {return (struct async_buf) {iost_u8 + IOST_INVALID, iost_u8};}
+		if (!nvme_submit_single_command(dev->st, 1, &dev->xfer.req)) {return (struct async_buf) {iost_u8 + IOST_TRANSIENT, iost_u8};}
+		dev->next_lba += xfer_size / dev->blk.block_size;
+		dev->next_end_ptr = end;
+	}
+	return (struct async_buf) {dev->consume_ptr, dev->end_ptr};
+}
+
+static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_end) {
+	struct nvme_blockdev *dev = (struct nvme_blockdev *)dev_;
+	if (buf_end < buf
+		|| (size_t)(buf_end - buf) % dev->blk.block_size != 0
+		|| addr >= dev->blk.num_blocks
+	) {return IOST_INVALID;}
+	dev->next_lba = (u32)addr;
+	dev->consume_ptr = dev->end_ptr = dev->next_end_ptr = buf;
+	dev->stop_ptr = buf_end;
+	return IOST_OK;
+}
+
+struct nvme_blockdev nvme_blk = {
+	.blk = {
+		.async = {pump},
+		.start = start,
+	},
+	.xfer = {
+		.prp_list = (u64 *)wt_buf[WTBUF_PRP],
+		.prp_cap = 1 << PLAT_PAGE_SHIFT >> 3,
+	},
+	.st = &st,
 };
 
 void boot_nvme() {
@@ -691,16 +724,9 @@ void boot_nvme() {
 	default: goto shut_down_log;
 	}
 	infos("NVMe MMIO init complete\n");
-	if (IOST_OK != nvme_init_queues(&st, 1, 1)) {goto shut_down_nvme;}
+	if (IOST_OK != nvme_init_queues(&st, 1, 1, uncached_buf[UBUF_IDCTL])) {goto shut_down_nvme;}
 	infos("NVMe queue init complete\n");
-	struct nvme_xfer xfer = {
-		.prp_list = (u64 *)wt_buf[WTBUF_PRP],
-		.prp_list_addr = plat_virt_to_phys(wt_buf[WTBUF_PRP]),
-		.prp_cap = 1 << PLAT_PAGE_SHIFT >> 3
-	};
-	if (IOST_OK != nvme_reset_xfer(&xfer)) {goto shut_down_nvme;}
-	infos("xfer reset\n");
-	phys_addr_t buf = plat_virt_to_phys(blob_buffer.start);
+	nvme_blk.xfer.prp_list_addr = plat_virt_to_phys(wt_buf[WTBUF_PRP]);
 	u8 read_shift = 17;
 	_Static_assert(PLAT_PAGE_SHIFT <= 17, "page size larger than transfer size");
 	u8 mdts = nvme_extr_idctl_mdts(uncached_buf[UBUF_IDCTL]);
@@ -708,18 +734,58 @@ void boot_nvme() {
 	if (mdts && mdts < read_shift - mpsmin) {
 		read_shift = mdts + mpsmin;
 	}
-	phys_addr_t read_bytes = 1 << read_shift;
-	if (!nvme_add_phys_buffer(&xfer, buf, buf + read_bytes)) {goto shut_down_nvme;}
-	info("buffer added; first=%"PRIxPHYS" last=%"PRIxPHYS"\n", xfer.first_prp_entry, xfer.last_prp_entry);
-	if (xfer.prp_size > 2) {
-		for_range(i, 0, xfer.prp_size - 2) {
-			info("%"PRIx64"\n", xfer.prp_list[i]);
+	nvme_blk.xfer_shift = read_shift;
+	info("MDTS: %"PRIu32"B\n", UINT32_C(1) << read_shift);
+	u32 num_ns = nvme_extr_idctl_nn(uncached_buf[UBUF_IDCTL]);
+	if (!num_ns) {
+		infos("controller has no valid NSIDs\n");
+		goto shut_down_nvme;
+	}
+	if (num_ns == ~(u32)0) {
+		infos("bogus IDCtl.NN value\n");
+		goto shut_down_nvme;
+	}
+	for_range(nsid, 1, num_ns + 1) {
+		struct nvme_cmd *cmd = st.sq[0].buf + st.sq[0].tail;
+		memset(cmd, 0, sizeof(*cmd));
+		cmd->opc = NVME_ADMIN_IDENTIFY;
+		cmd->nsid = nsid;
+		const u8 *idns = uncached_buf[UBUF_IDNS];
+		cmd->dptr[0] = (u64)(uintptr_t)idns;
+		cmd->dptr[1] = 0;
+		cmd->dw10 = NVME_IDENTIFY_NS;
+		enum iost res = wait_single_command(&st, 0);
+		if (res != IOST_OK) {goto shut_down_nvme;}
+
+		dump_mem(idns, 0x180);
+		u64 ns_size = nvme_extr_idns_nsze(idns);
+		u8 flbas = nvme_extr_idns_flbas(idns);
+		const u8 *lbaf = idns + 128 + 4 * (flbas & 15);
+		if (lbaf[0] || lbaf[1]) {
+			infos("formatted LBAF has metadata, don't know how to deal with it\n");
+			goto shut_down_nvme;
+		}
+		if (lbaf[2] > 12 || lbaf[2] < 9) {
+			info("unexpected LBA size 1 << %"PRIu8"\n", lbaf[2]);
+			goto shut_down_nvme;
+		}
+		st.lba_shift = lbaf[2];
+		nvme_blk.nsid = nsid;
+		nvme_blk.blk.block_size = 1 << st.lba_shift;
+		nvme_blk.blk.num_blocks = ns_size;
+		info("namespace %"PRIu32" has %"PRIu64" (0x%"PRIx64") %"PRIu32"-byte sectors\n", nsid, ns_size, ns_size, nvme_blk.blk.block_size);
+
+		if (!wait_for_boot_cue(BOOT_MEDIUM_NVME)) {goto shut_down_nvme;}
+		switch (boot_blockdev(&nvme_blk.blk)) {
+		case IOST_OK: boot_medium_loaded(BOOT_MEDIUM_NVME); goto shut_down_nvme;
+		case IOST_GLOBAL: goto shut_down_nvme;
+		case IOST_INVALID: infos("invalid");break;
+		case IOST_LOCAL: infos("local"); break;
+		case IOST_TRANSIENT: infos("transient"); break;
+		default: break;
 		}
 	}
-	fflush(stdout);
-	if (IOST_OK != nvme_read_wait(&st, 1, &xfer, 1 << 11)) {goto shut_down_nvme;}
-	infos("data read\n");
-	dump_mem(blob_buffer.start, 0x1000);
+	infos("tried all namespaces\n");
 
 shut_down_nvme:
 	nvme_reset(&st);
