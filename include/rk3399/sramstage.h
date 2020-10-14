@@ -23,7 +23,7 @@ enum sramstage_vstack {
 };
 
 HEADER_FUNC u64 vstack_base(enum sramstage_vstack vstack) {
-	return 0x100005400 + 0x2000 * vstack;
+	return 0xffe01400 + 0x2000 * vstack;
 }
 
 #define DEFINE_REGMAP\

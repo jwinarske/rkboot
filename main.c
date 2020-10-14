@@ -171,7 +171,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 	misc_init();
 
 	for_range(i, 0, NUM_SRAMSTAGE_VSTACK) {
-		u64 limit = 0x100005000 + i * 0x2000;
+		u64 limit = 0xffe01000 + i * 0x2000;
 		mmu_map_range(limit, limit + 0xfff, (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
 	}
 	dsb_ishst();
