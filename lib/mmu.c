@@ -35,6 +35,7 @@ enum {
 #define PGTAB_NS (1 << 5)
 
 static u64 *alloc_page_table() {
+	debugs("alloc_page_table\n");
 	assert_msg(next_pagetable < num_pagetables, "ERROR: ran out of pagetables");
 	return &pagetables[next_pagetable++][0];
 }

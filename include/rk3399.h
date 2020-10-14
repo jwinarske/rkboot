@@ -80,7 +80,6 @@ static volatile struct gic_redistributor *const gic500r = (volatile struct gic_r
 static volatile u32 *const pmu = (volatile u32 *)0xff310000;
 static volatile u32 *const pmugrf = (volatile u32 *)0xff320000;
 static volatile u32 *const pmusgrf = (volatile u32 *)0xff330000;
-static volatile u32 *const cic = (volatile u32 *)0xff620000;
 static volatile u32 *const cru = (volatile u32 *)0xff760000;
 static volatile u32 *const pmucru = (volatile u32 *)0xff750000;
 static volatile u32 *const grf = (volatile u32 *)0xff770000;
@@ -91,25 +90,9 @@ static volatile struct rkspi_regs *const spi1 = (volatile struct rkspi_regs*)0xf
 struct rki2c_regs;
 static volatile struct rki2c_regs *const i2c4 = (volatile struct rki2c_regs *)0xff3d0000;
 
-struct rksaradc_regs;
-static volatile struct rksaradc_regs *const saradc = (volatile struct rksaradc_regs *)0xff100000;
-
 struct rkgpio_regs;
 static volatile struct rkgpio_regs *const gpio0 = (volatile struct rkgpio_regs *)0xff720000;
 static volatile struct rkgpio_regs *const gpio1 = (volatile struct rkgpio_regs *)0xff730000;
 static volatile struct rkgpio_regs *const gpio2 = (volatile struct rkgpio_regs *)0xff780000;
 static volatile struct rkgpio_regs *const gpio3 = (volatile struct rkgpio_regs *)0xff788000;
 static volatile struct rkgpio_regs *const gpio4 = (volatile struct rkgpio_regs *)0xff790000;
-
-struct dwmmc_regs;
-static volatile struct dwmmc_regs *const sdmmc = (volatile struct dwmmc_regs*)0xfe320000;
-
-struct rktimer_regs;
-static volatile struct rktimer_regs *const stimer0 = (volatile struct rktimer_regs *)0xff860000;
-static volatile struct rktimer_regs *const stimer6 = (volatile struct rktimer_regs *)0xff868000;
-
-struct sdhci_regs;
-static volatile struct sdhci_regs *const emmc = (volatile struct sdhci_regs *)0xfe330000;
-
-struct rkcrypto_v1_regs;
-static volatile struct rkcrypto_v1_regs *const crypto1 = (volatile struct rkcrypto_v1_regs *)0xff8b8000;

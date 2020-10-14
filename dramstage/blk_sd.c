@@ -48,7 +48,7 @@ static struct dwmmc_signal_services svc = {
 };
 
 struct dwmmc_state sdmmc_state = {
-	.regs = sdmmc,
+	.regs = regmap_sdmmc,
 	.svc = &svc,
 	.int_st = DWMMC_INT_DATA_TRANSFER_OVER,
 	.cmd_template = DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG,

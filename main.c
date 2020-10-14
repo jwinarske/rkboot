@@ -67,7 +67,7 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 		break;
 #endif
 	case 101:	/* stimer0 */
-		stimer0[0].interrupt_status = 1;
+		regmap_stimer0[0].interrupt_status = 1;
 #ifdef DEBUG_MSG
 		if (get_timestamp() < 2400000) {logs("tick\n");}
 #else
@@ -102,7 +102,7 @@ _Atomic(size_t) rk3399_init_flags = start_flags;
 
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_SRAMSTAGE_VSTACK][4096];
-static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[9][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
@@ -131,10 +131,10 @@ int32_t NO_ASAN main(u64 sctlr) {
 	/* map GPIOs */
 	mmu_map_mmio_identity(0xff720000, 0xff730fff);
 	mmu_map_mmio_identity(0xff780000, 0xff790fff);
-	for_range(i, 0, NUM_SRAMSTAGE_REGMAP) {
-		static const u32 addrs[NUM_SRAMSTAGE_REGMAP] = {
-#define MMIO(name, addr) addr,
-			DEFINE_SRAMSTAGE_REGMAP
+	for_range(i, 0, NUM_REGMAP) {
+		static const u32 addrs[NUM_REGMAP] = {
+#define MMIO(name, snake, addr, type) addr,
+			DEFINE_REGMAP
 #undef MMIO
 		};
 		u64 base = (u64)regmap_base(i);

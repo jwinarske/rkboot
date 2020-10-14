@@ -13,7 +13,7 @@
 #include <runqueue.h>
 
 struct dwmmc_state sdmmc_state = {
-	.regs = sdmmc,
+	.regs = regmap_sdmmc,
 	.int_st = DWMMC_INT_DATA_NO_BUSY | DWMMC_INT_CMD_DONE | DWMMC_INT_DATA_TRANSFER_OVER,
 	.cmd_template = DWMMC_CMD_START | DWMMC_CMD_USE_HOLD_REG,
 };
@@ -41,7 +41,6 @@ void rk3399_init_sdmmc() {
 	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 0) << 10;
 	usleep(2000);
 
-	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
 	dsb_ishst();
 	info("starting SDMMC\n");
 	if (!dwmmc_init_early(&sdmmc_state)) {

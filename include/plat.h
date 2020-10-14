@@ -21,7 +21,7 @@ HEADER_FUNC _Bool plat_is_page_aligned(void *ptr) {
 }
 
 HEADER_FUNC phys_addr_t plat_virt_to_phys(void *ptr) {
-	if ((uintptr_t)ptr > 0xffffffff) {return PLAT_INVALID_PHYS_ADDR;}
+	if ((uintptr_t)ptr >= 0xffe00000) {return PLAT_INVALID_PHYS_ADDR;}
 	return (phys_addr_t)(uintptr_t)ptr;
 }
 

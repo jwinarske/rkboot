@@ -65,18 +65,29 @@ HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
 }
 
 #define DEFINE_REGMAP\
-	MMIO(PCIE_CLIENT, 0xfd000000)\
-	MMIO(PCIE_MGMT, 0xfd900000)\
-	MMIO(PCIE_RCCONF, 0xfd800000)\
-	MMIO(PCIE_ADDR_XLATION, 0xfdc00000)\
+	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
+	MMIO(CRYPTO1, crypto1, 0xff8b8000, struct rkcrypto_v1_regs)\
+	MMIO(SDMMC, sdmmc, 0xfe320000, struct dwmmc_regs)\
+	MMIO(EMMC, emmc, 0xfe330000, struct sdhci_regs)\
+	MMIO(PCIE_CLIENT, pcie_client, 0xfd000000, u32)\
+	MMIO(PCIE_MGMT, pcie_mgmt, 0xfd900000, u32)\
+	MMIO(PCIE_RCCONF, pcie_rcconf, 0xfd800000, u32)\
+	MMIO(PCIE_CONF_SETUP, pcie_conf_setup, 0xfda00000, u32)\
+	MMIO(PCIE_ADDR_XLATION, pcie_addr_xlation, 0xfdc00000, struct rkpcie_addr_xlation)\
 
-enum dramstage_regmap {
-#define MMIO(name, addr) REGMAP_##name,
+enum regmap_id {
+#define MMIO(name, snake, addr, type) REGMAP_##name,
 	DEFINE_REGMAP
 #undef MMIO
 	NUM_REGMAP
 };
 
-HEADER_FUNC void *regmap_base(enum dramstage_regmap map) {
-	return (void *)(uintptr_t)(0xfffff000 - 0x1000 * map);
+#define REGMAP_BASE(map) (void *)(uintptr_t)(0xfffff000 - 0x1000 * map)
+
+HEADER_FUNC void *regmap_base(enum regmap_id map) {
+	return REGMAP_BASE(map);
 }
+
+#define MMIO(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = REGMAP_BASE(REGMAP_##name);
+	DEFINE_REGMAP
+#undef MMIO

@@ -132,6 +132,7 @@ static void fast_freq_switch(u8 freqset, u32 freq) {
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {
 		debugs("waiting for bus idle\n");
 	}
+	volatile u32 *cic = regmap_cic;
 	cic[0] = (SET_BITS16(2, freqset) << 4) | (SET_BITS16(1, 1) << 2) | SET_BITS16(1, 1);
 	while (!(cic[CIC_STATUS] & 4)) {
 		debugs("waiting for CIC ready\n");
@@ -310,9 +311,6 @@ static void both_channels_ready(struct ddrinit_state *st) {
 	gicv2_wait_disabled(gic500d);
 	atomic_signal_fence(memory_order_acquire);
 
-	/* map CIC range, needed for frequency switch */
-	mmu_map_mmio_identity(0xff620000, 0xff62ffff);
-	dsb_ishst();
 	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
 	u32 flags = 0;
 	if (phy_800mhz.dslice_update[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
@@ -327,7 +325,6 @@ static void both_channels_ready(struct ddrinit_state *st) {
 	gicv2_enable_spi(gic500d, 35);
 	gicv2_enable_spi(gic500d, 36);
 
-	mmu_unmap_range(0xff620000, 0xff62ffff);
 	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_TRAINING, memory_order_release);
 	ddrinit_train(st);
 }

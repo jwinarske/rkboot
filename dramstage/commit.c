@@ -117,7 +117,7 @@ _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	gpio0->port |= 1 << 11;
 	gpio0->direction |= 1 << 11;
 
-	info("trng: %"PRIx32" %"PRIx32"\n", crypto1->control, crypto1->interrupt_status);
+	info("trng: %"PRIx32" %"PRIx32"\n", regmap_crypto1->control, regmap_crypto1->interrupt_status);
 
 	pull_entropy(0);
 

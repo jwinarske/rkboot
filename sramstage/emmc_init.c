@@ -50,12 +50,11 @@ _Bool sdhci_init_early(struct sdhci_state *st) {
 
 extern struct sdhci_phy emmc_phy;
 struct sdhci_state emmc_state = {
-	.regs = emmc,
+	.regs = regmap_emmc,
 	.phy = &emmc_phy,
 };
 
 void emmc_init(struct sdhci_state *st) {
-	mmu_map_mmio_identity(0xfe330000, 0xfe33ffff);
 	/* aclk_emmc = CPLL/4 = 200 MHz */
 	cru[CRU_CLKSEL_CON+21] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 3);
 	/* clk_emmc = CPLL/4 = 200 MHz, as specified by capability register */

@@ -40,7 +40,7 @@ static void UNUSED mmc_print_csd_cid(u32 *cxd) {
 
 extern struct sdhci_phy emmc_phy;
 struct sdhci_state emmc_state = {
-	.regs = emmc,
+	.regs = regmap_emmc,
 	.phy = &emmc_phy,
 };
 
@@ -138,7 +138,6 @@ static _Bool parse_cardinfo(struct emmc_blockdev *dev) {
 
 void boot_emmc() {
 	infos("trying eMMC\n");
-	mmu_map_mmio_identity(0xfe330000, 0xfe33ffff);
 	mmu_unmap_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1);
 	dsb_ish();
 	mmu_map_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1, (u64)&desc_buf, MEM_TYPE_UNCACHED);
@@ -180,7 +179,7 @@ void boot_emmc() {
 	}
 	infos("eMMC abort failed, shutting down the controller\n");
 shut_down_emmc:
-	emmc->power_control = 0;
+	regmap_emmc->power_control = 0;
 	gicv2_disable_spi(gic500d, 43);
 	gicv2_wait_disabled(gic500d);
 	/* shut down phy */

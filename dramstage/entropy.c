@@ -7,9 +7,10 @@
 u32 entropy_buffer[1024] = {};
 u16 entropy_words = 0;
 static u16 entropy_pos = 0;
-_Static_assert(ARRAY_SIZE(entropy_buffer) % ARRAY_SIZE(crypto1->trng_output) == 0, "entropy buffer not evenly divisible by TRNG output size");
+_Static_assert(ARRAY_SIZE(entropy_buffer) % ARRAY_SIZE(regmap_crypto1->trng_output) == 0, "entropy buffer not evenly divisible by TRNG output size");
 
 void pull_entropy(_Bool keep_running) {
+	volatile struct rkcrypto_v1_regs *crypto1 = regmap_crypto1;
 	u32 control = crypto1->control;
 	if (!keep_running) {
 		crypto1->trng_control = RKCRYPTO_V1_TRNG_DISABLE;

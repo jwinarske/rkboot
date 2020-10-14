@@ -121,8 +121,7 @@ void pcie_init() {
 
 	cru[CRU_SOFTRST_CON+8] = SET_BITS16(2, 0)	/* {a,p}resetn_pcie */
 		| SET_BITS16(1, 0) << 6;	/* resetn_pcie_pm */
-	volatile u32 *pcie_client = regmap_base(SRAMSTAGE_REGMAP_PCIE_CLIENT);
-	pcie_client[RKPCIE_CLIENT_CONF] = SET_BITS16(16,
+	regmap_pcie_client[RKPCIE_CLIENT_CONF] = SET_BITS16(16,
 		RKPCIE_CLI_CONF_EN
 		| RKPCIE_CLI_LINK_TRAIN_EN
 		| RKPCIE_CLI_LANE_COUNT_SHIFT(2)
@@ -131,13 +130,11 @@ void pcie_init() {
 	);
 	cru[CRU_SOFTRST_CON+8] = SET_BITS16(6, 0) << 2;	/* resetn_pcie_{core,mgmt,mgmt_sticky,pipe} */
 
-	volatile u32 *pcie_local_mgmt = regmap_base(SRAMSTAGE_REGMAP_PCIE_MGMT);
-	pcie_local_mgmt[RKPCIE_MGMT_PLC1] |= 0x00ffff00;	/* set transmitted FTS count to max for both Gen1 and Gen2 */
-	volatile u32 *pcie_conf_setup = regmap_base(SRAMSTAGE_REGMAP_PCIE_CONF_SETUP);
+	regmap_pcie_mgmt[RKPCIE_MGMT_PLC1] |= 0x00ffff00;	/* set transmitted FTS count to max for both Gen1 and Gen2 */
 	/* no power limits known, otherwise set them here (in DCR) */
-	pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_SCC;
-	pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_RCB;
-	pcie_client[RKPCIE_CLIENT_CONF] = CLRSET16(0, RKPCIE_CLI_LINK_TRAIN_EN);
+	regmap_pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_SCC;
+	regmap_pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_RCB;
+	regmap_pcie_client[RKPCIE_CLIENT_CONF] = CLRSET16(0, RKPCIE_CLI_LINK_TRAIN_EN);
 	gpio2->port |= 1 << 28;
 	/* detection and link training takes ~100ms without CPU intervention, do the rest in dramstage */
 	rk3399_set_init_flags(RK3399_INIT_PCIE);
