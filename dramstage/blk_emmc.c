@@ -187,7 +187,8 @@ shut_down_emmc:
 	dsb_st();	/* GRF_EMMCPHY_CONx seem to be in the clk_emmc domain. ensure completion to avoid hangs */
 	/* gate eMMC clocks */
 	cru[CRU_CLKGATE_CON+6] = SET_BITS16(3, 7) << 12;
-	cru[CRU_CLKGATE_CON+32] = SET_BITS16(1, 1) << 8 | SET_BITS16(1, 1) << 10;
+	/* Linux will hang if bus clocks are gated */
+	//cru[CRU_CLKGATE_CON+32] = SET_BITS16(1, 1) << 8 | SET_BITS16(1, 1) << 10;
 out:
 	boot_medium_exit(BOOT_MEDIUM_EMMC);
 	return;
