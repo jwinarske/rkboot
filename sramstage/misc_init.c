@@ -7,6 +7,9 @@
 #include <log.h>
 
 void misc_init() {
+	/* mux out GPIO0A5 as GPIO, not emmc_pwren: on supported boards, this pin is used for the power button */
+	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 0) << 10;
+
 	volatile struct rktimer_regs *timer = regmap_stimer0 + 0;
 	timer->control = 0;
 	timer->load_count2 = timer->load_count3 = timer->load_count0 = 0;

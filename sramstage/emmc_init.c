@@ -59,8 +59,6 @@ void emmc_init(struct sdhci_state *st) {
 	cru[CRU_CLKSEL_CON+21] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 3);
 	/* clk_emmc = CPLL/4 = 200 MHz, as specified by capability register */
 	cru[CRU_CLKSEL_CON+22] = SET_BITS16(3, 0) << 8 | SET_BITS16(7, 3);
-	/* mux out emmc_pwren */
-	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 10;
 	dsb_st();
 	/* ungate eMMC clocks */
 	cru[CRU_CLKGATE_CON+6] = SET_BITS16(3, 0) << 12;
