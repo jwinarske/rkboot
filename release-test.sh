@@ -107,9 +107,16 @@ if [ -z "$skip" -o "$skip" == 10 ]; then
 	until prompt || usbtool --call sramstage.bin --load 4000000 elfloader.bin --jump 4000000 1000;do true; done
 fi
 
+if [ -z "$skip" -o "$skip" == 11 ]; then
+	echo "Configuration 11: levinboot + NVMe elfloader, configured for initcpio use (LZ4 decompression)"
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{nvme,lz4,initcpio}
+	until ninja sramstage.bin elfloader.bin; do read -p "press enter to rebuild";done
+	until prompt || usbtool --call sramstage.bin --load 4000000 elfloader.bin --jump 4000000 1000;do true; done
+fi
+
 if [ -z "$skip" -o "$skip" == "99" ]; then
-	echo "Configuration 99: flash levinboot SPI image configured for SD, eMMC and SPI boot with initcpio (lz4, gzip and zstd decompression)"
-	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{sd,emmc,spi,lz4,gzip,zstd,initcpio}
+	echo "Configuration 99: flash levinboot SPI image configured for SD, eMMC, NVMe and SPI boot with initcpio (lz4, gzip and zstd decompression)"
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{sd,emmc,nvme,spi,lz4,gzip,zstd,initcpio}
 	until ninja levinboot-spi.img sramstage.bin usbstage.bin && prompt || usbtool --call sramstage.bin --run usbstage.bin --flash 0 levinboot-spi.img;do true; done
 	read -p "now reset the board to try it out (boot from each boot medium), press enter to continue"
 fi
