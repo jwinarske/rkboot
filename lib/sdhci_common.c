@@ -14,10 +14,18 @@ void sdhci_irq(struct sdhci_state *st) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	debugs("?");
 	u32 int_st = sdhci->int_st;
-	spew("SDHCI IRQ 0x%08"PRIx32"\n", int_st);
+	spew("SDHCI IRQ 0x%08"PRIx32" %08"PRIx32"\n", int_st, sdhci->present_state);
 	sdhci->int_st = int_st;
+	if (int_st & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_AUTO_CMD)) {
+		debug("response: %08"PRIx32"\n", sdhci->resp[0]);
+	}
+	if (int_st & SDHCI_INT_AUTO_CMD) {
+		u16 UNUSED acmderr = sdhci->auto_cmd_error_st;
+		debug("AutoCMD err: %04"PRIx16"\n", acmderr);
+	}
 	u32 int_st_old = atomic_fetch_or_explicit(&st->int_st, int_st, memory_order_release);
 	if ((int_st & SDHCI_INT_XFER_COMPLETE) || int_st >> 16) {
+		debug("prests%08"PRIx32"\n", sdhci->present_state);
 		struct sdhci_xfer *xfer = atomic_load_explicit(&st->active_xfer, memory_order_acquire);
 		if (xfer) {
 			debugs("ending xfer\n");
@@ -36,7 +44,7 @@ enum iost sdhci_wait_state(struct sdhci_state *st, u32 mask, u32 expected, times
 	u32 prests, int_st;
 	while (1) {
 		if ((int_st = atomic_load_explicit(&st->int_st, memory_order_relaxed)) >> 16) {
-			info("%s error: intsts0x%08"PRIx32" prests0x%08"PRIx32" cmd %"PRIx16" %08"PRIx32"\n", name, int_st, prests, sdhci->cmd, sdhci->arg);
+			info("%s error: intsts0x%08"PRIx32" prests0x%08"PRIx32" cmd %"PRIx16" %08"PRIx32" acmd0x%"PRIx16"\n", name, int_st, prests, sdhci->cmd, sdhci->arg, sdhci->auto_cmd_error_st);
 			return IOST_GLOBAL;
 		} else if (((prests = sdhci->present_state) & mask) == expected) {
 			break;
