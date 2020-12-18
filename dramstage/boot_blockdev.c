@@ -93,12 +93,14 @@ enum iost boot_blockdev(struct async_blockdev *blk) {
 		dump_mem(buf.start, 128);
 #endif
 		if ((size_t)(buf.end - buf.start) < 128) {
-			blk->start(blk,
+			res = blk->start(blk,
 				2 + i / entries_per_block,
 				partition_table_buffer,
 				partition_table_buffer + sizeof(partition_table_buffer)
 			);
+			if (res != IOST_OK) {return res;}
 			buf = blk->async.pump(&blk->async, 0, 128);
+			if (buf.end < buf.start) {return buf.start - buf.end;}
 		}
 		for_range(j, 0, 16) {
 			if (buf.start[j] != 0) {goto entry_exists;}
