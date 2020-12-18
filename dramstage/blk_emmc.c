@@ -58,7 +58,10 @@ static u8 iost_u8[NUM_IOST];
 static enum iost wait_xfer(struct emmc_blockdev *dev) {
 	debugs("waiting for xfer\n");
 	enum iost res = sdhci_wait_xfer(&emmc_state, &dev->xfer);
-	if (res != IOST_OK) {return res;}
+	if (res != IOST_OK) {
+		info("xfer failed: %u\n", (unsigned)res);
+		return res;
+	}
 	invalidate_range(dev->end_ptr, dev->next_end_ptr - dev->end_ptr);
 	dev->end_ptr = dev->next_end_ptr;
 	return IOST_OK;
@@ -68,6 +71,7 @@ enum {REQUEST_SIZE = 2 << 20};
 
 static struct async_buf pump(struct async_transfer *async, size_t consume, size_t min_size) {
 	struct emmc_blockdev *dev = (struct emmc_blockdev *)async;
+	debug("pump: %"PRIx64" %"PRIx64" %zu\n", (u64)dev->end_ptr, (u64)dev->consume_ptr, consume);
 	assert((size_t)(dev->end_ptr - dev->consume_ptr) >= consume);
 	dev->consume_ptr += consume;
 	while ((size_t)(dev->end_ptr - dev->consume_ptr) < min_size) {
