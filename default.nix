@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: CC0-1.0
-{pkgs ? import <nixos> {}}:
+{pkgs ? import <nixpkgs> {}}:
 let
   host = pkgs;
   aarch64 =  if builtins.currentSystem == "aarch64-linux"
