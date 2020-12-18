@@ -293,10 +293,11 @@ enum iost sdhci_start_xfer(struct sdhci_state *st, struct sdhci_xfer *xfer, u32 
 	sdhci->adma_addr[0] = xfer->desc_addr;
 	sdhci->adma_addr[1] = (u64)xfer->desc_addr >> 32;
 	sdhci->block_count = xfer->xfer_bytes / 512;
+	sdhci->arg2 = xfer->xfer_bytes / 512;
 	sdhci->transfer_mode = SDHCI_TRANSMOD_READ
 		| SDHCI_TRANSMOD_BLOCK_COUNT
 		| SDHCI_TRANSMOD_MULTIBLOCK
-		| SDHCI_TRANSMOD_AUTO_CMD12
+		| SDHCI_TRANSMOD_AUTO_CMD23
 		| SDHCI_TRANSMOD_DMA;
 	return sdhci_submit_cmd(st, SDHCI_CMD(18) | SDHCI_R1 | SDHCI_CMD_DATA, addr);
 }
