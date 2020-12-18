@@ -15,13 +15,13 @@ void sdhci_irq(struct sdhci_state *st) {
 	debugs("?");
 	u32 int_st = sdhci->int_st;
 	spew("SDHCI IRQ 0x%08"PRIx32" %08"PRIx32"\n", int_st, sdhci->present_state);
+	u16 UNUSED acmderr = sdhci->auto_cmd_error_st;
 	sdhci->int_st = int_st;
 	if (int_st & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_AUTO_CMD)) {
 		debug("response: %08"PRIx32"\n", sdhci->resp[0]);
 	}
 	if (int_st & SDHCI_INT_AUTO_CMD) {
-		u16 UNUSED acmderr = sdhci->auto_cmd_error_st;
-		debug("AutoCMD err: %04"PRIx16"\n", acmderr);
+		info("AutoCMD err: %04"PRIx16"\n", acmderr);
 	}
 	u32 int_st_old = atomic_fetch_or_explicit(&st->int_st, int_st, memory_order_release);
 	if ((int_st & SDHCI_INT_XFER_COMPLETE) || int_st >> 16) {
