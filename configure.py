@@ -372,7 +372,7 @@ def binary(name, modules, base_address):
 binary('sramstage', levinboot | {'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00680000')
+binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00280000')
 print("default sramstage.bin memtest.bin usbstage.bin teststage.bin")
 if args.tf_a_headers:
     binary('elfloader', elfloader | lib, '04000000')
