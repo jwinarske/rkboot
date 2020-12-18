@@ -116,8 +116,10 @@ static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_card
 				while (sdhci->present_state & SDHCI_PRESTS_CMD_INHIBIT) {sched_yield();}
 				sdhci->cmd = SDHCI_CMD(21) | SDHCI_R1 | SDHCI_CMD_DATA;
 				u32 int_st;
+				timestamp_t start = get_timestamp();
 				while (~(int_st = sdhci->int_st) & SDHCI_INT_BUFFER_READ_READY) {
 					if (~(hostctrl2 = sdhci->host_control2) & SDHCI_HOSTCTRL2_EXECUTE_TUNING) {break;}
+					if (get_timestamp() - start > MSECS(150)) {break;}
 					sched_yield();
 				}
 				sdhci->int_st = SDHCI_INT_BUFFER_READ_READY;
