@@ -191,6 +191,7 @@ buildfile = open("build.ninja", "w", encoding='utf-8')
 sys.stdout = buildfile
 
 cc = os.getenv('CC', 'cc')
+print(f'# C compiler: {cc}')
 is_gcc = cc.endswith('gcc')
 warnflags = os.getenv('WARNFLAGS')
 if not warnflags:
@@ -204,7 +205,7 @@ if not cflags:
 		cflags += ' -mcpu=cortex-a72.cortex-a53+crc'
 extracflags = os.getenv('EXTRACFLAGS')
 if not extracflags:
-	extracflags = '-fno-pic -ffreestanding -nodefaultlibs -nostdlib -march=armv8-a+crc -mgeneral-regs-only'
+	extracflags = '-fno-pic -ffreestanding -nodefaultlibs -nostdlib -march=armv8-a+crc -mgeneral-regs-only -static'
 cflags = (
     extracflags
     + " -isystem . " + " ".join("-isystem " + path.join(srcdir, p) for p in (
@@ -212,6 +213,10 @@ cflags = (
     ))
     + " " + cflags
     + " " + warnflags)
+
+ldflags = os.getenv('LDFLAGS', '')
+extraldflags = os.getenv('EXTRALDFLAGS', '--gc-sections -static')
+ldflags += " " + extraldflags
 
 genld = path.join(srcdir, 'gen_linkerscript.sh')
 
@@ -248,7 +253,7 @@ build idbtool: buildcc {src}/tools/idbtool.c
 build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 '''.format(
     cflags=esc(cflags),
-    ldflags=os.getenv('LDFLAGS', ''),
+    ldflags=ldflags,
     src=esc(srcdir),
     cc=cc,
     ld=os.getenv('LD', 'ld'),
