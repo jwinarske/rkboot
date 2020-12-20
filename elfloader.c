@@ -334,7 +334,9 @@ _Noreturn u32 main(u64 sctlr) {
 				printf("[%"PRIuTS"] payload loaded in %"PRIuTS" μs\n", xfer_end, (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 				/* leave the user at least 500 ms to let go for each payload  */
 				while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
-				if ((~gpio0->read & 32) && available_boot_media >> 1 >> boot_medium != 0) {
+				u32 gpio_bits = gpio0->read;
+				debug("GPIO0: %"PRIx32"\n", gpio_bits);
+				if ((~gpio_bits & 32) && available_boot_media >> 1 >> boot_medium != 0) {
 					printf("boot overridden\n");
 					continue;
 				}
