@@ -77,6 +77,7 @@ static enum iost sdhci_read_ext_csd(volatile struct sdhci_regs *sdhci, struct sd
 	return IOST_OK;
 }
 
+#if CONFIG_SDHCI_HS
 static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	enum iost res;
@@ -88,7 +89,6 @@ static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_card
 	}
 	u8 card_type = card->ext_csd[EXTCSD_CARD_TYPE];
 	info("card type: 0x%02"PRIx8"\n", card_type);
-
 	if (card_type & MMC_CARD_TYPE_HS200_1V8) {
 		infos("card supports HS200, trying to enable\n");
 		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
@@ -158,6 +158,7 @@ static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_card
 out:
 	return sdhci_read_ext_csd(sdhci, st, card);
 }
+#endif
 
 enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	volatile struct sdhci_regs *sdhci = st->regs;
@@ -215,7 +216,9 @@ enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	) | SDHCI_HOSTCTRL1_BUS_WIDTH_8 | SDHCI_HOSTCTRL1_ADMA2_32;
 	sdhci->block_size = 512;
 	if (IOST_OK != (res = sdhci_read_ext_csd(sdhci, st, card))) {return res;}
+#if CONFIG_SDHCI_HS
 	if (IOST_LOCAL >= (res = sdhci_try_higher_speeds(st, card))) {return res;}
+#endif
 	return IOST_OK;
 }
 

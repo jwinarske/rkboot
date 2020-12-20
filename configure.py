@@ -103,6 +103,10 @@ parser.add_argument(
     const='emmc',
     help='configure dramstage to load its images from an SD card'
 )
+parser.add_argument('--sdhci-hs',
+    help='enable high-speed modes for the SDHCI (eMMC) driver (WARNING: known unstable on the Pinebook Pro)',
+    action='store_true', dest='sdhci_hs'
+)
 parser.add_argument(
     '--payload-sd',
     action='append_const',
@@ -150,6 +154,8 @@ if args.crc:
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
+if args.sdhci_hs:
+    flags['lib/sdhci'].append('-DCONFIG_SDHCI_HS=1')
 if args.elfloader_initcpio:
     for f in ('elfloader', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_ELFLOADER_INITCPIO')
