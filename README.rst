@@ -32,7 +32,7 @@ What should work at this point:
 - Booting Linux from a boot medium. levinboot is currently agnostic about what medium it itself was loaded from (there might be optimization potential in adding medium-specific code to take over from mask ROM earlier – TODO: evaluate).
 
   - from SPI. This is described in _`Booting from SPI`
-  - from SD or eMMC. This is described in _`Booting from SD/eMMC`
+  - from SD, eMMC or NVMe. This is described in _`Booting from SD/eMMC/NVMe`
 
 - providing entropy to the kernel (KASLR and RNG seeds) via the DTB
 
@@ -75,7 +75,7 @@ Historical note: a lot of places still refer to 'elfloader'. Its current name is
 Board support
 =============
 
-levinboot is tested on the RockPro64 and the Pinebook Pro. From looking at the schematics, it should behave safely and sanely on the Rock Pi 4 too, but this hasn't been tested (testers welcome!).
+levinboot is tested on the RockPro64 and the Pinebook Pro. From looking at the schematics, it should behave safely and sanely on the Rock Pi 4 too (with the exception of PCIe power sequencing), but this hasn't been tested (testers welcome!).
 
 It makes the following assumptions about the board:
 
@@ -84,12 +84,15 @@ It makes the following assumptions about the board:
 - the main "Power" LED is attached (active-high) to GPIO0B3. It is lit up before starting the DRAM initialization.
 - an auxiliary (e. g. "standby") LED is attached (active-high) to GPIO0A2. It is lit up after the payload is loaded.
 - ADC1 is connected to an active-low "recovery" button.
-- GPIO0A5 is connected to an active-low "power" button. This is read in a _`SPI Recovery` setup.
+- GPIO0A5 is connected to an active-low "power" button. See _`Boot order` for how this is used.
 - if loading from SPI is configured, it tries to read using the normal 0x0b 'fast read' command with 3 address and 1 dummy byte at 50 MHz on the SPI1 pins
 - if loading from SD is configured, it will configure the SD pins on GPIO4B0-5 (inclusive) and the card detect pin on GPIO0A7.
-- if loading from eMMC is configured, it will configure GPIO0A5 as the eMMC power enable pin.
+- the eMMC driver does not configure any "power enable" pin for the eMMC, since the designated pin for that (GPIO0A5) is used for the power button.
+- if loading from NVMe is configured, it will drive GPIO2B4 as an active-low slot reset signal and drive GPIO1D0 as an active-high slot power enable.
 
 These assumptions hold as described on the RockPro64 and the Pinebook Pro. On the Rock Pi 4 (according to the schematics), the pins used for the LEDs are unconnected and GPIO0A5 is connected to the anode of a diode, which should make it read high (i. e. inactive).
+GPIO1D0 is unconnected on the Pinebook Pro and the Rock Pi 4.
+Enabling NVMe on the Rock Pi 4 may be **unsafe** since GPIO2B4 is routed to the Pi-2 header (pin 33) and even if that is not a problem, will not work since the regulator-enable and PCIe reset signals are on GPIO2D2 and GPIO4D3 respectively.
 
 
 Build process
@@ -103,7 +106,7 @@ Important command-line arguments for :src:`configure.py` are:
 
 --payload-lz4, --payload-gzip, --payload-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
 
---payload-spi, --payload-sd, --payload-emmc  configures :output:`elfloader.bin` to load payload images from SPI flash, SD cards or eMMC storage (respectively) instead of expecting them preloaded at specific addresses.
+--payload-spi, --payload-sd, --payload-emmc, --payload-nvme  configures :output:`elfloader.bin` to load payload images from SPI flash, SD cards, eMMC storage or NVMe drives (respectively) instead of expecting them preloaded in RAM at specific addresses.
   This process requires decompression support to be enabled.
   See _`Booting from SPI` and _`Booting from SD/eMMC` for more information.
 
@@ -139,7 +142,7 @@ Primary build targets are:
 The Payload Blob
 ================
 
-*Note: the payload format will change with the release of version 0.8. The old format may not be supported anymore.*
+*Note: the payload format will change in a future release. The old format may not be supported after that change.*
 
 The current payload format used by levinboot consists of 3 or 4 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image. If configured with :cmdargs:`--elfloader-initcpio`, a compressed initcpio must be appended.
 Depending on your configuration, arbitrary combinations of LZ4, gzip and zstd frames are supported.
@@ -151,9 +154,12 @@ See :src:`overlay-example.dts` for an example overlay that could be applied (usi
 Boot order
 ==========
 
-While levinboot tries to initialize the different boot media concurrently, it does have a notion of priority, which is defined by the `DEFINE_BOOT_MEDIUM` macro in :src:`include/rk3399/dramstage.h`. The default order is SD, eMMC, SPI.
+While levinboot tries to initialize the different boot media concurrently, it does have a notion of priority, which is defined by the `DEFINE_BOOT_MEDIUM` macro in :src:`include/rk3399/dramstage.h`. The default order is SD, eMMC, NVMe, SPI.
 
-Boot media are 'cued` in priority order. Without user intervention, levinboot will 'commit' to the first payload it can successfully load. This can be prevented for all except the last configured boot medium by holding the power button at the moment when loading is complete. levinboot will give the user at least 500 ms to let go of the button to prevent accidental override.
+Boot media are initialized concurrently, but 'cued' sequentially in priority order.
+Without user intervention, levinboot will 'commit' to the first payload it can successfully load.
+This can be prevented for all except the last configured boot medium by holding the power button at the moment when loading is complete.
+levinboot will give the user at least 500 ms to let go of the button to prevent accidental override.
 
 The primary use case for this mechanism is to force booting from SPI without having to disassemble a Pinebook Pro to disable eMMC, by holding the power button until the SPI payload comes up.
 
@@ -247,10 +253,12 @@ Flashing SPI
 You can write to SPI anytime you can boot via USB, as described above: :output:`usbstage.bin` implements a command to write a block of data (such as a levinboot image) to any erase-block-(typically 4k-)aligned address in SPI flash.
 Run :command:`usbtool --call sramstage.bin --run usbstage.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
 
-Booting from SD/eMMC
-=================
+Booting from SD/eMMC/NVMe
+=========================
 
-levinboot can load payload images from SDHC/SDXC cards or eMMC storage. Configure it with :cmdargs:`--payload-emmc` for eMMC or :cmdargs:`--payload-sd` for SDHC/SDXC.
+levinboot can load payload images from SDHC/SDXC cards, eMMC storage or an NVMe drive.
+Configure it with :cmdargs:`--payload-sd` for SDHC/SDXC, :cmdargs:`--payload-emmc` for eMMC or :cmdargs:`--payload-nvme` for NVMe.
+Keep in mind the RK3399 BROM can only load the bootloader itself from SPI, eMMC or SD, not NVMe.
 
 The drive has to be partitioned using GPT. levinboot will then load a compressed payload blob from a partition with one of these special partition type GUIDs (not partition UUIDs!):
 
@@ -258,7 +266,7 @@ The drive has to be partitioned using GPT. levinboot will then load a compressed
 - payload B: 5f04b556-c920-4b6d-bd77-804efe6fae01
 - payload C: c195cc59-d766-4b78-813f-a0e1519099d8
 
-Partition type GUIDs can be set in :cmd:`fdisk` by just pasting them instead of a partition type number from the list when setting partition type. The type will then be displayed as 'unknown'.
+Partition type GUIDs can be set in :cmd:`fdisk` by just pasting them instead of a partition type number from the list when setting partition type. The type will then be displayed as 'unknown' in normal mode (or as the raw type GUID in expert mode).
 
 For each type, it will ignore all but the first one present in partition table order. If only one of these is present, it will load from that, if all three are present, it will take A, If 2 are present, it uses these rules:
 
@@ -271,3 +279,4 @@ It might be apparent from the enumeration that these are cyclical. The idea behi
 As with USB compressed payload booting, the maximum size is 60 MiB, so reserving more space for the partitions does not make sense (typical payloads tend to stay under 30MB with gzip or zstd compression and around 30MB with LZ4 compression).
 
 Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash.
+Because of BROM limitations, it is not possible to install the bootloader itself to NVMe.
