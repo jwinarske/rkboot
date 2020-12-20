@@ -16,7 +16,7 @@ in
 {
   levinboot = aarch64.stdenv.mkDerivation {
     pname = "levinboot";
-    version = "0.7.2";
+    version = "0.8.0";
     nativeBuildInputs = [host.ninja host.python3 host.lz4];
     configurePhase = ''
       mkdir build
@@ -40,7 +40,7 @@ in
   };
   tools = host.stdenv.mkDerivation {
     pname = "levinboot-tools";
-    version = "0.0.1";
+    version = "0.8.0";
     buildInputs = [host.libusb1];
     nativeBuildInputs = [host.pkg-config host.ninja];
     preConfigure = "cd tools";
