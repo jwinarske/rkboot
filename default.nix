@@ -21,7 +21,7 @@ in
     configurePhase = ''
       mkdir build
       cd build
-      python3 ../configure.py --with-tf-a-headers ${atf-sources}/include/export --payload-{gzip,initcpio,sd}
+      python3 ../configure.py --with-tf-a-headers ${atf-sources}/include/export --payload-{lz4,gzip,zstd,initcpio,sd,emmc,nvme,spi}
     '';
     installPhase = "mkdir -p $out; cp sramstage.bin memtest.bin usbstage.bin levinboot-usb.bin levinboot-sd.img levinboot-spi.img teststage.bin $out";
     depsBuildBuild = [host.buildPackages.stdenv.cc];
