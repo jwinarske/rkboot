@@ -55,7 +55,7 @@ static _Bool try_high_speed(struct dwmmc_state *state, struct dwmmc_signal_servi
 		infos("switching to high speed\n");
 		st = dwmmc_wait_cmd_done(state,
 			6 | DWMMC_R1 | DWMMC_CMD_DATA_EXPECTED, 0x80fffff1,
-			USECS(1000)
+			MSECS(100)
 		);
 		dwmmc_print_status(dwmmc, "CMD6 commit ");
 		if (st != IOST_OK) {return 0;}
@@ -67,7 +67,7 @@ static _Bool try_high_speed(struct dwmmc_state *state, struct dwmmc_signal_servi
 			u32 a = dwmmc->fifo, b = dwmmc->fifo, c = dwmmc->fifo, d = dwmmc->fifo;
 			info("CMD6 %2"PRIu32": 0x%08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n", i, a, b, c, d);
 		}
-		if (!dwmmc_wait_data_idle(state, get_timestamp(), USECS(100000))) {return 0;}
+		if (!dwmmc_wait_data_idle(state, get_timestamp(), MSECS(3000))) {return 0;}
 		if (!set_clock_enable(state, 0)) {return 0;}
 		if (!svc->set_clock(svc, DWMMC_CLOCK_50M)) {
 			info("failed to set the clock for high-speed\n");
