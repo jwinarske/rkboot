@@ -21,6 +21,7 @@
 #include <async.h>
 #include <plat.h>
 #include <byteorder.h>
+#include <cache.h>
 
 struct rkpcie_ob_desc {
 	u32 addr[2];
@@ -153,6 +154,7 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 		if (dev->end_ptr != dev->next_end_ptr) {
 			enum iost res = nvme_wait_req(dev->st, &dev->xfer.req);
 			if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
+			invalidate_range(dev->end_ptr, dev->next_end_ptr - dev->end_ptr);
 			dev->end_ptr = dev->next_end_ptr;
 		}
 		if (dev->stop_ptr == dev->end_ptr) {
