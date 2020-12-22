@@ -27,21 +27,27 @@ static enum iost sdhci_set_clock(struct sdhci_state *st, u32 khz) {
 	u32 baseclock_mhz = st->caps >> 8 & 0xff;
 	u16 clkctrl = SDHCI_CLKCTRL_INTCLK_EN;
 	u32 multiplier = 0; // should be st->caps >> 48 & 0xff;
+	u32 real_khz;
 	/* only use clock multiplier if target frequency high enough */
 	if (multiplier && khz >= (multiplier += 1) * baseclock_mhz) {
 		u32 div = baseclock_mhz * multiplier * 1000 / khz;
 		assert(div > 0 && div <= 0x400);
 		clkctrl |= SDHCI_CLKCTRL_MULT_EN | SDHCI_CLKCTRL_DIV(div - 1);
+		real_khz = baseclock_mhz * multiplier * 1000 / div;
+	} else if (khz >= baseclock_mhz * 1000) {
+		clkctrl |= SDHCI_CLKCTRL_DIV(0);
+		real_khz = baseclock_mhz * 1000;
 	} else {
 		u32 div = (baseclock_mhz * 1000 + khz - 1) / khz;
 		assert(div < 0x7ff);
 		if (div != 1) {
 			clkctrl |= SDHCI_CLKCTRL_DIV((div + 1) >> 1);
 		}
+		real_khz = baseclock_mhz * 1000 / ((div + 1) & 0x7fe);
 	}
-	debug("clkctrl: 0x%04"PRIx16"\n", clkctrl);
+	debug("clkctrl: 0x%04"PRIx16" ⇒ %"PRIu32" kHz\n", clkctrl, real_khz);
 	sdhci->clock_control = clkctrl;
-	if (khz > 20000) {
+	if (real_khz > 20000) {
 		sdhci->host_control1 |= SDHCI_HOSTCTRL1_HIGH_SPEED_MODE;
 	} else {
 		sdhci->host_control1 &= ~SDHCI_HOSTCTRL1_HIGH_SPEED_MODE;
