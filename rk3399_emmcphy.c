@@ -6,11 +6,14 @@
 
 static _Bool emmc_phy_setup(struct sdhci_phy UNUSED *phy, enum sdhci_phy_setup_action  action) {
 	if (action & 2) {
-		grf[GRF_EMMCPHY_CON+6] = SET_BITS16(2, 0);
+		grf[GRF_EMMCPHY_CON+6] = SET_BITS16(2, 0);	/* disable DLL, power down */
 		udelay(3);
 	}
+	grf[GRF_EMMCPHY_CON+6] = SET_BITS16(3, 0) << 4;	/* drive impedance: 50 Ω */
+	grf[GRF_EMMCPHY_CON+0] = SET_BITS16(1, 1) << 11	/* enable output tap delay */
+		| SET_BITS16(4, 4) << 7;	/* output tap 4 */
 	if (~action & 1) {return 1;}
-	grf[GRF_EMMCPHY_CON+6] = SET_BITS16(1, 1);
+	grf[GRF_EMMCPHY_CON+6] = SET_BITS16(1, 1);	/* power up */
 	return wait_u32(grf + GRF_EMMCPHY_STATUS, 0x40, 0x40, USECS(50), "EMMCPHY calibration");
 }
 
