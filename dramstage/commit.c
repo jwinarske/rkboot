@@ -11,7 +11,8 @@
 #include <rkgpio_regs.h>
 #include <rkpll.h>
 #include <rkcrypto_v1_regs.h>
-#include TF_A_HEADER_PATH
+#include TF_A_BL_COMMON_PATH
+#include TF_A_RK_PARAMS_PATH
 
 static image_info_t bl33_image = {
 	.image_base = 0x00600000,
@@ -32,6 +33,16 @@ static bl_params_node_t bl33_node = {
 	.image_id = BL33_IMAGE_ID,
 	.image_info = &bl33_image,
 	.ep_info = &bl33_ep,
+};
+
+static struct bl_aux_param_gpio reset_gpio = {
+	.h = {.type = BL_AUX_PARAM_RK_RESET_GPIO, .next = 0},
+	.gpio = {
+		.polarity = ARM_TF_GPIO_LEVEL_HIGH,
+		.direction = ARM_TF_GPIO_DIR_OUT,
+		.pull_mode = ARM_TF_GPIO_PULL_NONE,
+		.index = 1 * 32 + 6,	/* GPIO1A6 */
+	}
 };
 
 static bl_params_t bl_params = {
@@ -75,7 +86,7 @@ struct program_header {
 	u64 alignment;
 };
 
-typedef void (*bl31_entry)(bl_params_t *, u64, u64, u64);
+typedef void (*bl31_entry)(bl_params_t *, struct bl_aux_param_header *, u64, u64);
 
 static void load_elf(const struct elf_header *header) {
 	for_range(i, 0, 16) {
@@ -151,7 +162,7 @@ _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
 	stage_teardown(store);
 	fflush(stdout);
-	((bl31_entry)header->entry)(&bl_params, 0, 0, 0);
+	((bl31_entry)header->entry)(&bl_params, &reset_gpio.h, 0, 0);
 	puts("return\n");
 	halt_and_catch_fire();
 }

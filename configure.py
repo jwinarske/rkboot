@@ -174,7 +174,8 @@ if (bool(boot_media) or args.elfloader_initcpio) and not decompressors:
     args.elfloader_zstd = True
 
 if args.tf_a_headers:
-    flags['dramstage/commit'].append(shesc('-DTF_A_HEADER_PATH="'+cesc(path.join(args.tf_a_headers, "common/bl_common_exp.h"))+'"'))
+    flags['dramstage/commit'].append(shesc('-DTF_A_BL_COMMON_PATH="'+cesc(path.join(args.tf_a_headers, "common/bl_common_exp.h"))+'"'))
+    flags['dramstage/commit'].append(shesc('-DTF_A_RK_PARAMS_PATH="'+cesc(path.join(args.tf_a_headers, "plat/rockchip/common/plat_params_exp.h"))+'"'))
 elif boot_media or decompressors:
     print(
         "ERROR: booting a kernel requires TF-A support, which is enabled by providing --with-tf-a-headers.\n"
