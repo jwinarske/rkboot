@@ -22,6 +22,7 @@ static void write_cxd(u32 *dest, u32 a, u32 b, u32 c, u32 d) {
 static enum iost sdhci_set_clock(struct sdhci_state *st, u32 khz) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	struct sdhci_phy *phy = st->phy;
+	phy->setup(phy, SDHCI_PHY_STOP);
 	sdhci->clock_control = 0;
 	usleep(10);
 	u32 baseclock_mhz = st->caps >> 8 & 0xff;
