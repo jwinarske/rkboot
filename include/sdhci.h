@@ -19,7 +19,9 @@ struct sdhci_state {
 	volatile struct sdhci_regs *regs;
 	struct sdhci_phy *phy;
 	u64 caps;
+	u32 clock_khz;
 	u8 version;
+	unsigned ddr_active : 1;
 
 	_Atomic(u32) int_st;
 	_Atomic(struct sdhci_xfer *) active_xfer;

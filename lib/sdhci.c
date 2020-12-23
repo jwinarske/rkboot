@@ -19,7 +19,19 @@ static void write_cxd(u32 *dest, u32 a, u32 b, u32 c, u32 d) {
 	dest[3] = a << 8;
 }
 
-static enum iost sdhci_set_clock(struct sdhci_state *st, u32 khz) {
+static u16 get_hostctrl2_hs_mode(u32 khz, _Bool ddr) {
+	if (ddr) {
+		return khz <= 52000 ? SDHCI_HOSTCTRL2_DDR50
+			: SDHCI_HOSTCTRL2_HS400;
+	} else {
+		return khz <= 25000 ? SDHCI_HOSTCTRL2_SDR12 :
+			khz <= 50000 ? SDHCI_HOSTCTRL2_SDR25 :
+			khz <= 100000 ? SDHCI_HOSTCTRL2_SDR50
+			: SDHCI_HOSTCTRL2_SDR104;
+	}
+}
+
+static enum iost sdhci_set_clock(struct sdhci_state *st, u32 khz, _Bool ddr) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	struct sdhci_phy *phy = st->phy;
 	phy->setup(phy, SDHCI_PHY_STOP);
@@ -48,8 +60,13 @@ static enum iost sdhci_set_clock(struct sdhci_state *st, u32 khz) {
 	}
 	debug("clkctrl: 0x%04"PRIx16" ⇒ %"PRIu32" kHz\n", clkctrl, real_khz);
 	sdhci->clock_control = clkctrl;
+	st->clock_khz = real_khz;
+	st->ddr_active = ddr;
 	if (real_khz > 20000) {
 		sdhci->host_control1 |= SDHCI_HOSTCTRL1_HIGH_SPEED_MODE;
+		u16 timing_mode = get_hostctrl2_hs_mode(real_khz, ddr);
+		u16 host_control2 = sdhci->host_control2;
+		sdhci->host_control2 = (host_control2 & ~SDHCI_HOSTCTRL2_UHS_MASK) | timing_mode;
 	} else {
 		sdhci->host_control1 &= ~SDHCI_HOSTCTRL1_HIGH_SPEED_MODE;
 	}
@@ -84,6 +101,41 @@ static enum iost sdhci_read_ext_csd(volatile struct sdhci_regs *sdhci, struct sd
 	return IOST_OK;
 }
 
+static _Bool execute_training(struct sdhci_state *st) {
+	volatile struct sdhci_regs *sdhci = st->regs;
+	_Bool trained = 0;
+	sdhci->int_signal_enable = 0;
+	sdhci->block_size = 128;
+	sdhci->transfer_mode = SDHCI_TRANSMOD_READ;
+	u16 hs_mode = get_hostctrl2_hs_mode(st->clock_khz, st->ddr_active);
+	for_range(retries, 0, 10) {
+		sdhci->host_control2 = SDHCI_HOSTCTRL2_EXECUTE_TUNING | hs_mode;
+		u16 hostctrl2 = sdhci->host_control2;
+		info("hostctrl2: %"PRIx16"\n", hostctrl2);
+		do {
+			while (sdhci->present_state & SDHCI_PRESTS_CMD_INHIBIT) {sched_yield();}
+			sdhci->cmd = SDHCI_CMD(21) | SDHCI_R1 | SDHCI_CMD_DATA;
+			u32 int_st;
+			timestamp_t start = get_timestamp();
+			while (~(int_st = sdhci->int_st) & SDHCI_INT_BUFFER_READ_READY) {
+				if (~(hostctrl2 = sdhci->host_control2) & SDHCI_HOSTCTRL2_EXECUTE_TUNING) {break;}
+				if (get_timestamp() - start > MSECS(150)) {break;}
+				sched_yield();
+			}
+			sdhci->int_st = SDHCI_INT_BUFFER_READ_READY;
+		} while ((hostctrl2 = sdhci->host_control2) & SDHCI_HOSTCTRL2_EXECUTE_TUNING);
+		info("hostctrl2: %"PRIx8"\n", hostctrl2);
+		if (hostctrl2 & SDHCI_HOSTCTRL2_CLOCK_TUNED) {
+			trained = 1;
+			break;
+		}
+	}
+	sdhci->block_size = 512;
+	sdhci->int_signal_enable = 0xfffff0ff;
+	info("int_st %04"PRIx32"\n", sdhci->int_st);
+	return trained;
+}
+
 static void print_r1(const char *prefix, u32 r1, const char *suffix) {
 	static const char state_names[NUM_MMC_STATE][8] = {
 #define X(name) #name,
@@ -109,6 +161,41 @@ static void print_r1(const char *prefix, u32 r1, const char *suffix) {
 }
 
 #if CONFIG_SDHCI_HS
+static enum iost switch_timing(struct sdhci_state *st, u32 switch_arg, u32 khz, _Bool ddr, timestamp_t cmd6_timeout) {
+	volatile struct sdhci_regs *sdhci = st->regs;
+	enum iost res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b, switch_arg);
+	if (res != IOST_OK) {return IOST_LOCAL;}
+	res = sdhci_wait_state(st,
+		SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0,
+		cmd6_timeout, "CMD6"
+	);
+	if (res != IOST_OK) {return IOST_LOCAL;}
+	uint32_t r1 = sdhci->resp[0];
+	print_r1("CMD6 response: ", r1, "\n");
+
+	res = sdhci_set_clock(st, khz, ddr);
+	if (res != IOST_OK) {return IOST_LOCAL;}
+
+	res = sdhci_submit_cmd(st, SDHCI_CMD(13) | SDHCI_R1, 2 << 16);
+	if (res != IOST_OK) {return IOST_LOCAL;}
+	res = sdhci_wait_state(st,
+		SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0,
+		cmd6_timeout, "CMD13"
+	);
+	if (res != IOST_OK) {return IOST_LOCAL;}
+	print_r1("card status: ", sdhci->resp[0], "\n");
+	if (r1 & MMC_R1_SWITCH_ERR) {return IOST_INVALID;}
+	return IOST_OK;
+}
+
+static u32 sw_arg_timing(enum extcsd_hs_timing timing) {
+	return MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, timing);
+}
+
+static u32 sw_arg_buswidth(enum extcsd_bus_width buswidth) {
+	return MMC_SWITCH_SET_BYTE(EXTCSD_BUS_WIDTH, buswidth);
+}
+
 static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	enum iost res;
@@ -122,71 +209,25 @@ static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_card
 	info("card type: 0x%02"PRIx8"\n", card_type);
 	if (card_type & MMC_CARD_TYPE_HS200_1V8) {
 		infos("card supports HS200, trying to enable\n");
-		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
-			MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, MMC_TIMING_HS200)
-		))) {return res;}
-		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD6")) {return IOST_LOCAL;}
+		res = switch_timing(st, sw_arg_timing(MMC_TIMING_HS200), 200000, 0, cmd6_timeout);
 		if (res != IOST_OK) {return res;}
-		info("CMD6 response: %08"PRIx32"\n", sdhci->resp[0]);
-		/* FIXME: seems to hang if 200MHz is used, unless the multiplier in sdhci_set_clock is uncommented, in which case 100MHz is broken, and 200MHz seems to run extremely slowly */
-		if (IOST_OK != (res =sdhci_set_clock(st, 100000))) {return res;}
-		usleep(100);
-		sdhci->host_control2 = SDHCI_HOSTCTRL2_SDR104;
-		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(13) | SDHCI_R1, 2 << 16))) {return res;}
-		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD13")) {return IOST_LOCAL;}
-		info("CSR: %08"PRIx32"\n", sdhci->resp[0]);
-		_Bool trained = 0;
-		sdhci->int_signal_enable = 0;
-		sdhci->block_size = 128;
-		sdhci->transfer_mode = SDHCI_TRANSMOD_READ;
-		for_range(retries, 0, 10) {
-			sdhci->host_control2 = SDHCI_HOSTCTRL2_EXECUTE_TUNING | SDHCI_HOSTCTRL2_SDR104;
-			u16 hostctrl2 = sdhci->host_control2;
-			info("hostctrl2: %"PRIx16"\n", hostctrl2);
-			do {
-				while (sdhci->present_state & SDHCI_PRESTS_CMD_INHIBIT) {sched_yield();}
-				sdhci->cmd = SDHCI_CMD(21) | SDHCI_R1 | SDHCI_CMD_DATA;
-				u32 int_st;
-				timestamp_t start = get_timestamp();
-				while (~(int_st = sdhci->int_st) & SDHCI_INT_BUFFER_READ_READY) {
-					if (~(hostctrl2 = sdhci->host_control2) & SDHCI_HOSTCTRL2_EXECUTE_TUNING) {break;}
-					if (get_timestamp() - start > MSECS(150)) {break;}
-					sched_yield();
-				}
-				sdhci->int_st = SDHCI_INT_BUFFER_READ_READY;
-			} while ((hostctrl2 = sdhci->host_control2) & SDHCI_HOSTCTRL2_EXECUTE_TUNING);
-			info("hostctrl2: %"PRIx8"\n", hostctrl2);
-			if (hostctrl2 & SDHCI_HOSTCTRL2_CLOCK_TUNED) {
-				trained = 1;
-				break;
-			}
+		if (!execute_training(st)) {
+			info("tuning failed, switching back to normal\n");
+			res = switch_timing(st, sw_arg_timing(MMC_TIMING_BC), 20000, 0, cmd6_timeout);
+			if (res != IOST_OK) {return res;}
 		}
-		sdhci->block_size = 512;
-		sdhci->int_signal_enable = 0xfffff0ff;
-		info("int_st %04"PRIx32"\n", sdhci->int_st);
-		if (trained) {goto out;}
-		info("tuning failed, switching back to normal\n");
-		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
-			MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, MMC_TIMING_BC)
-		))) {return res;}
-		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD6")) {return IOST_LOCAL;}
-		if (res != IOST_OK) {return res;}
-		info("CMD6 response: %08"PRIx32"\n", sdhci->resp[0]);
-		if (IOST_OK != (res =sdhci_set_clock(st, 20000))) {return res;}
 	}
-	if (card_type & (MMC_CARD_TYPE_HS26 | MMC_CARD_TYPE_HS52)) {
+	if (st->clock_khz <= 20000 && (card_type & (MMC_CARD_TYPE_HS26 | MMC_CARD_TYPE_HS52))) {
+		u32 hs_khz = card_type & MMC_CARD_TYPE_HS52 ? 52000 : 26000;
 		infos("card supports HS, trying to enable\n");
-		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b,
-			MMC_SWITCH_SET_BYTE(EXTCSD_HS_TIMING, MMC_TIMING_HS)
-		))) {return res;}
-		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD6")) {return IOST_LOCAL;}
+		res = switch_timing(st, sw_arg_timing(MMC_TIMING_HS), hs_khz, 0, cmd6_timeout);
 		if (res != IOST_OK) {return res;}
-		if (IOST_OK != (res =sdhci_set_clock(st, card_type & MMC_CARD_TYPE_HS52 ? 52000 : 26000))) {return res;}
-		if (IOST_GLOBAL <= (res = sdhci_submit_cmd(st, SDHCI_CMD(13) | SDHCI_R1, 2 << 16))) {return res;}
-		if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT | SDHCI_PRESTS_DAT_INHIBIT, 0, cmd6_timeout, "CMD13")) {return IOST_LOCAL;}
-		info("CSR: %08"PRIx32"\n", sdhci->resp[0]);
+		const u8 ddr52_timings = MMC_CARD_TYPE_HS52 | MMC_CARD_TYPE_DDR52_1V8;
+		if ((card_type & ddr52_timings) == ddr52_timings) {
+			res = switch_timing(st, sw_arg_buswidth(MMC_BUS_WIDTH_DDR8), 52000, 1, cmd6_timeout);
+			if (res != IOST_OK) {return res;}
+		}
 	}
-out:
 	return sdhci_read_ext_csd(sdhci, st, card);
 }
 #endif
@@ -225,7 +266,7 @@ enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	);
 	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(3) | SDHCI_R1, 2 << 16)) {return IOST_LOCAL;}
 	if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT, 0, USECS(1000), "CMD3")) {return IOST_LOCAL;}
-	if (IOST_OK != (res = sdhci_set_clock(st, 20000))) {return res;}
+	if (IOST_OK != (res = sdhci_set_clock(st, 20000, 0))) {return res;}
 	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(9) | SDHCI_R2, 2 << 16)) {return IOST_LOCAL;}
 	if (IOST_OK != sdhci_wait_state(st, SDHCI_PRESTS_CMD_INHIBIT, 0, USECS(10000), "CMD9")) {return IOST_LOCAL;}
 	write_cxd(card->cxd, sdhci->resp[0], sdhci->resp[1], sdhci->resp[2], sdhci->resp[3]);
