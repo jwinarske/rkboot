@@ -39,6 +39,63 @@ enum extcsd_hs_timing {
 	MMC_TIMING_HS400,
 };
 
+#define DEFINE_MMC_R1\
+	X(APP_CMD, 5)\
+	X(EXCEPTION_EVENT, 6)\
+	X(SWITCH_ERR, 7)\
+	X(READY_FOR_DATA, 8)\
+	/* bits 9:12: current state, see enum mmc_state */\
+	X(ERASE_RESET, 13)\
+	X(CARD_ECC_DIS, 14)\
+	X(WP_ERASE_SKIP, 15)\
+	X(CXD_OVERWRITE, 16)\
+	X(OVERRUN, 17)\
+	X(UNDERRUN, 18)\
+	X(ERR, 19)\
+	X(CC_ERR, 20)\
+	X(CARD_ECC_FAILED, 21)\
+	X(ILLEGAL_CMD, 22)\
+	X(COM_CRC_ERR, 23)\
+	X(LOCK_ERR, 24)\
+	X(LOCKED, 25)\
+	X(WP_VIOLATION, 26)\
+	X(ERASE_PARAM, 27)\
+	X(ERASE_SEQ_ERR, 28)\
+	X(BLOCK_LEN_ERR, 29)\
+	X(ADDRESS_ERR, 30)\
+	X(OUT_OF_RANGE, 31)
+
+enum mmc_r1 {
+#define X(name, bit) MMC_R1_##name = 1 << bit,
+	DEFINE_MMC_R1
+#undef X
+};
+
+enum {
+#define X(name, bit) MMC_R1_POS_##name,
+	DEFINE_MMC_R1
+#undef X
+	NUM_MMC_R1_POS
+};
+
+#define DEFINE_MMC_STATE\
+	X(IDLE)\
+	X(READY)\
+	X(IDENT)\
+	X(STBY)\
+	X(TRAN)\
+	X(DATA)\
+	X(RCV)\
+	X(PRG)\
+	X(DIS)\
+
+enum mmc_state {
+#define X(name) MMC_STATE_##name,
+	DEFINE_MMC_STATE
+#undef X
+	NUM_MMC_STATE
+};
+
 struct mmc_cardinfo {
 	u32 rocr;
 	u32 cxd[8];

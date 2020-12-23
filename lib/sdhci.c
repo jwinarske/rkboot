@@ -84,6 +84,30 @@ static enum iost sdhci_read_ext_csd(volatile struct sdhci_regs *sdhci, struct sd
 	return IOST_OK;
 }
 
+static void print_r1(const char *prefix, u32 r1, const char *suffix) {
+	static const char state_names[NUM_MMC_STATE][8] = {
+#define X(name) #name,
+		DEFINE_MMC_STATE
+#undef X
+	};
+	u32 state = r1 >> 9 & 15;
+	printf("%s%08"PRIx32" %s  ", prefix, r1, state < NUM_MMC_STATE ? state_names[state] : "unknown state");
+	static const struct {
+		u8 bit;
+		char name[15];
+	} bit_names[NUM_MMC_R1_POS] = {
+#define X(name, bit) {bit, #name},
+		DEFINE_MMC_R1
+#undef X
+	};
+	for_array(i, bit_names) {
+		if (r1 & 1 << bit_names[i].bit) {
+			printf("%s ", bit_names[i].name);
+		}
+	}
+	infos(suffix);
+}
+
 #if CONFIG_SDHCI_HS
 static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	volatile struct sdhci_regs *sdhci = st->regs;
