@@ -159,7 +159,7 @@ static size_t decode_block(struct decompressor_state *state,  const u8 *in,  con
 		st->st.decode = decode_trailer;
 		return NUM_DECODE_STATUS + 4;
 	}
-	info("block size %"PRIu32" (0x%"PRIx32")\n", block_size, actual_block_size);
+	debug("block size %"PRIu32" (0x%"PRIx32")\n", block_size, actual_block_size);
 	check(actual_block_size <= st->max_block_size, "block size of %"PRIu32" too large\n", actual_block_size);
 	if (unlikely(end - in < actual_block_size)) {return DECODE_NEED_MORE_DATA;}
 	size_t total_size = actual_block_size + 4;
