@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include <defs.h>
+#include <runqueue.h>
 
 struct sdram_geometry {
 	u8 csmask;
@@ -34,7 +35,8 @@ struct ddrinit_state {
 	struct sdram_geometry geo[2];
 	u8 training_idx[2];
 	u32 training_flags;
-	_Atomic(size_t) sync;
+	_Atomic(u8) sync;
+	struct sched_runnable_list waiters;
 };
 
 void ddrinit_configure(struct ddrinit_state *st);

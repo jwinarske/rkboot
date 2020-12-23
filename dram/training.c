@@ -177,17 +177,7 @@ static void training_task(struct ddrinit_state *st, u32 ch) {
 	size_t bit = 1 << ch;
 	size_t res = atomic_fetch_or_explicit(&st->sync, bit, memory_order_seq_cst) | bit;
 	printf("sync%zu\n", res);
-	if (res != 3) {return;}
-	logs("finished.\n");
-	/* 256B interleaving */
-	ddrinit_set_channel_stride(0xd);
-	__asm__ volatile("dsb ish");
-	mmu_unmap_range(0xffa80000, 0xffa8ffff);
-	for_range(bit, 10, 32) {
-		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
-	}
-	mmu_unmap_range(0, 0xf7ffffff);
-	rk3399_set_init_flags(RK3399_INIT_DRAM_READY);
+	sched_queue_list(CURRENT_RUNQUEUE, &st->waiters);
 }
 
 void ddrinit_train(struct ddrinit_state *st) {
@@ -200,4 +190,11 @@ void ddrinit_train(struct ddrinit_state *st) {
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);
 	training_task(st, 0);
+
+	while (1) {
+		u8 val = atomic_load_explicit(&st->sync, memory_order_relaxed);
+		if (val == 3) {break;}
+		printf("sleeping on sync=0x%08"PRIx32"\n", val);
+		call_cc_ptr2_int2(sched_finish_u8, &st->sync, &st->waiters, 3, val);
+	}
 }

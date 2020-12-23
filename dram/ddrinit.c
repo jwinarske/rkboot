@@ -302,18 +302,17 @@ static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
 	if (mr_value >> 16) {geo->width = 2;}
 }
 
-static void both_channels_ready(struct ddrinit_state *st) {
-	encode_dram_size(st->geo);
-
+static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct odt_preset *preset, const struct phy_update *phy_upd) {
+	atomic_store_explicit(&st->sync, 0, memory_order_release);
 	/* disable DDRC interrupts during switch, since the handler will try to read from registers behind an idled bus */
 	gicv2_disable_spi(gic500d, 35);
 	gicv2_disable_spi(gic500d, 36);
 	gicv2_wait_disabled(gic500d);
 	atomic_signal_fence(memory_order_acquire);
 
-	freq_step(800, 1, 0, &odt_933mhz, &phy_800mhz);
+	freq_step(mhz, ctl_f, phy_f, preset, phy_upd);
 	u32 flags = 0;
-	if (phy_800mhz.dslice_update[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
+	if (phy_upd->dslice_update[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
 	st->training_flags = flags;
 	for_channel(c) {
 		volatile u32 *pctl = pctl_base_for(c);
@@ -325,8 +324,24 @@ static void both_channels_ready(struct ddrinit_state *st) {
 	gicv2_enable_spi(gic500d, 35);
 	gicv2_enable_spi(gic500d, 36);
 
-	atomic_fetch_or_explicit(&rk3399_init_flags, RK3399_INIT_DRAM_TRAINING, memory_order_release);
 	ddrinit_train(st);
+}
+
+static void both_channels_ready(struct ddrinit_state *st) {
+	encode_dram_size(st->geo);
+	switch_and_train(st, 400, 0, 1, &odt_600mhz, &phy_400mhz);
+	switch_and_train(st, 800, 1, 0, &odt_933mhz, &phy_800mhz);
+	rk3399_set_init_flags(RK3399_INIT_DRAM_TRAINING);
+	logs("finished.\n");
+	/* 256B interleaving */
+	ddrinit_set_channel_stride(0xd);
+	__asm__ volatile("dsb ish");
+	mmu_unmap_range(0xffa80000, 0xffa8ffff);
+	for_range(bit, 10, 32) {
+		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
+	}
+	mmu_unmap_range(0, 0xf7ffffff);
+	rk3399_set_init_flags(RK3399_INIT_DRAM_READY);
 }
 
 void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
