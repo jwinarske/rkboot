@@ -160,7 +160,6 @@ static void print_r1(const char *prefix, u32 r1, const char *suffix) {
 	infos(suffix);
 }
 
-#if CONFIG_SDHCI_HS
 static enum iost switch_timing(struct sdhci_state *st, u32 switch_arg, u32 khz, _Bool ddr, timestamp_t cmd6_timeout) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	enum iost res = sdhci_submit_cmd(st, SDHCI_CMD(6) | SDHCI_R1b, switch_arg);
@@ -230,7 +229,6 @@ static enum iost sdhci_try_higher_speeds(struct sdhci_state *st, struct mmc_card
 	}
 	return sdhci_read_ext_csd(sdhci, st, card);
 }
-#endif
 
 enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	volatile struct sdhci_regs *sdhci = st->regs;
@@ -288,9 +286,7 @@ enum iost sdhci_init_late(struct sdhci_state *st, struct mmc_cardinfo *card) {
 	) | SDHCI_HOSTCTRL1_BUS_WIDTH_8 | SDHCI_HOSTCTRL1_ADMA2_32;
 	sdhci->block_size = 512;
 	if (IOST_OK != (res = sdhci_read_ext_csd(sdhci, st, card))) {return res;}
-#if CONFIG_SDHCI_HS
 	if (IOST_LOCAL >= (res = sdhci_try_higher_speeds(st, card))) {return res;}
-#endif
 	return IOST_OK;
 }
 
