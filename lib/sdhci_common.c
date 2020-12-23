@@ -52,7 +52,7 @@ enum iost sdhci_wait_state(struct sdhci_state *st, u32 mask, u32 expected, times
 			info("%s timeout: reg0x%08"PRIx32" mask0x%08"PRIx32" expected0x%08"PRIx32"\n", name, prests, mask, expected);
 			return IOST_TRANSIENT;
 		}
-		printf("sleeping on PRESTS=0x%08"PRIx32"\n", prests);
+		debug("sleeping on PRESTS=0x%08"PRIx32"\n", prests);
 		call_cc_ptr2_int2(sched_finish_u32, &sdhci->present_state, &st->interrupt_waiters, mask, mask & prests);
 	}
 	return IOST_OK;
