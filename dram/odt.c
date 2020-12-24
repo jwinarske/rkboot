@@ -60,24 +60,9 @@ const struct odt_preset odt_933mhz = {
 void set_drive_strength(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
 	u32 tsel_dq = (u32)odt->ds[ODT_WR_DQ][ODT_N]
 		| (u32)odt->ds[ODT_WR_DQ][ODT_P] << 4;
-	u32 tsel_ca = (u32)odt->ds[ODT_WR_CA][ODT_N]
-		| (u32)odt->ds[ODT_WR_CA][ODT_P] << 4;
 	volatile u32 *ca_base = phy + layout->ca_offs;
 
 	u32 delta = layout->global_diff;
-	clrset32(phy + (928 - delta), 0xff, tsel_ca);
-	if (odt->flags & ODT_SET_RST_DRIVE) {
-		clrset32(phy + (937 - delta), 0xff, tsel_ca);
-	}
-	clrset32(phy + (935 - delta), 0xff, tsel_ca);
-
-	u32 tsel_ckcs = (u32)odt->ds[ODT_CKCS][ODT_N]
-		| (u32)odt->ds[ODT_CKCS][ODT_P] << 4;
-	clrset32(phy + (939 - delta), 0xff, tsel_ckcs);
-	clrset32(phy + (929 - delta), 0xff, tsel_ckcs);
-
-	clrset32(phy + (924 - delta), 0xff, tsel_ca);
-
 	clrset32(phy + (925 - delta), 0xff, tsel_dq);
 
 	u32 enable = odt->flags & ODT_TSEL_ENABLE_MASK;

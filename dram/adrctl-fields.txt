@@ -88,9 +88,8 @@ b1	tDFI phy WrDelay = 0
 # I theorize that the 2-bit unknown subfields are the same (but they're never used apparently) and that the boost and slew subfields can be separated into two 3/4-bit parts for positive and negative, but I don't know if that knowledge could be useful (or even tested)
 sync 27+25 27+25
 b23	pad fdbk drive: packed	# 924
-# uses CA settings
-!p4	drive strength negative = 1
-!p4	drive strength positive = 1
+# use the same value as for CA. see TSel in dslice for values
+!p8	TSel select = 0xef
 !p6	slew = 4
 !p1	RX CM input = 0
 !p3	drive mode = 0
@@ -120,10 +119,10 @@ b23	pad DQS drive: packed	# 927
 # set for training and nothing else apparently
 !p1	RPull = 0
 
-b29	pad clk drive: packed	# 928
-# uses CA settings
-!p4	drive strength negative = 1
-!p4	drive strength positive = 1
+b29	pad addr drive: packed	# 928
+# see TSel in aslice. not sure what the difference to this setting is.
+# the values should be the same
+!p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = 0
@@ -132,9 +131,8 @@ b29	pad clk drive: packed	# 928
 !p1	unknown = 0
 
 b31	pad clk drive: packed	# 929
-# uses CKCS settings
-!p4	drive strength negative = 1
-!p4	drive strength positive = 1
+# use the same value as for CS. see TSel in dslice for values
+!p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = 0
@@ -162,9 +160,8 @@ b18	pad clk term: packed	# 934
 !p1	write ODT enable = 0
 
 b29	pad CKE drive: packed	# 935
-# uses CA settings
-!p4	drive strength negative = 1
-!p4	drive strength positive = 1
+# use the same value as for CA. see TSel in dslice for values
+!p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = 0
@@ -178,8 +175,7 @@ b18	pad CKE term: packed	# 936
 
 b29	pad RST drive: packed	# 937
 # uses CA settings, set to high impedance for channel 1 during init (366-ball package workaround)
-!p4	drive strength negative = 1
-!p4	drive strength positive = 1
+!p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = 0
@@ -192,9 +188,8 @@ b18	pad RST term: packed	# 938
 !p1	write ODT enable = 0
 
 b29	pad CS drive: packed	# 939
-# uses CKCS settings
-!p4	drive strength negative = 1
-!p4	drive strength positive = 1
+# use the same value as for CK. see TSel in dslice for values
+!p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = 0

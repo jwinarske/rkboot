@@ -104,6 +104,7 @@ struct phy_update {
 	u32 dslice5_7[3];	/* ODT settings and two-cycle preamble */
 	u32 dslice59_90[32];	/* trainable (?) timing values */
 	u32 grp_slave_delay[3]; /* PHY916ff */
+	u32 adrctl28_44[17];	/* ODT settings */
 };
 
 extern const struct phy_layout {
