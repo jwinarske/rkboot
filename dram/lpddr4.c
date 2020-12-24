@@ -6,7 +6,6 @@ void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *
 	debug("odt %zx\n", (u64)odt);
 	odt->flags = ODT_TSEL_CLEAN | ODT_SET_BOOST_SLEW | ODT_SET_RX_CM_INPUT
 		| ODT_RD_EN * (preset->phy.rd_odt_en == 1);
-	odt->soc_odt = preset->phy.soc_odt;
 	odt->padding = 0;
 	odt->padding2 = 0;
 	odt->ds[ODT_RD][ODT_N] = preset->phy.rd_odt;
@@ -43,5 +42,5 @@ void lpddr4_set_odt(volatile u32 *pctl, volatile u32 *pi, u32 freqset, const str
 void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct odt_settings *odt) {
 	lpddr4_set_odt(pctl, pi, 2, &odt_50mhz);
 
-	set_drive_strength(pctl, (u32*)phy, &cfg_layout, odt);
+	set_drive_strength((u32*)phy, &cfg_layout, odt);
 }

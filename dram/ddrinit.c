@@ -171,7 +171,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_p
 		update_phy_bank(phy, phy_bank, phy_upd, 1);
 		struct odt_settings odt;
 		lpddr4_get_odt_settings(&odt, preset);
-		set_drive_strength(pctl, &phy->dslice[0][0], &reg_layout, &odt);
+		set_drive_strength(&phy->dslice[0][0], &reg_layout, &odt);
 		set_phy_io(&phy->dslice[0][0], reg_layout.global_diff, &odt);
 		lpddr4_set_odt(pctl, pi, ctl_freqset, preset);
 		if (!(phy_upd->dslice_update[86 - 59] & 0x0400)) {

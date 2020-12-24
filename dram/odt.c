@@ -18,7 +18,6 @@ const struct odt_preset odt_50mhz = {
 		.wr_ckcs_drv = ODT_DS_40,
 		.rd_vref = 41,
 		.rd_odt_en = 0,
-		.soc_odt = 0,
 	}
 };
 
@@ -37,7 +36,6 @@ const struct odt_preset odt_600mhz = {
 		.wr_ckcs_drv = ODT_DS_40,
 		.rd_vref = 32,
 		.rd_odt_en = 0,
-		.soc_odt = 0
 	}
 };
 
@@ -56,21 +54,10 @@ const struct odt_preset odt_933mhz = {
 		.wr_ckcs_drv = ODT_DS_40,
 		.rd_vref = 20,
 		.rd_odt_en = 1,
-		.soc_odt = 3
 	}
 };
 
-#define CS0_MR22_VAL		0
-#define CS1_MR22_VAL		3
-
-void set_drive_strength(volatile u32 *pctl, volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
-	u64 cs0_op = SET_BITS32(8, odt->soc_odt | CS0_MR22_VAL << 3);
-	apply32v(pctl+145, cs0_op);
-	apply32v(pctl+146, cs0_op << 16 | cs0_op);
-	u64 cs1_op = SET_BITS32(8, odt->soc_odt | CS1_MR22_VAL << 3);
-	apply32v(pctl+159, cs1_op << 16);
-	apply32v(pctl+160, cs1_op << 16 | cs1_op);
-
+void set_drive_strength(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
 	u32 tsel_dq = (u32)odt->ds[ODT_WR_DQ][ODT_N]
 		| (u32)odt->ds[ODT_WR_DQ][ODT_P] << 4;
 	u32 tsel_val = (u32)odt->ds[ODT_RD][ODT_N]
