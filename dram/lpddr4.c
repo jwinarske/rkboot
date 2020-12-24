@@ -44,23 +44,4 @@ void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct 
 	lpddr4_set_odt(pctl, pi, 2, &odt_50mhz);
 
 	set_drive_strength(pctl, (u32*)phy, &cfg_layout, odt);
-	/*set_phy_io((u32 *)phy, &cfg_layout, &odt);*/
-	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
-	for_array(i, arr) {debug("%s n=%x p=%x\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
-
-	/* read 2-cycle preamble */
-	pctl[200] |= 3 << 24;
-	phy->dslice[7] |= 3 << 24;
-	/* boot frequency 2-cycle preamble */
-	phy->dslice[2] |= 3 << 16;
-	
-	pi[45] |= 3 << 8;
-	pi[58] |= 1;
-
-	/* disable power reduction to use bypass mode */
-	phy->dslice[10] |= 1 << 16;
-	pi[45] |= 1 << 24;
-	pi[61] |= 1 << 24;
-	pi[76] |= 1 << 24;
-	pi[77] |= 1;
 }

@@ -5,7 +5,7 @@ databit 0+0 0+32
 b4	DM swizzle = 8
 b11	clk wr bypass slave delay = 0x4f0
 b10	RdDQS gate bypass slave delay = 0x159
-b2	bypass two cyc preamble = 2
+b2	bypass two cyc preamble = 3
 b1	clk bypass override = 0
 databit 2+25 4+29
 	# see aslice shifts
@@ -58,7 +58,8 @@ b4	LP4 boot RdData en TSel dly = 0
 b4	LP4 boot RPtr update = 4
 b4	LP4 boot RdDQS latency adjust = 0
 b7	lpbk control = 0
-b1	slice pwr rdc disable = 0
+# power reduction must be disabled in DLL bypass mode (≤125 MHz)
+b1	slice pwr rdc disable = 1 0 (MHz 125 <) sel
 b10	RdDQS DQ bypass slave delay = 384
 b5	gate error delay select = 23
 *b1	snap obs regs = 0

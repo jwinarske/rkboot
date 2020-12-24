@@ -426,7 +426,8 @@ b1	in order accept = 1
 b1	controller busy: ro
 b1	CtrlUpd req = 0
 b1	CtrlUpd req per ARef en = 1
-b2	preamble support = 2
+# one bit is probably for reads, one for writes
+b2	preamble support = 3
 b1	rd preamble training en = 1
 b1	wr DBI en = 0
 b1	rd DBI en = 0

@@ -65,9 +65,9 @@ freq 42+28 45+7
 	b6	additive lat = 0
 	# in half-cycles
 	b7	CASLat lin = 2RL_nDBI
-b2	preamble support = 2
+b2	preamble support = 3
 *b1	ARefresh = 0
-b1	MCARef forward only = 0
+b1	MCARef forward only = 1 0 (MHz 150 <) sel
 freq 45+25 48+32
 	# as for PCTL
 	<b10	tRFC = 1tRFC
@@ -99,8 +99,8 @@ b7	SW WDQLvl VRef = 0
 *b1	sequential lvl req = 0
 b1	DFS period en = 0
 b1	SRE period en = 0
-# counter to the recommendation for LPDDR4 in the docs
-b1	DFI4.0 polarity = 0
+# as per the recommendation for LPDDR4 in the docs
+b1	DFI4.0 polarity = 1
 # 0: 32bit bus, 1: 16bit bus
 b1	16bit DRAM connect = 1
 freq 58+9 59+4
@@ -118,7 +118,7 @@ b16	WrLvl interval = 0
 b1	WrLvl periodic = 0
 b1	WrLvl on SRef exit = 0
 b4	WrLvl resp mask = 0
-b1	WrLvl rotate = 0
+b1	WrLvl rotate = 1 0 (MHz 150 <) sel
 # documented as 2 bits, but duplicated for LPDDR4
 b4	WrLvl CS map = 0xf
 b2	WrLvl error status: packed
@@ -163,8 +163,8 @@ b1	RdLvl on SRef exit = 0
 b1	RdLvl gate periodic = 0
 b1	RdLvl gate on SRef exit = 0
 b8	reserved = 0
-b1	RdLvl rotate = 0
-b1	RdLvl gate rotate = 0
+b1	RdLvl rotate = 1 0 (MHz 150 <) sel
+b1	RdLvl gate rotate = 1 0 (MHz 150 <) sel
 # documented as 2 bits, but duplicated for LPDDR4
 b4	RdLvl CS map = 0xf
 # documented as 2 bits, but duplicated for LPDDR4
