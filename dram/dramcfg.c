@@ -37,37 +37,35 @@ struct dram_cfg init_cfg = {
 };
 
 const struct phy_update phy_400mhz = {
-	.two_cycle_preamble = 3,
 	.wraddr_shift0123 = 0,
 	.wraddr_shift45 = 0,
 	.negedge_pll_switch = 1,
 	.grp_shift01 = 0,
 	.pll_ctrl = 0x03221302,
-	.dslice_update = {
-#include <dslice_f2.gen.c>
-	},
-	.slave_master_delays = {
+	.dslice5_7 = {
+#include <dslice5_7_f2.gen.c>
+	}, .dslice59_90 = {
+#include <dslice59_90_f2.gen.c>
+	}, .slave_master_delays = {
 #include <slave_master_delays_f2.gen.c>
-	},
-	.grp_slave_delay = {
+	}, .grp_slave_delay = {
 #include <grp_slave_delay_f2.gen.c>
 	},
 };
 
 const struct phy_update phy_800mhz = {
-	.two_cycle_preamble = 3,
 	.wraddr_shift0123 = 0,
 	.wraddr_shift45 = 0,
 	.negedge_pll_switch = 0,
 	.grp_shift01 = 0,
 	.pll_ctrl = 0x01221102,
-	.dslice_update = {
-#include <dslice_f1.gen.c>
-	},
-	.slave_master_delays = {
+	.dslice5_7 = {
+#include <dslice5_7_f1.gen.c>
+	}, .dslice59_90 = {
+#include <dslice59_90_f1.gen.c>
+	}, .slave_master_delays = {
 #include <slave_master_delays_f1.gen.c>
-	},
-	.grp_slave_delay = {
+	}, .grp_slave_delay = {
 #include <grp_slave_delay_f1.gen.c>
 	},
 };

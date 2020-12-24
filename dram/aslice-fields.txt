@@ -68,7 +68,8 @@ b6	seg mask = aslice(0, 0, 0x10)
 b6	CALvl train mask = aslice(0x3f, 0, 0)
 b6	reserved = 0
 b16	obsolete = 0
-!b8	TSel select = 0x55
+# see the TSel fields in dslice
+!b8	TSel select = 0xef
 addrbit 32+8 35+11
 	!b11	clk wr slave delay = 0x300
 b4	SW master mode: packed

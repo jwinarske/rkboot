@@ -96,13 +96,13 @@ struct phy_cfg {
 
 struct phy_update {
 	_Bool negedge_pll_switch;	/* PHY913 */
-	u8 two_cycle_preamble;	/* dslice+7 */
 	u16 grp_shift01;	/* PHY896 */
 	u16 wraddr_shift45; /* aslice+1 */
 	u32 pll_ctrl; /* PHY911 */
 	u32 wraddr_shift0123; /* aslice+0 */
 	u32 slave_master_delays[6]; /* aslice+32ff */
-	u32 dslice_update[32]; /* dslice+59ff */
+	u32 dslice5_7[3];	/* ODT settings and two-cycle preamble */
+	u32 dslice59_90[32];	/* trainable (?) timing values */
 	u32 grp_slave_delay[3]; /* PHY916ff */
 };
 

@@ -110,14 +110,14 @@ static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struc
 		copy_reg_range(upd->slave_master_delays, &phy->aslice[i][32], 6);
 	}
 	for_dslice(i) {
-		apply32v(&phy->dslice[i][7], SET_BITS32(2, upd->two_cycle_preamble) << 24);
-		copy_reg_range(upd->dslice_update, &phy->dslice[i][59], 9);
-		clrset32(&phy->dslice[i][68], 0xfffffc00, upd->dslice_update[9] & 0xfffffc00);
-		copy_reg_range(&upd->dslice_update[10], &phy->dslice[i][69], 13);
+		copy_reg_range(upd->dslice5_7, &phy->dslice[i][5], 3);
+		copy_reg_range(upd->dslice59_90, &phy->dslice[i][59], 9);
+		clrset32(&phy->dslice[i][68], 0xfffffc00, upd->dslice59_90[9] & 0xfffffc00);
+		copy_reg_range(&upd->dslice59_90[10], &phy->dslice[i][69], 13);
 		/* one word unused (reserved) */
-		phy->dslice[i][83] = upd->dslice_update[24] + 0x00100000;
-		phy->dslice[i][84] = upd->dslice_update[25] + 0x1000;
-		copy_reg_range(&upd->dslice_update[26], &phy->dslice[i][85], 6);
+		phy->dslice[i][83] = upd->dslice59_90[24] + 0x00100000;
+		phy->dslice[i][84] = upd->dslice59_90[25] + 0x1000;
+		copy_reg_range(&upd->dslice59_90[26], &phy->dslice[i][85], 6);
 	}
 
 	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
@@ -176,7 +176,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_p
 		if (mhz <= 125) {	/* DLL bypass mode, disable slice power reduction */
 			for_dslice(i) {phy->dslice[i][10] |= 1 << 16;}
 		}
-		if (phy_upd->dslice_update[84 - 59] & (1 << 16)) {
+		if (phy_upd->dslice59_90[84 - 59] & (1 << 16)) {
 			u32 val = pctl[217]; /* FIXME: should depend on freq set */
 			if (((val >> 16) & 0x1f) < 8) {
 				pctl[217] = (val & 0xff70ffff) | (8 << 16);
@@ -317,7 +317,7 @@ static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 p
 
 	freq_step(mhz, ctl_f, phy_f, preset, phy_upd);
 	u32 flags = 0;
-	if (phy_upd->dslice_update[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
+	if (phy_upd->dslice59_90[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
 	st->training_flags = flags;
 	for_channel(c) {
 		volatile u32 *pctl = pctl_base_for(c);

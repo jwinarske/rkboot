@@ -60,25 +60,9 @@ const struct odt_preset odt_933mhz = {
 void set_drive_strength(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
 	u32 tsel_dq = (u32)odt->ds[ODT_WR_DQ][ODT_N]
 		| (u32)odt->ds[ODT_WR_DQ][ODT_P] << 4;
-	u32 tsel_val = (u32)odt->ds[ODT_RD][ODT_N]
-		| (u32)odt->ds[ODT_RD][ODT_P] << 4
-		| tsel_dq << 8
-		| (u32)odt->ds[ODT_IDLE][ODT_N] << 16
-		| (u32)odt->ds[ODT_IDLE][ODT_P] << 20;
-	for_dslice(i) {clrset32(phy+layout->dslice*i + 6, 0xffffff, tsel_val);}
-	for_dslice(i) {clrset32(phy+layout->dslice*i + 7, 0xffffff, tsel_val);}
-
-	static const char *const arr[] = {"rd", "idle", "dq", "ca", "ckcs"};
-	for_array(i, arr) {debug("%s n=%x p=%x\n", arr[i], (u32)odt->ds[i][ODT_N], (u32)odt->ds[i][ODT_P]);}
-	
 	u32 tsel_ca = (u32)odt->ds[ODT_WR_CA][ODT_N]
 		| (u32)odt->ds[ODT_WR_CA][ODT_P] << 4;
 	volatile u32 *ca_base = phy + layout->ca_offs;
-	if (odt->flags & ODT_TSEL_CLEAN) {
-		for_aslice(i) {ca_base[layout->aslice * i + 32] = 0x30000 | tsel_ca;}
-	} else {
-		for_aslice(i) {clrset32(ca_base + layout->aslice * i + 32, 0xff, tsel_ca);}
-	}
 
 	u32 delta = layout->global_diff;
 	clrset32(phy + (928 - delta), 0xff, tsel_ca);
@@ -86,7 +70,7 @@ void set_drive_strength(volatile u32 *phy, const struct phy_layout *layout, cons
 		clrset32(phy + (937 - delta), 0xff, tsel_ca);
 	}
 	clrset32(phy + (935 - delta), 0xff, tsel_ca);
-	
+
 	u32 tsel_ckcs = (u32)odt->ds[ODT_CKCS][ODT_N]
 		| (u32)odt->ds[ODT_CKCS][ODT_P] << 4;
 	clrset32(phy + (939 - delta), 0xff, tsel_ckcs);
