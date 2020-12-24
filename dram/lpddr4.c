@@ -31,16 +31,6 @@ void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *
 	}
 }
 
-void lpddr4_set_odt(volatile u32 *pctl, volatile u32 *pi, u32 freqset, const struct odt_preset *preset) {
-	mr_adjust(pctl, pi, &dq_odt_adj, freqset, preset->dram.dq_odt);
-	mr_adjust(pctl, pi, &ca_odt_adj, freqset, preset->dram.ca_odt);
-	mr_adjust(pctl, pi, &mr3_adj, freqset, preset->dram.pdds << 3 | 1);
-	mr_adjust(pctl, pi, &mr12_adj, freqset, preset->dram.ca_vref);
-	mr_adjust(pctl, pi, &mr14_adj, freqset, preset->dram.dq_vref);
-}
-
-void lpddr4_modify_config(u32 *pctl, u32 *pi, struct phy_cfg *phy, const struct odt_settings *odt) {
-	lpddr4_set_odt(pctl, pi, 2, &odt_50mhz);
-
+void lpddr4_modify_config(struct phy_cfg *phy, const struct odt_settings *odt) {
 	set_drive_strength((u32*)phy, &cfg_layout, odt);
 }

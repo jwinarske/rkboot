@@ -316,21 +316,21 @@ cs4 125+2 155+16
 		p1	pull-up calibration = 1
 		p1	write postamble length = 0
 		p1	post-package repair protection = 0
-		p3	pull-down drive strength = 6
+		p3	pull-down drive strength = 3 6 (600 MHz <) sel
 		p1	DBI read = 0
 		p1	DBI write = 0
 		p8	unknown = 0
 		b8	MR11 data: packed
-		p3	DQ ODT = 0
+		p3	DQ ODT = 1 0 (50 MHz <) sel
 		p1	reserved = 0
 		p3	CA ODT = 0
 		p1	reserved = 0
 		b8	MR12 data: packed
-		p6	VRef CA = 13
+		p6	VRef CA = 50
 		p1	VRef CA range = 1
 		p1	reserved = 0
 		b8	MR14 data: packed
-		p6	VRef DQ = 13
+		p6	VRef DQ = 50
 		p1	VRef DQ range = 1
 		p1	reserved = 0
 	b8	MR13 data = 0

@@ -266,7 +266,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
-levinboot = {'main', 'pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('odt', 'lpddr4', 'moderegs', 'training', 'memorymap', 'mirror', 'ddrinit')}
+levinboot = {'main', 'pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('odt', 'lpddr4',  'training', 'memorymap', 'mirror', 'ddrinit')}
 elfloader = {'elfloader', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
 boot_media_handlers = ('main', 'elfloader')
 if decompressors:
