@@ -30,7 +30,7 @@ sync 5+12 5+12
 # ⇒ 0: Hi-Z, 1: 240=240 Ω, 2–7: unknown, not used
 # 8: 240/2 = 120 Ω, 9: 240/3 = 80 Ω, 10: 240/4 = 60 Ω, up to 15: 240/7≈34.3 Ω
 b3	DQ TSel enable: packed
-p1	during read cycles = 1
+p1	during read cycles = 1 0 (600 MHz <) sel
 p1	during write cycles = 0
 p1	during idle cycles = 0
 b24	DQ TSel select: packed
@@ -38,7 +38,7 @@ p8	during read cycles = 0x09 0 (600 MHz <) sel
 p8	during write cycles = 0xdf 0xef (50 MHz <) sel
 p8	during idle cycles = 0
 b3	DQS TSel enable: packed
-p1	during read cycles = 1
+p1	during read cycles = 1 0 (600 MHz <) sel
 p1	during write cycles = 0
 p1	during idle cycles = 0
 b24	DQS TSel select: packed

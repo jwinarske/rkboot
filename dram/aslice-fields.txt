@@ -19,6 +19,7 @@ b10	master dly lock obs: ro
 b3	slave loop cnt update = 0
 b3	slv dly enc obs select = 0
 *b1	snap obs regs = 0
+# use the same value as for DQ when writing in dslice
 b1	TSel enable = 0
 b6	lpbk control = 0
 b1	pwr rdc disable = 0

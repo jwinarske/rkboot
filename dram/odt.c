@@ -58,25 +58,11 @@ const struct odt_preset odt_933mhz = {
 };
 
 void set_drive_strength(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt) {
-	u32 tsel_dq = (u32)odt->ds[ODT_WR_DQ][ODT_N]
-		| (u32)odt->ds[ODT_WR_DQ][ODT_P] << 4;
 	volatile u32 *ca_base = phy + layout->ca_offs;
-
-	u32 delta = layout->global_diff;
-	clrset32(phy + (925 - delta), 0xff, tsel_dq);
-
-	u32 enable = odt->flags & ODT_TSEL_ENABLE_MASK;
-	for_dslice(i) {clrset32(phy + layout->dslice*i + 5, 0x00070000, enable << 16);}
-	for_dslice(i) {clrset32(phy + layout->dslice*i + 6, 0x07000000, enable << 24);}
 
 	u32 wr_en = (odt->flags / ODT_WR_EN) & 1;
 	for_aslice(i) {
 		clrset32(ca_base + layout->aslice * i + 6, 0x0100, wr_en << 8);
-	}
-
-	static const u16 regs[] = {933, 938, 936, 940, 934, 930};
-	for_range(i, 0, ARRAY_SIZE(regs)) {
-		clrset32(phy + (regs[i] - delta), 0x20000, wr_en << 17);
 	}
 }
 
