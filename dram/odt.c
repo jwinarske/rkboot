@@ -64,7 +64,6 @@ void set_phy_io(volatile u32 *phy, const struct odt_settings *odt) {
 		SET_BITS32(12, odt->value_dq | 0x0100 | odt->mode_dq << 9)
 	);
 	
-	apply32v(phy + 915, SET_BITS32(12, odt->value_ac | 0x0100 | odt->mode_ac << 9) << 16);
 	static const struct regshift mode_regs[] = {
 		{924, 15}, {926, 6}, {927, 6}, {928, 14},
 		{929, 14}, {935, 14}, {937, 14}, {939, 14},

@@ -60,7 +60,7 @@ dslice 17+1 19+12
 	# selects a range for the value
 	p3	mode = 6
 b12	pad VRef ctrl AC: packed
-p8	value = 31
+p8	value = 3
 p1	enable, maybe? = 1
 # selects a range for the value
 p3	mode = 6

@@ -36,20 +36,6 @@ struct odt_preset {
 	struct odt_phy phy;
 };
 
-enum odt_situation {
-	ODT_RD = 0,
-	ODT_IDLE,
-	ODT_WR_DQ,
-	ODT_WR_CA,
-	ODT_CKCS,
-	ODT_NUM_SITUATIONS
-};
-enum odt_level {
-	ODT_N = 0,
-	ODT_P,
-	ODT_NUM_LEVELS
-};
-
 enum odt_flags {
 	ODT_RD_EN = 1,
 	ODT_WR_EN = 2,
@@ -64,11 +50,7 @@ enum odt_flags {
 
 struct odt_settings {
 	u32 flags;
-	u8 padding;
-	u16 padding2;
-	u8 ds[ODT_NUM_SITUATIONS][ODT_NUM_LEVELS];
 	u8 mode_dq, value_dq;
-	u8 mode_ac, value_ac;
 	u8 drive_mode;
 };
 
