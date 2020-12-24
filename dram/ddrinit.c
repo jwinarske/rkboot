@@ -15,18 +15,6 @@
 #include <gic.h>
 #include <irq.h>
 
-const struct phy_layout cfg_layout = {
-	.dslice = 0,
-	.aslice = NUM_PHY_ASLICE_REGS,
-	.global_diff = 128 * 4 - NUM_PHY_DSLICE_REGS + (128 - NUM_PHY_ASLICE_REGS) * 3,
-	.ca_offs = NUM_PHY_DSLICE_REGS
-}, reg_layout = {
-	.dslice = 128,
-	.aslice = 128,
-	.global_diff = 0,
-	.ca_offs = 512
-};
-
 static void set_ddr_reset_request(_Bool controller, _Bool phy) {
 	cru[CRU_SOFTRST_CON + 4] = 0x33000000 | (controller << 12) | (controller << 8) | (phy << 13) | (phy << 9);
 }
@@ -172,8 +160,11 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_p
 		update_phy_bank(phy, phy_bank, phy_upd, 1);
 		struct odt_settings odt;
 		lpddr4_get_odt_settings(&odt, preset);
-		set_drive_strength(&phy->dslice[0][0], &reg_layout, &odt);
-		set_phy_io(&phy->dslice[0][0], reg_layout.global_diff, &odt);
+		u32 wr_en = phy_upd->dslice5_7[0] >> 17 & 1;
+		for_aslice(i) {
+			clrset32(phy->aslice[i] + 6, 0x0100, wr_en << 8);
+		}
+		set_phy_io(&phy->dslice[0][0], &odt);
 		if (mhz <= 125) {	/* DLL bypass mode, disable slice power reduction */
 			for_dslice(i) {phy->dslice[i][10] |= 1 << 16;}
 		}
@@ -287,7 +278,6 @@ void ddrinit_configure(struct ddrinit_state *st) {
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
 	odt.flags |= ODT_SET_RST_DRIVE;
-	lpddr4_modify_config(&init_cfg.regs.phy, &odt);
 
 	softreset_memory_controller();
 	logs("initializing DRAM\n");

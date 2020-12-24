@@ -107,9 +107,6 @@ struct phy_update {
 	u32 adrctl28_44[17];	/* ODT settings */
 };
 
-extern const struct phy_layout {
-	u32 dslice, aslice, global_diff, ca_offs;
-} reg_layout, cfg_layout;
 struct dram_regs_cfg {
 	u32 pctl[NUM_PCTL_REGS];
 	u32 pi[NUM_PI_REGS];
@@ -266,9 +263,7 @@ extern const struct regshift speed_regs[8];
 void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op);
 extern const struct odt_preset odt_50mhz, odt_600mhz, odt_933mhz;
 void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
-void lpddr4_modify_config(struct phy_cfg *phy, const struct odt_settings *odt);
-void set_drive_strength(volatile u32 *phy, const struct phy_layout *layout, const struct odt_settings *odt);
-void set_phy_io(volatile u32 *phy, u32 delta, const struct odt_settings *odt);
+void set_phy_io(volatile u32 *phy, const struct odt_settings *odt);
 
 void ddrinit_set_channel_stride(u32 val);
 _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy);

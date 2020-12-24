@@ -30,7 +30,3 @@ void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *
 		odt->drive_mode = 4;
 	}
 }
-
-void lpddr4_modify_config(struct phy_cfg *phy, const struct odt_settings *odt) {
-	set_drive_strength((u32*)phy, &cfg_layout, odt);
-}
