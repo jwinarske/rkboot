@@ -230,8 +230,8 @@ sync 86+4 86+4
 b4	SW master mode: packed
 !p1	enable half-cycle shift override = 0
 !p1	half-cycle shift = 0
-!p1	enable cycle shift override = freq(1, 0, 0)
-!p1	cycle shift = freq(1, 0, 0)
+!p1	enable cycle shift override = 0 1 (125 MHz <) sel
+!p1	cycle shift = 0 1 (125 MHz <) sel
 !b10	master delay start = 16
 !b6	master delay step = 4
 b8	master delay wait: packed
