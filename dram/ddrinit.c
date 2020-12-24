@@ -173,8 +173,8 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_p
 		lpddr4_get_odt_settings(&odt, preset);
 		set_drive_strength(&phy->dslice[0][0], &reg_layout, &odt);
 		set_phy_io(&phy->dslice[0][0], reg_layout.global_diff, &odt);
-		if (!(phy_upd->dslice_update[86 - 59] & 0x0400)) {
-			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
+		if (mhz <= 125) {	/* DLL bypass mode, disable slice power reduction */
+			for_dslice(i) {phy->dslice[i][10] |= 1 << 16;}
 		}
 		if (phy_upd->dslice_update[84 - 59] & (1 << 16)) {
 			u32 val = pctl[217]; /* FIXME: should depend on freq set */
@@ -186,6 +186,12 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_p
 	puts("ready … ");
 	timestamp_t start = get_timestamp();
 	fast_freq_switch(ctl_freqset, mhz);
+	if (mhz > 125) {	/* not DLL bypass mode, enable slice power reduction */
+		for_channel(ch) {
+			volatile struct phy_regs *phy = phy_for(ch);
+			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
+		}
+	}
 	printf("switched (%"PRIuTS" ticks) … ", get_timestamp() - start);
 }
 

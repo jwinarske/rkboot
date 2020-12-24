@@ -59,6 +59,7 @@ b4	LP4 boot RPtr update = 4
 b4	LP4 boot RdDQS latency adjust = 0
 b7	lpbk control = 0
 # power reduction must be disabled in DLL bypass mode (≤125 MHz)
+# this seems not to be a banked register, must be updated manually in sequence
 b1	slice pwr rdc disable = 1 0 (MHz 125 <) sel
 b10	RdDQS DQ bypass slave delay = 384
 b5	gate error delay select = 23
