@@ -208,7 +208,11 @@ _Noreturn void main(u64 sctlr) {
 	mmu_setup(initial_mappings, critical_ranges);
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
-		printf("\nround %zu, %zu failed so far\n", round, failed_rounds);
+		if (!failed_rounds) {
+			printf("\nround %zu, all green so far\n", round);
+		} else {
+			printf("\nround %zu, %zu failed so far\n", round, failed_rounds);
+		}
 		failed_rounds += !memtest(round++ << 29);
 	}
 }
