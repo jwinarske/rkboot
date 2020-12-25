@@ -85,13 +85,10 @@ b8	LP wakeup = 0
 b1	LS idle en = 0
 b1	tDFI phy WrDelay = 0
 
-macro SPEED = 0 1 (MHz 400 <) sel 2 (MHz 800 <) sel
-
 # I theorize that the 2-bit unknown subfields are the same (but they're never used apparently) and that the boost and slew subfields can be separated into two 3/4-bit parts for positive and negative, but I don't know if that knowledge could be useful (or even tested)
 sync 27+25 27+25
 b23	pad fdbk drive: packed	# 924
-# use the same value as for CA. see TSel in dslice for values
-!p8	TSel select = 0xef
+!p8	TSel select = TSEL_CA
 !p6	slew = 4
 !p1	RX CM input = 0
 !p3	drive mode = 0
@@ -99,8 +96,7 @@ b23	pad fdbk drive: packed	# 924
 !p2	speed = SPEED
 
 b16	pad fdbk drive2: packed	# 925
-# use the same value as in dslice for writing
-!p8	TSel select = 0xdf 0xef (50 MHz <) sel
+!p8	TSel select = TSEL_DQ_WR
 !p8	boost = 4
 
 b21	pad data drive: packed	# 926
@@ -121,9 +117,7 @@ b23	pad DQS drive: packed	# 927
 !p1	RPull = 0
 
 b29	pad addr drive: packed	# 928
-# see TSel in aslice. not sure what the difference to this setting is.
-# the values should be the same
-!p8	TSel select = 0xef
+!p8	TSel select = TSEL_CA
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = SPEED
@@ -132,8 +126,7 @@ b29	pad addr drive: packed	# 928
 !p1	unknown = 0
 
 b31	pad clk drive: packed	# 929
-# use the same value as for CS. see TSel in dslice for values
-!p8	TSel select = 0xef
+!p8	TSel select = TSEL_CKCS
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = SPEED
@@ -162,7 +155,7 @@ b18	pad clk term: packed	# 934
 
 b29	pad CKE drive: packed	# 935
 # use the same value as for CA. see TSel in dslice for values
-!p8	TSel select = 0xef
+!p8	TSel select = TSEL_CA
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = SPEED
@@ -175,8 +168,8 @@ b18	pad CKE term: packed	# 936
 !p1	write ODT enable = 0
 
 b29	pad RST drive: packed	# 937
-# uses CA settings, set to high impedance for channel 1 during init (366-ball package workaround)
-!p8	TSel select = 0xef
+# set to high impedance for channel 1 during init (366-ball package workaround)
+!p8	TSel select = TSEL_CA
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = SPEED
@@ -189,8 +182,7 @@ b18	pad RST term: packed	# 938
 !p1	write ODT enable = 0
 
 b29	pad CS drive: packed	# 939
-# use the same value as for CK. see TSel in dslice for values
-!p8	TSel select = 0xef
+!p8	TSel select = TSEL_CKCS
 !p6	slew = 4
 !p3	drive mode = 0
 !p2	speed = SPEED

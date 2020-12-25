@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC0-1.0
+macro SPEED = 0 1 (MHz 400 <) sel 2 (MHz 800 <) sel
+
+macro TSEL_RD_EN = 1 0 (600 MHz <) sel
+# each nibble in a 'TSel select' byte is a termination setting, lower for N, upper for P
+# ⇒ 0: Hi-Z, 1: 240=240 Ω, 2–7: unknown, not used
+# 8: 240/2 = 120 Ω, 9: 240/3 = 80 Ω, 10: 240/4 = 60 Ω, up to 15: 240/7≈34.3 Ω
+macro TSEL_DQ_RD = 0x09 0 (600 MHz <) sel
+macro TSEL_DQ_WR = 0xdf 0xef (50 MHz <) sel
+macro TSEL_CA = 0xef
+macro TSEL_CKCS = 0xef

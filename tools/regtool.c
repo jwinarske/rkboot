@@ -604,14 +604,10 @@ int main(int argc, char **argv)  {
 	ctx.global_reps = 0;
 	ctx.first = 0;
 	ctx.last = UINT16_MAX;
-	
-	DECL_VEC(char, buf);
 
-	INIT_VEC(buf);
-	buf_cap = 1024;
-	buf = malloc(buf_cap);
-	assert(buf);
-
+	/* keep old buffers (which are referenced by line and macro definitions) around */
+	DECL_VEC(char *, old_bufs);
+	INIT_VEC(old_bufs);
 
 	ctx.freq_mhz[0] = 400; ctx.freq_mhz[1] = 800; ctx.freq_mhz[2] = 50;
 	ctx.freq_steps[0] = frequency_table + 1;
@@ -626,15 +622,15 @@ options
 		_Bool flag;
 /*
 --read file  read an input file.
-  this replaces the contents of a potentially previously loaded file.
+  this appends the contents of a potentially previously loaded file.
   see below for the input format.
 */
 		if (!strcmp("--read", cmd)) {
+			DECL_VEC(char, buf);
 			buf_size = 0;
-			ctx.lines_size = 0;
-			ctx.fields_size = 0;
-			ctx.first = 0;
-			ctx.last = UINT16_MAX;
+			buf_cap = 1024;
+			buf = malloc(buf_cap);
+			assert(buf);
 			char *filename = *++arg;
 			check(filename, "%s needs a filename parameter\n", cmd);
 			int fd = 0;
@@ -658,6 +654,8 @@ options
 			debug("read %zu bytes\n", buf_size);
 			check(buf_size < INT_MAX, "input longer than INT_MAX bytes\n");
 			read_lines(&ctx, buf, buf + buf_size);
+			*BUMP(old_bufs) = buf;
+			ctx.fields_size = 0;
 			layout_fields(&ctx);
 /*
 --mhz freq0 freq1 freq2  this sets the frequencies associated with each value of the *freq* variable to the given MHz value.
@@ -734,5 +732,9 @@ options
 			check(0, "unknown command/parameter %s\n", cmd);
 		}
 	}
+	while (old_bufs_size--) {free(old_bufs[old_bufs_size]);}
+	free(old_bufs);
+	free(ctx.lines);
+	free(ctx.fields);
 	return 0;
 }

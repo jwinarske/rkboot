@@ -244,7 +244,7 @@ rule incbin
 rule run
     command = $bin $flags <$in >$out
 rule regtool
-    command = ./regtool --read $in $flags --hex >$out
+    command = ./regtool $preflags --read $in $flags --hex >$out
 rule ldscript
     command = bash {genld} $flags >$out
 rule lz4
@@ -329,30 +329,38 @@ print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_
 lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'sched_aarch64', 'string_aarch64'}
 usbstage |= {'exc_handlers'}
 
-regtool_job = namedtuple('regtool_job', ('input', 'flags'), defaults=(None,))
+regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
+phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))
 regtool_targets = {
     'pctl': regtool_job('pctl', flags="--mhz 400 800 50"),
     'pi': regtool_job('pi', flags="--mhz 50 800 400"),
-    'dslice': regtool_job('dslice', flags="--set freq 0 --set dslice 0 --mhz 50 800 400"),
-    'aslice0': regtool_job('aslice', flags="--set freq 0 --set aslice 0 --mhz 50 800 400"),
-    'aslice1': regtool_job('aslice', flags="--set freq 0 --set aslice 1 --mhz 50 800 400"),
-    'aslice2': regtool_job('aslice', flags="--set freq 0 --set aslice 2 --mhz 50 800 400"),
-    'adrctl': regtool_job('adrctl', flags='--set freq 0 --mhz 50 800 400'),
+    'dslice': phy_job('dslice', 0, flags="--set dslice 0"),
+    'aslice0': phy_job('aslice', 0, flags="--set aslice 0"),
+    'aslice1': phy_job('aslice', 0, flags="--set aslice 1"),
+    'aslice2': phy_job('aslice', 0, flags="--set aslice 2"),
+    'adrctl': phy_job('adrctl', 0),
 
-    'dslice5_7_f2': regtool_job('dslice', flags="--set freq 2 --set dslice 0 --mhz 50 800 400 --first 5 --last 7"),
-    'dslice59_90_f2': regtool_job('dslice', flags="--set freq 2 --set dslice 0 --mhz 50 800 400 --first 59 --last 90"),
-    'slave_master_delays_f2': regtool_job('aslice', flags="--set freq 2 --set aslice 0 --mhz 50 800 400 --first 32 --last 37"),
-    'grp_slave_delay_f2': regtool_job('adrctl', flags='--set freq 2 --mhz 50 800 400 --first 20 --last 22'),
-    'adrctl28_44_f2': regtool_job('adrctl', flags='--set freq 2 --mhz 50 800 400 --first 28 --last 44'),
+    'dslice5_7_f2': phy_job('dslice', 2, range=(5, 7), flags='--set dslice 0'),
+    'dslice59_90_f2': phy_job('dslice', 2, range=(59, 90), flags='--set dslice 0'),
+    'slave_master_delays_f2': phy_job('aslice', 2, range=(32, 37), flags='--set aslice 0'),
+    'grp_slave_delay_f2': phy_job('adrctl', 2, range=(20, 22)),
+    'adrctl28_44_f2': phy_job('adrctl', 2, range=(28, 44)),
 
-    'dslice5_7_f1': regtool_job('dslice', flags="--set freq 1 --set dslice 0 --mhz 50 800 400 --first 5 --last 7"),
-    'dslice59_90_f1': regtool_job('dslice', flags="--set freq 1 --set dslice 0 --mhz 50 800 400 --first 59 --last 90"),
-    'slave_master_delays_f1': regtool_job('aslice', flags="--set freq 1 --set aslice 0 --mhz 50 800 400 --first 32 --last 37"),
-    'grp_slave_delay_f1': regtool_job('adrctl', flags='--set freq 1 --mhz 50 800 400 --first 20 --last 22'),
-    'adrctl28_44_f1': regtool_job('adrctl', flags='--set freq 1 --mhz 50 800 400 --first 28 --last 44'),
+    'dslice5_7_f1': phy_job('dslice', 1, range=(5, 7), flags='--set dslice 0'),
+    'dslice59_90_f1': phy_job('dslice', 1, range=(59, 90), flags='--set dslice 0'),
+    'slave_master_delays_f1': phy_job('aslice', 1, range=(32, 37), flags='--set aslice 0'),
+    'grp_slave_delay_f1': phy_job('adrctl', 1, range=(20, 22)),
+    'adrctl28_44_f1': phy_job('adrctl', 1, range=(28, 44)),
 }
 for name, job in regtool_targets.items():
-    print(build(name+'.gen.c', 'regtool', path.join(srcdir, "dram", job.input+'-fields.txt'), 'regtool', flags=job.flags))
+    macro_files = tuple(path.join(srcdir, f'dram/{x}.txt') for x in job.macros)
+    print(build(
+	name+'.gen.c', 'regtool',
+	path.join(srcdir, "dram", job.input+'-fields.txt'),
+	('regtool',) + macro_files,
+	preflags = ' '.join(f'--read {f}' for f in macro_files),
+	flags=job.flags
+    ))
 print(build('dramcfg.o', 'cc', path.join(srcdir, 'dram/dramcfg.c'), (name + ".gen.c" for name in regtool_targets)))
 levinboot |= {'dramcfg'}
 
