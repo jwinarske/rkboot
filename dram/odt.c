@@ -37,11 +37,4 @@ void set_phy_io(volatile u32 *phy, const struct odt_settings *odt) {
 	}; apply32_multiple(dq_regs, ARRAY_SIZE(dq_regs), phy, 0,
 		SET_BITS32(12, odt->value_dq | 0x0100 | odt->mode_dq << 9)
 	);
-
-	static const struct regshift mode_regs[] = {
-		{924, 15}, {926, 6}, {927, 6}, {928, 14},
-		{929, 14}, {935, 14}, {937, 14}, {939, 14},
-	}; apply32_multiple(mode_regs, ARRAY_SIZE(mode_regs), phy, 0,
-		SET_BITS32(3, odt->drive_mode)
-	);
 }

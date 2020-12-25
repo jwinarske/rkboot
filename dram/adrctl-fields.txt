@@ -91,7 +91,7 @@ b23	pad fdbk drive: packed	# 924
 !p8	TSel select = TSEL_CA
 !p6	slew = 9
 !p1	RX CM input = 1
-!p3	drive mode = 0
+!p3	drive mode = DRIVE_MODE
 !p3	unknown = 0
 !p2	speed = SPEED
 
@@ -101,14 +101,14 @@ b16	pad fdbk drive2: packed	# 925
 
 b21	pad data drive: packed	# 926
 !p6	slew = 9
-!p3	drive mode = 1
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p1	RX CM input = 1
 !p8	boost = 0x11
 
 b23	pad DQS drive: packed	# 927
 !p6	slew = 9
-!p3	drive mode = 1
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p2	unknown = 0
 !p1	RX CM input = 1
@@ -119,7 +119,7 @@ b23	pad DQS drive: packed	# 927
 b29	pad addr drive: packed	# 928
 !p8	TSel select = TSEL_CA
 !p6	slew = 9
-!p3	drive mode = 0
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p1	RX CM input = 1
 !p8	boost = 0x11
@@ -128,7 +128,7 @@ b29	pad addr drive: packed	# 928
 b31	pad clk drive: packed	# 929
 !p8	TSel select = TSEL_CKCS
 !p6	slew = 9
-!p3	drive mode = 0
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p2	unknown = 0
 !p1	RX CM input = 1
@@ -157,7 +157,7 @@ b29	pad CKE drive: packed	# 935
 # use the same value as for CA. see TSel in dslice for values
 !p8	TSel select = TSEL_CA
 !p6	slew = 9
-!p3	drive mode = 0
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p1	RX CM input = 1
 !p8	boost = 0x11
@@ -171,7 +171,7 @@ b29	pad RST drive: packed	# 937
 # set to high impedance for channel 1 during init (366-ball package workaround)
 !p8	TSel select = TSEL_CA
 !p6	slew = 9
-!p3	drive mode = 0
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p1	RX CM input = 1
 !p8	boost = 0x11
@@ -184,7 +184,7 @@ b18	pad RST term: packed	# 938
 b29	pad CS drive: packed	# 939
 !p8	TSel select = TSEL_CKCS
 !p6	slew = 9
-!p3	drive mode = 0
+!p3	drive mode = DRIVE_MODE
 !p2	speed = SPEED
 !p1	RX CM input = 1
 !p8	boost = 0x11

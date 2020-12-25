@@ -56,6 +56,14 @@ RPN_OP(less) {
 	a->type = VAL_BOOL;
 	return 0;
 }
+RPN_OP(nogreater) {
+	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
+	if (a->type != b->type) {return "inputs are of different type";}
+	stack->values_size -= 1;
+	a->val = a->val <= b->val;
+	a->type = VAL_BOOL;
+	return 0;
+}
 
 RPN_OP(tabulated_latency) {
 	struct value *v = stack->values + stack->values_size - 1;
@@ -120,11 +128,11 @@ struct op_template {
 static void insert_ops(struct  context *ctx, const struct op_template *templ, size_t num, u8 inputs) {
 	for (size_t i = 0; i < num; ++i) {
 		struct rpn_op *op = BUMP(ctx->ops);
-		while (op > ctx->ops && strcmp((op - 1)->tok, templ[i].tok) > 0) {
-			/* insertion sort */
+		/*while (op > ctx->ops && strcmp((op - 1)->tok, templ[i].tok) > 0) {
+			* insertion sort *
 			memcpy(op, op - 1, sizeof(*op));
 			op -= 1;
-		}
+		}*/
 		op->op = templ[i].op;
 		op->tok = templ[i].tok;
 		op->tok_len = strlen(templ[i].tok);
@@ -156,6 +164,7 @@ void init_ops(struct context *ctx) {
 	static const struct op_template binary[] = {
 		{.tok = "max", .op = op_max},
 		{.tok = "+", .op = op_plus},
+		{.tok = "<=", .op = op_nogreater},
 		{.tok = "<", .op = op_less},
 		{.tok = ")", .op = op_paren_close}
 	};
@@ -228,4 +237,5 @@ void run_expression(struct context *ctx, struct stack *stack, const char *expr, 
 		continue_outer:
 		pos = stripl(pos, end);
 	}
+	free(expansion_stack);
 }
