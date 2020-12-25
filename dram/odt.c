@@ -4,56 +4,20 @@
 #include "rk3399-dmc.h"
 
 const struct odt_preset odt_50mhz = {
-	.dram = {
-		.dq_odt = 0,
-		.ca_odt = 0,
-		.pdds = 6,
-		.dq_vref = 0x72,
-		.ca_vref = 0x72,
-	},
 	.phy = {
-		.rd_odt = ODT_DS_HI_Z,
-		.wr_dq_drv = ODT_DS_40,
-		.wr_ca_drv = ODT_DS_40,
-		.wr_ckcs_drv = ODT_DS_40,
 		.rd_vref = 41,
-		.rd_odt_en = 0,
 	}
 };
 
 const struct odt_preset odt_600mhz = {
-	.dram = {
-		.dq_odt = 1,
-		.ca_odt = 0,
-		.pdds = 6,
-		.dq_vref = 0x72,
-		.ca_vref = 0x72,
-	},
 	.phy = {
-		.rd_odt = ODT_DS_HI_Z,
-		.wr_dq_drv = ODT_DS_48,
-		.wr_ca_drv = ODT_DS_40,
-		.wr_ckcs_drv = ODT_DS_40,
 		.rd_vref = 32,
-		.rd_odt_en = 0,
 	}
 };
 
 const struct odt_preset odt_933mhz = {
-	.dram = {
-		.dq_odt = 1,
-		.ca_odt = 0,
-		.pdds = 3,
-		.dq_vref = 0x72,
-		.ca_vref = 0x72,
-	},
 	.phy = {
-		.rd_odt = ODT_DS_80,
-		.wr_dq_drv = ODT_DS_48,
-		.wr_ca_drv = ODT_DS_40,
-		.wr_ckcs_drv = ODT_DS_40,
 		.rd_vref = 20,
-		.rd_odt_en = 1,
 	}
 };
 

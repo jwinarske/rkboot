@@ -6,14 +6,6 @@
 #define for_aslice(i) for (u32 i = 0; i < 3; ++i)
 #define for_channel(i) for (u32 i = 0; i < 2; ++i)
 
-struct odt_dram {
-	u8 dq_odt;
-	u8 ca_odt;
-	u16 pdds;
-	u16 dq_vref;
-	u16 ca_vref;
-};
-
 #define ODT_DS_HI_Z	0x0
 #define ODT_DS_240	0x1
 #define ODT_DS_120	0x8
@@ -23,33 +15,14 @@ struct odt_dram {
 #define ODT_DS_40	0xe
 #define ODT_DS_34_3	0xf
 struct odt_phy {
-	u8 rd_odt;
-	u8 wr_dq_drv;
-	u8 wr_ca_drv;
-	u8 wr_ckcs_drv;
 	u32 rd_vref; /* unit %, range 3.3% - 48.7% */
-	_Bool rd_odt_en;
 };
 
 struct odt_preset {
-	struct odt_dram dram;
 	struct odt_phy phy;
 };
 
-enum odt_flags {
-	ODT_RD_EN = 1,
-	ODT_WR_EN = 2,
-	ODT_IDLE_EN = 4,
-	ODT_TSEL_ENABLE_MASK = 7,
-
-	ODT_TSEL_CLEAN = 8,
-	ODT_SET_RST_DRIVE = 16,
-	ODT_SET_BOOST_SLEW = 32,
-	ODT_SET_RX_CM_INPUT = 64,
-};
-
 struct odt_settings {
-	u32 flags;
 	u8 mode_dq, value_dq;
 	u8 drive_mode;
 };

@@ -263,7 +263,6 @@ void ddrinit_configure(struct ddrinit_state *st) {
 	debugs("ddrinit() reached\n");
 	struct odt_settings odt;
 	lpddr4_get_odt_settings(&odt, &odt_50mhz);
-	odt.flags |= ODT_SET_RST_DRIVE;
 
 	softreset_memory_controller();
 	logs("initializing DRAM\n");
