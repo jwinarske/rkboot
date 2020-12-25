@@ -48,8 +48,8 @@ const struct phy_update phy_400mhz = {
 #include <dslice59_90_f2.gen.c>
 	}, .slave_master_delays = {
 #include <slave_master_delays_f2.gen.c>
-	}, .grp_slave_delay = {
-#include <grp_slave_delay_f2.gen.c>
+	}, .adrctl17_22 = {
+#include <adrctl17_22_f2.gen.c>
 	}, .adrctl28_44 = {
 #include <adrctl28_44_f2.gen.c>
 	},
@@ -67,8 +67,8 @@ const struct phy_update phy_800mhz = {
 #include <dslice59_90_f1.gen.c>
 	}, .slave_master_delays = {
 #include <slave_master_delays_f1.gen.c>
-	}, .grp_slave_delay = {
-#include <grp_slave_delay_f1.gen.c>
+	}, .adrctl17_22 = {
+#include <adrctl17_22_f1.gen.c>
 	}, .adrctl28_44 = {
 #include <adrctl28_44_f1.gen.c>
 	},

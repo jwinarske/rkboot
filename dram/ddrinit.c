@@ -79,7 +79,7 @@ static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struc
 	phy->PHY_GLOBAL(896) = (u32)upd->grp_shift01 << 16 | bank << 8;
 	phy->PHY_GLOBAL(911) = upd->pll_ctrl;
 	apply32v(&phy->PHY_GLOBAL(913), SET_BITS32(1, upd->negedge_pll_switch));
-	copy_reg_range(upd->grp_slave_delay, &phy->PHY_GLOBAL(916), 3);
+	copy_reg_range(upd->adrctl17_22, &phy->PHY_GLOBAL(913), 6);
 	copy_reg_range(upd->adrctl28_44, &phy->PHY_GLOBAL(924), 17);
 	for_aslice(i) {
 		phy->aslice[i][0] = upd->wraddr_shift0123;

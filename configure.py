@@ -343,13 +343,13 @@ regtool_targets = {
     'dslice5_7_f2': phy_job('dslice', 2, range=(5, 7), flags='--set dslice 0'),
     'dslice59_90_f2': phy_job('dslice', 2, range=(59, 90), flags='--set dslice 0'),
     'slave_master_delays_f2': phy_job('aslice', 2, range=(32, 37), flags='--set aslice 0'),
-    'grp_slave_delay_f2': phy_job('adrctl', 2, range=(20, 22)),
+    'adrctl17_22_f2': phy_job('adrctl', 2, range=(17, 22)),
     'adrctl28_44_f2': phy_job('adrctl', 2, range=(28, 44)),
 
     'dslice5_7_f1': phy_job('dslice', 1, range=(5, 7), flags='--set dslice 0'),
     'dslice59_90_f1': phy_job('dslice', 1, range=(59, 90), flags='--set dslice 0'),
     'slave_master_delays_f1': phy_job('aslice', 1, range=(32, 37), flags='--set aslice 0'),
-    'grp_slave_delay_f1': phy_job('adrctl', 1, range=(20, 22)),
+    'adrctl17_22_f1': phy_job('adrctl', 1, range=(17, 22)),
     'adrctl28_44_f1': phy_job('adrctl', 1, range=(28, 44)),
 }
 for name, job in regtool_targets.items():

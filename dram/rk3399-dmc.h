@@ -58,7 +58,7 @@ struct phy_update {
 	u32 slave_master_delays[6]; /* aslice+32ff */
 	u32 dslice5_7[3];	/* ODT settings and two-cycle preamble */
 	u32 dslice59_90[32];	/* trainable (?) timing values */
-	u32 grp_slave_delay[3]; /* PHY916ff */
+	u32 adrctl17_22[6];	/* VRef settings, group slave delays */
 	u32 adrctl28_44[17];	/* ODT settings */
 };
 

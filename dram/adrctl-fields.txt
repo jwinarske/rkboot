@@ -51,14 +51,14 @@ b13	PLL ctrl CA = freq(0x0922, 0x0122, 0x0322)
 b4	PLL bypass = 0
 b24	obsolete = 0
 # allow PLL domain entry on negedge
-b1	low freq sel = 1
+b1	low freq sel = 1 0 (MHz 400 <=) sel
 
 dslice 17+1 19+12
 	b12	pad VRef ctrl DQ: packed
-	p8	value = 31
+	p8	value = (1000 VREF_RD * 3300 - 521 div_n) (1000 VREF_RD * 15300 - 521 div_n) (VREF_RD 37 <) sel
 	p1	enable, maybe? = 1
 	# selects a range for the value
-	p3	mode = 6
+	p3	mode = 7 6 (VREF_RD 37 <) sel
 b12	pad VRef ctrl AC: packed
 p8	value = 3
 p1	enable, maybe? = 1

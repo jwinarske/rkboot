@@ -47,6 +47,40 @@ RPN_OP(plus) {
 	a->val += b->val;
 	return 0;
 }
+RPN_OP(minus) {
+	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
+	if (a->type != b->type) {return "inputs are of different type";}
+	if (a->val < b->val) {return "difference would be negative";}
+	stack->values_size -= 1;
+	a->val -= b->val;
+	return 0;
+}
+
+RPN_OP(times) {
+	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
+	if (a->type != VAL_NUMBER && b->type != VAL_NUMBER) {
+		return "neither factor is a raw number";
+	}
+	stack->values_size -= 1;
+	a->val *= b->val;
+	return 0;
+}
+RPN_OP(div_p) {
+	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
+	if (b->type != VAL_NUMBER) {return "denominator is not a raw number";}
+	if (!b->val) {return "denominator is 0";}
+	stack->values_size -= 1;
+	a->val = (a->val + b->val - 1) / b->val;
+	return 0;
+}
+RPN_OP(div_n) {
+	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
+	if (b->type != VAL_NUMBER) {return "denominator is not a raw number";}
+	if (!b->val) {return "denominator is 0";}
+	stack->values_size -= 1;
+	a->val = a->val / b->val;
+	return 0;
+}
 
 RPN_OP(less) {
 	struct value *a = stack->values + stack->values_size - 2, *b = a + 1;
@@ -164,6 +198,10 @@ void init_ops(struct context *ctx) {
 	static const struct op_template binary[] = {
 		{.tok = "max", .op = op_max},
 		{.tok = "+", .op = op_plus},
+		{.tok = "-", .op = op_minus},
+		{.tok = "*", .op = op_times},
+		{.tok = "div_p", .op = op_div_p},
+		{.tok = "div_n", .op = op_div_n},
 		{.tok = "<=", .op = op_nogreater},
 		{.tok = "<", .op = op_less},
 		{.tok = ")", .op = op_paren_close}
