@@ -138,19 +138,16 @@ static void fast_freq_switch(u8 freqset, u32 freq) {
 	irq_restore(irq);
 }
 
-static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_preset *preset, const struct phy_update *phy_upd) {
+static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_update *phy_upd) {
 	log("switching to %u MHz … ", mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch);
 		update_phy_bank(phy, phy_bank, phy_upd);
-		struct odt_settings odt;
-		lpddr4_get_odt_settings(&odt, preset);
 		u32 wr_en = phy_upd->dslice5_7[0] >> 17 & 1;
 		for_aslice(i) {
 			clrset32(phy->aslice[i] + 6, 0x0100, wr_en << 8);
 		}
-		set_phy_io(&phy->dslice[0][0], &odt);
 		if (mhz <= 125) {	/* DLL bypass mode, disable slice power reduction */
 			for_dslice(i) {phy->dslice[i][10] |= 1 << 16;}
 		}
@@ -261,8 +258,6 @@ void memtest(u64);
 
 void ddrinit_configure(struct ddrinit_state *st) {
 	debugs("ddrinit() reached\n");
-	struct odt_settings odt;
-	lpddr4_get_odt_settings(&odt, &odt_50mhz);
 
 	softreset_memory_controller();
 	logs("initializing DRAM\n");
@@ -283,7 +278,7 @@ static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
 	if (mr_value >> 16) {geo->width = 2;}
 }
 
-static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct odt_preset *preset, const struct phy_update *phy_upd) {
+static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct phy_update *phy_upd) {
 	atomic_store_explicit(&st->sync, 0, memory_order_release);
 	/* disable DDRC interrupts during switch, since the handler will try to read from registers behind an idled bus */
 	gicv2_disable_spi(gic500d, 35);
@@ -291,7 +286,7 @@ static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 p
 	gicv2_wait_disabled(gic500d);
 	atomic_signal_fence(memory_order_acquire);
 
-	freq_step(mhz, ctl_f, phy_f, preset, phy_upd);
+	freq_step(mhz, ctl_f, phy_f, phy_upd);
 	u32 flags = 0;
 	if (phy_upd->dslice59_90[84 - 59] & 1 << 16) {flags |= DDRINIT_PER_CS_TRAINING;}
 	st->training_flags = flags;
@@ -310,8 +305,8 @@ static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 p
 
 static void both_channels_ready(struct ddrinit_state *st) {
 	encode_dram_size(st->geo);
-	switch_and_train(st, 400, 0, 1, &odt_600mhz, &phy_400mhz);
-	switch_and_train(st, 800, 1, 0, &odt_933mhz, &phy_800mhz);
+	switch_and_train(st, 400, 0, 1, &phy_400mhz);
+	switch_and_train(st, 800, 1, 0, &phy_800mhz);
 	rk3399_set_init_flags(RK3399_INIT_DRAM_TRAINING);
 	logs("finished.\n");
 	/* 256B interleaving */

@@ -14,18 +14,6 @@
 #define ODT_DS_48	0xd
 #define ODT_DS_40	0xe
 #define ODT_DS_34_3	0xf
-struct odt_phy {
-	u32 rd_vref; /* unit %, range 3.3% - 48.7% */
-};
-
-struct odt_preset {
-	struct odt_phy phy;
-};
-
-struct odt_settings {
-	u8 mode_dq, value_dq;
-	u8 drive_mode;
-};
 
 enum {
 	NUM_PCTL_REGS = 332,
@@ -212,10 +200,6 @@ enum {
 extern struct dram_cfg init_cfg;
 extern const struct phy_update phy_400mhz;
 extern const struct phy_update phy_800mhz;
-
-extern const struct odt_preset odt_50mhz, odt_600mhz, odt_933mhz;
-void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
-void set_phy_io(volatile u32 *phy, const struct odt_settings *odt);
 
 void ddrinit_set_channel_stride(u32 val);
 _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, volatile struct phy_regs *phy);
