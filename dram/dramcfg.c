@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include "rk3399-dmc.h"
 
-struct dram_cfg init_cfg = {
+const struct dram_cfg init_cfg = {
 	.msch = {
 		.timing1 = ACT2ACT(34) | RD2MISS(29)
 			| WR2MISS(36) | READ_LATENCY(128),

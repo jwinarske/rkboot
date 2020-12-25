@@ -197,7 +197,7 @@ enum {
 #define FORCE_ORDER(n) ((n) << 8)
 #define FORCE_ORDER_STATE(n) ((n) << 16
 
-extern struct dram_cfg init_cfg;
+extern const struct dram_cfg init_cfg;
 extern const struct phy_update phy_400mhz;
 extern const struct phy_update phy_800mhz;
 

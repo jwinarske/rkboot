@@ -194,7 +194,7 @@ const char ddrinit_chan_state_names[NUM_CHAN_ST][12] = {
 #define PWRUP_SREF_EXIT (1 << 16)
 #define START 1
 
-static void configure(struct ddrinit_state *st, struct dram_cfg *cfg, u32 mhz) {
+static void configure(struct ddrinit_state *st, const struct dram_cfg *cfg, u32 mhz) {
 	u32 sref_save[MC_NUM_CHANNELS];
 	for_channel(ch) {
 		if (st->chan_st[ch] != CHAN_ST_UNINIT) {continue;}
