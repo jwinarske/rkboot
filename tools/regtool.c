@@ -389,17 +389,31 @@ void read_lines(struct context *ctx, const char *input_ptr, const char *input_en
 			name_len = name_end - name;
 			
 			debug("field line %"PRIu16", alignment %"PRIu8", flags %"PRIx32", indent %"PRIu8", length %"PRIu32", %.*s = %.*s\n", line, alignment, flags, indent, length, (int)name_len, name, (int)value_len, value);
-			struct line *parsed_line = BUMP(ctx->lines);
-			parsed_line->line = line;
-			parsed_line->indent = indent;
-			parsed_line->type = LINE_FIELD;
-			parsed_line->alignment = alignment;
-			parsed_line->size = length;
-			parsed_line->value = value;
-			parsed_line->value_len = value_len;
-			parsed_line->name = name;
-			parsed_line->name_len = name_len;
-			parsed_line->flags = flags;
+			*BUMP(ctx->lines) = (struct line) {
+				.line = line,
+				.indent = indent,
+				.type = LINE_FIELD,
+				.alignment = alignment,
+				.size = length,
+				.value = value,
+				.value_len = value_len,
+				.name = name,
+				.name_len = name_len,
+				.flags = flags,
+			};
+		} else if (comment - input_ptr > 6 && 0 == memcmp("macro ", input_ptr, 6)) {
+			const char *name = stripl(input_ptr + 6, comment);
+			const char *eq = memchr(name, '=', comment - name);
+			check(!!eq, "line %"PRIu16": no value given for macro\n", line);
+			const char *name_end = stripr(name, eq);
+			const char *value = stripl(eq + 1, comment);
+			const char *value_end = stripr(value, comment);
+			*BUMP(ctx->macros) = (struct macro) {
+				.name = name,
+				.name_len = name_end - name,
+				.value = value,
+				.value_len = value_end - value,
+			};
 		} else if (input_ptr != comment) { /* repetition */
 			const char *space1 = memchr(input_ptr, ' ', comment - input_ptr);
 			check(space1, "line %"PRIu16" has neither comment nor space nor non-indent tab in it\n", line);
@@ -583,6 +597,7 @@ generating a register layout table generally only requires the first two to be s
 int main(int argc, char **argv)  {
 	struct context ctx;
 	init_ops(&ctx);
+	INIT_VEC(ctx.macros);
 	INIT_VEC(ctx.lines);
 	INIT_VEC(ctx.fields);
 	memset(ctx.rep_values, 0, sizeof(ctx.rep_values));

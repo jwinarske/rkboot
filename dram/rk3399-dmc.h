@@ -240,9 +240,6 @@ extern struct dram_cfg init_cfg;
 extern const struct phy_update phy_400mhz;
 extern const struct phy_update phy_800mhz;
 
-struct regshift {u16 reg;u8 shift;};
-extern const struct regshift speed_regs[8];
-void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op);
 extern const struct odt_preset odt_50mhz, odt_600mhz, odt_933mhz;
 void lpddr4_get_odt_settings(struct odt_settings *odt, const struct odt_preset *preset);
 void set_phy_io(volatile u32 *phy, const struct odt_settings *odt);

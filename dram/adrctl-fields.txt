@@ -85,6 +85,8 @@ b8	LP wakeup = 0
 b1	LS idle en = 0
 b1	tDFI phy WrDelay = 0
 
+macro SPEED = 0 1 (MHz 400 <) sel 2 (MHz 800 <) sel
+
 # I theorize that the 2-bit unknown subfields are the same (but they're never used apparently) and that the boost and slew subfields can be separated into two 3/4-bit parts for positive and negative, but I don't know if that knowledge could be useful (or even tested)
 sync 27+25 27+25
 b23	pad fdbk drive: packed	# 924
@@ -94,7 +96,7 @@ b23	pad fdbk drive: packed	# 924
 !p1	RX CM input = 0
 !p3	drive mode = 0
 !p3	unknown = 0
-!p2	speed = 0
+!p2	speed = SPEED
 
 b16	pad fdbk drive2: packed	# 925
 # use the same value as in dslice for writing
@@ -104,14 +106,14 @@ b16	pad fdbk drive2: packed	# 925
 b21	pad data drive: packed	# 926
 !p6	slew = 0
 !p3	drive mode = 1
-!p2	speed = 0
+!p2	speed = SPEED
 !p1	RX CM input = 0
 !p8	boost = 0
 
 b23	pad DQS drive: packed	# 927
 !p6	slew = 0
 !p3	drive mode = 1
-!p2	speed = 0
+!p2	speed = SPEED
 !p2	unknown = 0
 !p1	RX CM input = 0
 !p8	boost = 0
@@ -124,7 +126,7 @@ b29	pad addr drive: packed	# 928
 !p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
-!p2	speed = 0
+!p2	speed = SPEED
 !p1	RX CM input = 0
 !p8	boost = 0
 !p1	unknown = 0
@@ -134,7 +136,7 @@ b31	pad clk drive: packed	# 929
 !p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
-!p2	speed = 0
+!p2	speed = SPEED
 !p2	unknown = 0
 !p1	RX CM input = 0
 !p8	boost = 0
@@ -163,7 +165,7 @@ b29	pad CKE drive: packed	# 935
 !p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
-!p2	speed = 0
+!p2	speed = SPEED
 !p1	RX CM input = 0
 !p8	boost = 0
 !p1	unknown = 0
@@ -177,7 +179,7 @@ b29	pad RST drive: packed	# 937
 !p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
-!p2	speed = 0
+!p2	speed = SPEED
 !p1	RX CM input = 0
 !p8	boost = 0
 !p1	unknown = 0
@@ -191,7 +193,7 @@ b29	pad CS drive: packed	# 939
 !p8	TSel select = 0xef
 !p6	slew = 4
 !p3	drive mode = 0
-!p2	speed = 0
+!p2	speed = SPEED
 !p1	RX CM input = 0
 !p8	boost = 0
 !p1	unknown = 0

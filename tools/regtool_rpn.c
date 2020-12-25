@@ -172,21 +172,55 @@ void init_ops(struct context *ctx) {
 void run_expression(struct context *ctx, struct stack *stack, const char *expr, const char *end, u16 line, u32 local_reps, const u8 *local_rep_values) {
 	const struct rpn_op *ops = ctx->ops;
 	const size_t ops_size = ctx->ops_size;
+	struct parse_ctx {
+		const char *pos, *end;
+		size_t macro_end;
+	};
+	DECL_VEC(struct parse_ctx, expansion_stack);
+	INIT_VEC(expansion_stack)
+	size_t macro_end = ctx->macros_size;
 	const char *pos = expr;
-	while (pos < end) {
+	while (1) {
+		if (pos >= end) {
+			if (!expansion_stack_size) {break;}
+			debug("macro expansion ended\n");
+			pos = expansion_stack[--expansion_stack_size].pos;
+			end = expansion_stack[expansion_stack_size].end;
+			macro_end = expansion_stack[expansion_stack_size].macro_end;
+		}
 		u32 val;
 		if (parse_hex(&pos, end, &val) || parse_dec(&pos, end, &val)) {
 			struct value *v = BUMP(stack->values);
 			v->type = VAL_NUMBER;
 			v->val = val;
 		} else {
+			const char *op_end = pos;
+			while (op_end < end && *op_end != ' ') {op_end += 1;}
+			size_t op_len = op_end - pos;
 			for (size_t i = 0; i < ops_size; ++i) {
 				u8 len = ops[i].tok_len;
-				if (end - pos < len || memcmp(pos, ops[i].tok, len)) {continue;}
+				if (op_len < len || memcmp(pos, ops[i].tok, len)) {continue;}
 				check(stack->values_size >= ops[i].inputs, "line %"PRIu16": not enough values on stack for input to %s in expression '%.*s'", line, ops[i].tok, (int)(end - expr), expr);
 				const char *error = ops[i].op(ctx, stack, ops[i].param, local_rep_values);
 				check(!error, "line %"PRIu16": evaluation error '%s' in expression '%.*s'", line, error, (int)(end - expr), expr);
 				pos += len;
+				goto continue_outer;
+			}
+			for (size_t i = 0; i < macro_end; ++i) {
+				struct macro *macro = ctx->macros + i;
+				if (op_len != macro->name_len || memcmp(pos, macro->name, op_len)) {continue;}
+				debug("expanding macro %.*s\n", (int)(macro->name_len), macro->name);
+				const char *continue_pos = stripl(op_end, end);
+				if (continue_pos < end) {
+					*BUMP(expansion_stack) = (struct parse_ctx) {
+						.pos = continue_pos, .end = end,
+						.macro_end = macro_end,
+					};
+				}
+				pos = macro->value;
+				end = macro->value + macro->value_len;
+				macro_end = i;
+				debug("current input: %.*s\n", (int)(end - pos), pos);
 				goto continue_outer;
 			}
 			check(0, "line %"PRIu16": cannot tokenize value expression '%.*s', starting at '%.*s'\n", line, (int)(end - expr), expr, (int)(end - pos), pos);

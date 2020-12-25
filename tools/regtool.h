@@ -31,7 +31,9 @@ _Noreturn int allocation_failed();
 type of lines
 =============
 
-an effective line can take two forms:
+an effective line can take 3 forms:
+
+- a macro, which is constructed as `macro[space]${name} = ${expression}`
 
 - a pragma. which is constructed as ``${directive}[space]${start_register}+${start_offset}[space]${end_register}+${end_offset}``. see the directives below.
 
@@ -199,7 +201,6 @@ it evaluates a reverse polish notation expression. i. e. runs a stack machine.
 
 tokens for this stack machine are integers (in decimal notation or in hexadecimal prefixed with :code:`0x` as in C and other programming languages) and operators.
 there does not need to be whitespace separating a preceding number from a following operator. all other pairs of tokens should be separated by whitespace.
-(note: currently the set of operators is prefix-free, so the tokenizer does not (and does not need to) enforce separation of pairs starting with an operator. this may not stay that way in the future)
 
 values
 ------
@@ -250,7 +251,13 @@ struct rpn_op {
 	u64 param;
 };
 
+struct macro {
+	const char *name, *value;
+	size_t name_len, value_len;
+};
+
 struct context {
+	DECL_VEC(struct macro, macros);
 	DECL_VEC(struct line, lines);
 	DECL_VEC(struct field, fields);
 

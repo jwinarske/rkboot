@@ -32,18 +32,6 @@ static void copy_reg_range(const volatile u32 *a, volatile u32 *b, u32 n) {
 	while (n--) {*b++ = *a++;}
 }
 
-const struct regshift speed_regs[8] = {
-	{924, 21}, {926, 9}, {927, 9}, {928, 17},
-	{929, 17}, {935, 17}, {937, 17}, {939, 17},
-};
-void apply32_multiple(const struct regshift *regs, u8 count, volatile u32 *base, u32 delta, u64 op) {
-	u32 mask = op >> 32, val = (u32)op;
-	for_range(i, 0, count) {
-		spew("reg %u (delta %u) mask %x val %x shift %u\n", (u32)regs[i].reg, delta, mask, val, regs[i].shift);
-		clrset32(base + (regs[i].reg - delta), mask << regs[i].shift, val << regs[i].shift);
-	}
-}
-
 static u32 mrr_cmd(u8 mr, u8 cs) {
 	return ((u32)mr | ((u32)cs << 8) | (1 << 16)) << 8;
 }
@@ -87,7 +75,7 @@ static void dump_mrs(volatile u32 UNUSED *pctl) {
 #endif
 }
 
-static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd, u32 speed) {
+static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd) {
 	phy->PHY_GLOBAL(896) = (u32)upd->grp_shift01 << 16 | bank << 8;
 	phy->PHY_GLOBAL(911) = upd->pll_ctrl;
 	apply32v(&phy->PHY_GLOBAL(913), SET_BITS32(1, upd->negedge_pll_switch));
@@ -108,8 +96,6 @@ static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struc
 		phy->dslice[i][84] = upd->dslice59_90[25] + 0x1000;
 		copy_reg_range(&upd->dslice59_90[26], &phy->dslice[i][85], 6);
 	}
-
-	apply32_multiple(speed_regs, ARRAY_SIZE(speed_regs), &phy->global[0], 896, SET_BITS32(2, speed));
 }
 
 /* this function seems very prone to system hangs if we try to yield inbetween, probably because of the bus idle. it usually finishes in around 25 μs, so that sholudn't be a problem */
@@ -157,7 +143,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct odt_p
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch);
-		update_phy_bank(phy, phy_bank, phy_upd, 1);
+		update_phy_bank(phy, phy_bank, phy_upd);
 		struct odt_settings odt;
 		lpddr4_get_odt_settings(&odt, preset);
 		u32 wr_en = phy_upd->dslice5_7[0] >> 17 & 1;
