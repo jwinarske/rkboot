@@ -213,7 +213,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_u
 			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
 		}
 	}
-	printf("switched (%"PRIuTS" ticks) … ", get_timestamp() - start);
+	printf("switched (%"PRIuTS" ticks)\n", get_timestamp() - start);
 }
 
 static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct phy_update *phy_upd) {

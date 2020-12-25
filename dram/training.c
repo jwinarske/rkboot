@@ -122,9 +122,6 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 	for_dslice(i) {apply32v(&phy->dslice[i][8], SET_BITS32(1, 1) << 16);}
 	for_dslice(i) {apply32v(&phy->dslice[i][63], SET_BITS32(16, 0x0200) << 16);}
 	phy->PHY_GLOBAL(896) &= ~(u32)1;
-	udelay(100);
-	puts("test\n");
-	udelay(100);
 	pctl[200] |= 1 << 8;
 	apply32v(pi + 60, SET_BITS32(2, 0) << 8);
 
@@ -172,11 +169,11 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 }
 
 static void training_task(struct ddrinit_state *st, u32 ch) {
-	puts("training started\n");
+	debug("training started\n");
 	assert_msg(train_channel(ch, st->geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
 	size_t bit = 1 << ch;
-	size_t res = atomic_fetch_or_explicit(&st->sync, bit, memory_order_seq_cst) | bit;
-	printf("sync%zu\n", res);
+	size_t UNUSED res = atomic_fetch_or_explicit(&st->sync, bit, memory_order_seq_cst) | bit;
+	debug("sync%zu\n", res);
 	sched_queue_list(CURRENT_RUNQUEUE, &st->waiters);
 }
 
@@ -194,7 +191,7 @@ void ddrinit_train(struct ddrinit_state *st) {
 	while (1) {
 		u8 val = atomic_load_explicit(&st->sync, memory_order_relaxed);
 		if (val == 3) {break;}
-		printf("sleeping on sync=0x%08"PRIx32"\n", val);
+		debug("sleeping on sync=0x%08"PRIx32"\n", val);
 		call_cc_ptr2_int2(sched_finish_u8, &st->sync, &st->waiters, 3, val);
 	}
 }

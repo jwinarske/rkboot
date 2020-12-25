@@ -83,7 +83,7 @@ void channel_post_init(volatile u32 *pctl, volatile u32 *pi, volatile u32 *msch,
 	udelay(1);
 	while (test_mirror(MIRROR_TEST_ADDR, row_shift - 1 + cs0_row_bits)) {
 		if (cs0_row_bits == 12) {die("too few CS0 rows (<12 bits row address)!\n");}
-		printf(" row mirror");
+		debugs(" row mirror");
 		cs0_row_bits -= 1;
 	}
 	printf("cs0row=%u ", cs0_row_bits);

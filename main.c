@@ -165,7 +165,6 @@ int32_t NO_ASAN main(u64 sctlr) {
 		gicv2_setup_spi(gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
 	}
 
-	logs("jumping to ddrinit");
 	ddrinit_configure(&ddrinit_st);
 
 	misc_init();
