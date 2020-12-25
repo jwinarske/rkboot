@@ -89,50 +89,50 @@ b1	tDFI phy WrDelay = 0
 sync 27+25 27+25
 b23	pad fdbk drive: packed	# 924
 !p8	TSel select = TSEL_CA
-!p6	slew = 4
-!p1	RX CM input = 0
+!p6	slew = 9
+!p1	RX CM input = 1
 !p3	drive mode = 0
 !p3	unknown = 0
 !p2	speed = SPEED
 
 b16	pad fdbk drive2: packed	# 925
 !p8	TSel select = TSEL_DQ_WR
-!p8	boost = 4
+!p8	boost = 0x11
 
 b21	pad data drive: packed	# 926
-!p6	slew = 0
+!p6	slew = 9
 !p3	drive mode = 1
 !p2	speed = SPEED
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 
 b23	pad DQS drive: packed	# 927
-!p6	slew = 0
+!p6	slew = 9
 !p3	drive mode = 1
 !p2	speed = SPEED
 !p2	unknown = 0
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 # set for training and nothing else apparently
 !p1	RPull = 0
 
 b29	pad addr drive: packed	# 928
 !p8	TSel select = TSEL_CA
-!p6	slew = 4
+!p6	slew = 9
 !p3	drive mode = 0
 !p2	speed = SPEED
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 !p1	unknown = 0
 
 b31	pad clk drive: packed	# 929
 !p8	TSel select = TSEL_CKCS
-!p6	slew = 4
+!p6	slew = 9
 !p3	drive mode = 0
 !p2	speed = SPEED
 !p2	unknown = 0
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 !p1	unknown = 0
 
 # the termination registers are undocumented and not used beyond initial setup (to their documented default value 0x4410), except for the 17th bit in some registers when enabling write ODT, as seen below
@@ -156,11 +156,11 @@ b18	pad clk term: packed	# 934
 b29	pad CKE drive: packed	# 935
 # use the same value as for CA. see TSel in dslice for values
 !p8	TSel select = TSEL_CA
-!p6	slew = 4
+!p6	slew = 9
 !p3	drive mode = 0
 !p2	speed = SPEED
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 !p1	unknown = 0
 
 b18	pad CKE term: packed	# 936
@@ -170,11 +170,11 @@ b18	pad CKE term: packed	# 936
 b29	pad RST drive: packed	# 937
 # set to high impedance for channel 1 during init (366-ball package workaround)
 !p8	TSel select = TSEL_CA
-!p6	slew = 4
+!p6	slew = 9
 !p3	drive mode = 0
 !p2	speed = SPEED
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 !p1	unknown = 0
 
 b18	pad RST term: packed	# 938
@@ -183,11 +183,11 @@ b18	pad RST term: packed	# 938
 
 b29	pad CS drive: packed	# 939
 !p8	TSel select = TSEL_CKCS
-!p6	slew = 4
+!p6	slew = 9
 !p3	drive mode = 0
 !p2	speed = SPEED
-!p1	RX CM input = 0
-!p8	boost = 0
+!p1	RX CM input = 1
+!p8	boost = 0x11
 !p1	unknown = 0
 
 b18	pad CS term: packed	# 940
