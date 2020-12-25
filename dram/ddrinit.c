@@ -32,47 +32,93 @@ static void copy_reg_range(const volatile u32 *a, volatile u32 *b, u32 n) {
 	while (n--) {*b++ = *a++;}
 }
 
-static u32 mrr_cmd(u8 mr, u8 cs) {
-	return ((u32)mr | ((u32)cs << 8) | (1 << 16)) << 8;
+static void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
+	copy_reg_range(&cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
+	for_dslice(i) {
+		copy_reg_range(&cfg->dslice[0], &phy->dslice[i][0], PHY_CALVL_VREF_DRIVING_SLICE);
+		phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE] = (i % 2 == 0) << PHY_SHIFT_CALVL_VREF_DRIVING_SLICE | cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE];
+		copy_reg_range(&cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE + 1], &phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE + 1], NUM_PHY_DSLICE_REGS - PHY_CALVL_VREF_DRIVING_SLICE - 1);
+	}
+	for_aslice(i) {copy_reg_range(&cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
+
+	for_dslice(i) {
+		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
+		phy->dslice[i][84] = cfg->dslice[84] + 0x1000;
+	}
 }
 
-enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
+#define PWRUP_SREF_EXIT (1 << 16)
+#define START 1
 
-static enum mrrresult UNUSED read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
-	pctl[PCTL_READ_MODEREG] = mrr_cmd(mr, cs);
-	u32 status;
-	u64 start_time = get_timestamp();
-	while (!((status = pctl[PCTL_INT_STATUS]) & 0x00201000)) {
-		if (get_timestamp() - start_time > 100 * CYCLES_PER_MICROSECOND) {
-			*out = 0;
-			return MRR_TIMEOUT;
+static void configure(struct ddrinit_state *st, const struct dram_cfg *cfg, u32 mhz) {
+	u32 sref_save[MC_NUM_CHANNELS];
+	for_channel(ch) {
+		if (st->chan_st[ch] != CHAN_ST_UNINIT) {continue;}
+		volatile u32 *pctl = pctl_base_for(ch);
+		volatile u32 *pi = pi_base_for(ch);
+		volatile struct phy_regs *phy = phy_for(ch);
+
+		copy_reg_range(
+			&cfg->regs.pctl[PCTL_DRAM_CLASS + 1],
+			pctl + PCTL_DRAM_CLASS + 1,
+			NUM_PCTL_REGS - PCTL_DRAM_CLASS - 1
+		);
+		/* must happen after setting NO_PHY_IND_TRAIN_INT in the transfer above */
+		pctl[PCTL_DRAM_CLASS] = cfg->regs.pctl[PCTL_DRAM_CLASS];
+
+		if (ch == 1 && st->chan_st[ch] != CHAN_ST_INACTIVE) {
+			/* delay ZQ calibration */
+			pctl[14] += mhz * 1000;
 		}
+
+		copy_reg_range(&cfg->regs.pi[0], pi, NUM_PI_REGS);
+
+		const struct phy_cfg *phy_cfg = &cfg->regs.phy;
+		for_range(i, 0, 3) {phy->PHY_GLOBAL(910 + i) = phy_cfg->PHY_GLOBAL(910 + i);}
+
+		phy->PHY_GLOBAL(898) = phy_cfg->PHY_GLOBAL(898);
+		phy->PHY_GLOBAL(919) = phy_cfg->PHY_GLOBAL(919);
+
+		sref_save[ch] = pctl[68];
+		pctl[68] = sref_save[ch] & ~PWRUP_SREF_EXIT;
+
+		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 1) << 24);
+
+		pi[0] |= START;
+		pctl[0] |= START;
+
+		configure_phy(phy, phy_cfg);
+		/* improve dqs and dq phase */
+		for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
+		if (ch == 1) {
+			/* workaround 366 ball reset */
+			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
+		}
+
+		st->chan_st[ch] = CHAN_ST_CONFIGURED;
 	}
-	pctl[PCTL_INT_ACK] = 0x00201000;
-	if ((status >> 12) & 1) {
-		*out = pctl[PCTL_MRR_ERROR_STATUS];
-		return MRR_ERROR;
+	for_channel(ch) {
+		if (st->chan_st[ch] != CHAN_ST_CONFIGURED) {continue;}
+
+		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
+		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
 	}
-	*out = pctl[PCTL_PERIPHERAL_MRR_DATA];
-	return MRR_OK;
 }
 
-static void dump_mrs(volatile u32 UNUSED *pctl) {
-#ifdef DEBUG_MSG
-	for_range(cs, 0, 2) {
-		printf("CS=%u\n", cs);
-		for_range(mr, 0, 26) {
-			if (!((1 << mr) & 0x30c51f1)) {continue;}
-			u32 mr_value; enum mrrresult res;
-			if ((res = read_mr(pctl, mr, cs, &mr_value))) {
-				if (res == MRR_TIMEOUT) {printf("MRR timeout for mr%u\n", mr);}
-				else {printf("MRR error %x for MR%u\n", mr_value, mr);}
-			} else {
-				printf("MR%u = %x\n", mr, mr_value);
-			}
-		}
-	}
-#endif
+void ddrinit_configure(struct ddrinit_state *st) {
+	debugs("ddrinit() reached\n");
+
+	softreset_memory_controller();
+	logs("initializing DRAM\n");
+
+	/* not doing this will make the CPU hang */
+	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
+	udelay(1000);
+	/* map memory controller ranges */
+	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
+	dsb_ishst();
+	st->chan_st[0] = st->chan_st[1] = CHAN_ST_UNINIT;
+	configure(st, &init_cfg, 50);
 }
 
 static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struct phy_update *upd) {
@@ -170,114 +216,6 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_u
 	printf("switched (%"PRIuTS" ticks) … ", get_timestamp() - start);
 }
 
-static void configure_phy(volatile struct phy_regs *phy, const struct phy_cfg *cfg) {
-	copy_reg_range(&cfg->global[0], &phy->global[0], NUM_PHY_GLOBAL_REGS);
-	for_dslice(i) {
-		copy_reg_range(&cfg->dslice[0], &phy->dslice[i][0], PHY_CALVL_VREF_DRIVING_SLICE);
-		phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE] = (i % 2 == 0) << PHY_SHIFT_CALVL_VREF_DRIVING_SLICE | cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE];
-		copy_reg_range(&cfg->dslice[PHY_CALVL_VREF_DRIVING_SLICE + 1], &phy->dslice[i][PHY_CALVL_VREF_DRIVING_SLICE + 1], NUM_PHY_DSLICE_REGS - PHY_CALVL_VREF_DRIVING_SLICE - 1);
-	}
-	for_aslice(i) {copy_reg_range(&cfg->aslice[i][0], &phy->aslice[i][0], NUM_PHY_ASLICE_REGS);}
-
-	for_dslice(i) {
-		phy->dslice[i][83] = cfg->dslice[83] + 0x00100000;
-		phy->dslice[i][84] = cfg->dslice[84] + 0x1000;
-	}
-}
-
-const char ddrinit_chan_state_names[NUM_CHAN_ST][12] = {
-#define X(name) #name,
-	DEFINE_CHANNEL_STATES
-#undef X
-};
-
-#define PWRUP_SREF_EXIT (1 << 16)
-#define START 1
-
-static void configure(struct ddrinit_state *st, const struct dram_cfg *cfg, u32 mhz) {
-	u32 sref_save[MC_NUM_CHANNELS];
-	for_channel(ch) {
-		if (st->chan_st[ch] != CHAN_ST_UNINIT) {continue;}
-		volatile u32 *pctl = pctl_base_for(ch);
-		volatile u32 *pi = pi_base_for(ch);
-		volatile struct phy_regs *phy = phy_for(ch);
-
-		copy_reg_range(
-			&cfg->regs.pctl[PCTL_DRAM_CLASS + 1],
-			pctl + PCTL_DRAM_CLASS + 1,
-			NUM_PCTL_REGS - PCTL_DRAM_CLASS - 1
-		);
-		/* must happen after setting NO_PHY_IND_TRAIN_INT in the transfer above */
-		pctl[PCTL_DRAM_CLASS] = cfg->regs.pctl[PCTL_DRAM_CLASS];
-
-		if (ch == 1 && st->chan_st[ch] != CHAN_ST_INACTIVE) {
-			/* delay ZQ calibration */
-			pctl[14] += mhz * 1000;
-		}
-
-		copy_reg_range(&cfg->regs.pi[0], pi, NUM_PI_REGS);
-		
-		const struct phy_cfg *phy_cfg = &cfg->regs.phy;
-		for_range(i, 0, 3) {phy->PHY_GLOBAL(910 + i) = phy_cfg->PHY_GLOBAL(910 + i);}
-
-		phy->PHY_GLOBAL(898) = phy_cfg->PHY_GLOBAL(898);
-		phy->PHY_GLOBAL(919) = phy_cfg->PHY_GLOBAL(919);
-
-		sref_save[ch] = pctl[68];
-		pctl[68] = sref_save[ch] & ~PWRUP_SREF_EXIT;
-
-		apply32v(&phy->PHY_GLOBAL(957), SET_BITS32(2, 1) << 24);
-
-		pi[0] |= START;
-		pctl[0] |= START;
-
-		configure_phy(phy, phy_cfg);
-		/* improve dqs and dq phase */
-		for_dslice(i) {apply32v(&phy->dslice[i][1], SET_BITS32(11, 0x680) << 8);}
-		if (ch == 1) {
-			/* workaround 366 ball reset */
-			clrset32(&phy->PHY_GLOBAL(937), 0xff, ODT_DS_240 | ODT_DS_240 << 4);
-		}
-
-		st->chan_st[ch] = CHAN_ST_CONFIGURED;
-	}
-	for_channel(ch) {
-		if (st->chan_st[ch] != CHAN_ST_CONFIGURED) {continue;}
-
-		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
-		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
-	}
-}
-
-void ddrinit_set_channel_stride(u32 val) {
-	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities) */
-	pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
-}
-
-void memtest(u64);
-
-void ddrinit_configure(struct ddrinit_state *st) {
-	debugs("ddrinit() reached\n");
-
-	softreset_memory_controller();
-	logs("initializing DRAM\n");
-
-	/* not doing this will make the CPU hang */
-	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
-	udelay(1000);
-	/* map memory controller ranges */
-	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
-	dsb_ishst();
-	st->chan_st[0] = st->chan_st[1] = CHAN_ST_UNINIT;
-	configure(st, &init_cfg, 50);
-}
-
-static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
-	if (!mr_value) {return;}
-	geo->csmask |= 1 << cs;
-	if (mr_value >> 16) {geo->width = 2;}
-}
-
 static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct phy_update *phy_upd) {
 	atomic_store_explicit(&st->sync, 0, memory_order_release);
 	/* disable DDRC interrupts during switch, since the handler will try to read from registers behind an idled bus */
@@ -303,6 +241,11 @@ static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 p
 	ddrinit_train(st);
 }
 
+void ddrinit_set_channel_stride(u32 val) {
+	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities) */
+	pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
+}
+
 static void both_channels_ready(struct ddrinit_state *st) {
 	encode_dram_size(st->geo);
 	switch_and_train(st, 400, 0, 1, &phy_400mhz);
@@ -319,6 +262,61 @@ static void both_channels_ready(struct ddrinit_state *st) {
 	mmu_unmap_range(0, 0xf7ffffff);
 	rk3399_set_init_flags(RK3399_INIT_DRAM_READY);
 }
+
+static u32 mrr_cmd(u8 mr, u8 cs) {
+	return ((u32)mr | ((u32)cs << 8) | (1 << 16)) << 8;
+}
+
+#ifdef DEBUG_MSG
+enum mrrresult {MRR_OK = 0, MRR_ERROR = 1, MRR_TIMEOUT};
+
+static enum mrrresult UNUSED read_mr(volatile u32 *pctl, u8 mr, u8 cs, u32 *out) {
+	pctl[PCTL_READ_MODEREG] = mrr_cmd(mr, cs);
+	u32 status;
+	u64 start_time = get_timestamp();
+	while (!((status = pctl[PCTL_INT_STATUS]) & 0x00201000)) {
+		if (get_timestamp() - start_time > 100 * CYCLES_PER_MICROSECOND) {
+			*out = 0;
+			return MRR_TIMEOUT;
+		}
+	}
+	pctl[PCTL_INT_ACK] = 0x00201000;
+	if ((status >> 12) & 1) {
+		*out = pctl[PCTL_MRR_ERROR_STATUS];
+		return MRR_ERROR;
+	}
+	*out = pctl[PCTL_PERIPHERAL_MRR_DATA];
+	return MRR_OK;
+}
+
+static void dump_mrs(volatile u32 UNUSED *pctl) {
+	for_range(cs, 0, 2) {
+		printf("CS=%u\n", cs);
+		for_range(mr, 0, 26) {
+			if (!((1 << mr) & 0x30c51f1)) {continue;}
+			u32 mr_value; enum mrrresult res;
+			if ((res = read_mr(pctl, mr, cs, &mr_value))) {
+				if (res == MRR_TIMEOUT) {printf("MRR timeout for mr%u\n", mr);}
+				else {printf("MRR error %x for MR%u\n", mr_value, mr);}
+			} else {
+				printf("MR%u = %x\n", mr, mr_value);
+			}
+		}
+	}
+}
+#endif
+
+static void set_width(struct sdram_geometry *geo, u32 mr_value, u32 cs) {
+	if (!mr_value) {return;}
+	geo->csmask |= 1 << cs;
+	if (mr_value >> 16) {geo->width = 2;}
+}
+
+const char ddrinit_chan_state_names[NUM_CHAN_ST][12] = {
+#define X(name) #name,
+	DEFINE_CHANNEL_STATES
+#undef X
+};
 
 void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 	enum channel_state chan_st = st->chan_st[ch];
@@ -339,7 +337,9 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		if (ch == 1) { /* restore reset drive strength */
 			clrset32(&phy->PHY_GLOBAL(937), 0xff, init_cfg.regs.phy.PHY_GLOBAL(937) & 0xff);
 		}
+#ifdef DEBUG_MSG
 		dump_mrs(pctl);
+#endif
 		struct sdram_geometry *geo = st->geo + ch;
 		geo->csmask = 0;
 		geo->width = 1;
