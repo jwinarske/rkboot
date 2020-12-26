@@ -13,19 +13,6 @@
 
 static u32 next_pagetable = 1;
 
-enum {
-	TCR_NONSHARED = 0,
-	TCR_INNER_SHAREABLE = 3 << 12,
-	TCR_FULLY_INNER_CACHEABLE = 1 << 8,
-	TCR_FULLY_OUTER_CACHEABLE = 1 << 10,
-	TCR_4K_GRANULE = 0,
-	TCR_TBI = 1 << 20,
-	TCR_RES1 = (u64)1 << 31 | 1 << 23
-};
-#define TCR_REGION0(c) (c)
-#define TCR_PS(x) ((x) << 16)
-#define TCR_TxSZ(x) (x)
-
 #define PGTAB_SUBTABLE (3)
 #define PGTAB_BLOCK(attridx) (1 | 1 << 10 | (attridx) << 2)
 #define PGTAB_PAGE(attridx) (3 | 1 << 10 | (attridx) << 2)
@@ -214,13 +201,13 @@ void mmu_setup(const struct mapping *initial_mappings, const struct address_rang
 		}
 	}
 #endif
-	__asm__ volatile("msr mair_el3, %0" : : "r"((u64)0x3344ff0c080400));
+	__asm__ volatile("msr mair_el3, %0" : : "r"(MMU_MAIR_VAL));
 #ifdef DEBUG_MSG
 	u64 mair;
 	__asm__ volatile("mrs %0, mair_el3" : "=r"(mair));
 	debug("MAIR is %zx\n", mair);
 #endif
-	u64 tcr = TCR_RES1 | TCR_REGION0(TCR_FULLY_INNER_CACHEABLE | TCR_FULLY_OUTER_CACHEABLE | TCR_INNER_SHAREABLE | TCR_4K_GRANULE | TCR_TxSZ(16)) | TCR_PS(5) | TCR_TBI;
+	u64 tcr = MMU_TCR_VAL;
 	u64 ttbr0 = (u64)&pagetables[0];
 	debug("writing 0x%016zx to TCR_EL3, 0x%016zx to TTBR0_EL3\n", tcr, ttbr0);
 	__asm__ volatile("msr tcr_el3, %0" : : "r"(tcr));

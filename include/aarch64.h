@@ -16,6 +16,46 @@
 #define SCR_EA 8
 #define SCR_EL3_RES1 0x30
 
+/* each region has size, granule, inner and outer cacheability and shareability attributes */
+#define TCR_TxSZ(x) ((x) & 0x3f)
+#define TCR_EPD 0x80	/* only on EL1 */
+#define TCR_INNER_UNCACHED 0
+#define TCR_INNER_CACHED 0x100
+#define TCR_INNER_WRITE_THROUGH 0x200
+#define TCR_INNER_WRITE_NO_ALLOC 0x300
+#define TCR_OUTER_UNCACHED 0
+#define TCR_OUTER_CACHED 0x400
+#define TCR_OUTER_WRITE_THROUGH 0x800
+#define TCR_OUTER_WRITE_NO_ALLOC 0xc00
+#define TCR_NONSHARED 0
+#define TCR_OUTER_SHARED 0x2000
+#define TCR_INNER_SHARED 0x3000
+#define TCR_4K_GRANULE 0
+#define TCR_64K_GRANULE 0x4000
+#define TCR_16K_GRANULE 0x8000
+
+#define TCR_REGION0(c) (c)
+#define TCR_IPS_32 0
+#define TCR_IPS_36 (UINT64_C(1) << 32)
+#define TCR_IPS_40 (UINT64_C(2) << 32)
+#define TCR_IPS_42 (UINT64_C(3) << 32)
+#define TCR_IPS_44 (UINT64_C(4) << 32)
+#define TCR_IPS_48 (UINT64_C(5) << 32)
+#define TCR_IPS_52 (UINT64_C(6) << 32)
+
+/* TCR_EL1 features (also available in EL2 in an E2H situation) */
+#define TCR_REGION1(c) ((c) << 16)
+#define TCR_A1 0x400000
+#define TCR_ASID_8 0
+#define TCR_ASID_16 (UINT64_C(1) << 36)
+#define TCR_TBI0 (UINT64_C(1) << 37)
+#define TCR_TBI1 (UINT64_C(1) << 38)
+
+/* TCR_EL2/3 features (no E2H) */
+#define TCR_PS(x) ((x) << 16)
+#define TCR_EL23_TBI 0x100000
+#define TCR_EL3_RES1 UINT64_C(0x80800000)
+
 #ifdef __ASSEMBLER__
 .macro mov32 reg val
 	mov \reg, #((\val) & 0xffff0000)

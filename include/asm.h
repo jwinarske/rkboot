@@ -7,6 +7,8 @@
 #define ENDFUNC_NESTED(name) .type name, %function;.size name, .-name
 
 #ifdef __ASSEMBLER__
+#define UINT64_C(val) val
+
 .macro create_stackframe size
 	stp x29, x30, [sp, #-\size]!
 	.cfi_def_cfa sp, \size

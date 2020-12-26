@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
-#include "defs.h"
+#include <aarch64.h>
+
+#define MMU_MAIR_VAL UINT64_C(0x3344ff0c080400)
+#define MMU_TCR_VAL (TCR_EL3_RES1 | TCR_REGION0(TCR_INNER_CACHED | TCR_OUTER_CACHED | TCR_OUTER_SHARED | TCR_4K_GRANULE | TCR_TxSZ(16)) | TCR_PS(0))
+
+#ifndef __ASSEMBLER__
 
 struct address_range {volatile void *first, *last;};
 #define ADDRESS_RANGE_INVALID {.first = (void*)1, .last = 0}
@@ -42,3 +47,4 @@ extern const size_t num_pagetables;
 static inline void UNUSED mmu_map_mmio_identity(u64 first, u64 last) {
 	mmu_map_range(first, last, first, MEM_TYPE_DEV_nGnRnE);
 }
+#endif
