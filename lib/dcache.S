@@ -4,20 +4,8 @@
 
 // FIXME: handle ARMv8.3-CCIDX
 
-.macro apply_all_dcache cacheop
-	dsb sy
-	mrs x17, clidr_el1
-	lsr w16, w17, #23	// after this, use w17 to shift through cache levels
-	and w16, w16, #0xe	// x16 = LoC << 1
-	mov w7, #-2	// w7 = current level of cache << 1
-1:	// each level
-	add w7, w7, #2
-	cmp w7, w16
-	b.hs 4f
-	and w15, w17, #7
-	ubfx w17, w17, #3, #18
-	cmp w15, #2
-	b.lt 1b
+/* clobbers registers r8–15; takes cache ID in r7, which it preserves */
+.macro apply_one_cache_level cacheop
 	msr csselr_el1, x7
 	isb
 	mrs x15, ccsidr_el1
@@ -39,17 +27,49 @@
 	b.hs 3b
 	subs w12, w12, w10
 	b.hs 2b
+.endm
+
+/* these functions are used by both the MMU enable/disable helpers below, and platform reset entry functions */
+TEXTSECTION(.text.asm.invalidate_cache_level)
+PROC(aarch64_invalidate_cache_level, 2)
+	apply_one_cache_level isw
+	ret
+ENDFUNC(aarch64_invalidate_cache_level)
+
+TEXTSECTION(.text.asm.flush_cache_level)
+PROC(aarch64_flush_cache_level, 2)
+	apply_one_cache_level cisw
+	ret
+ENDFUNC(aarch64_flush_cache_level)
+
+.macro apply_all_dcache func
+	dsb sy
+	mrs x17, clidr_el1
+	lsr w16, w17, #23	// after this, use w17 to shift through cache levels
+	and w16, w16, #0xe	// x16 = LoC << 1
+	mov w7, #-2	// w7 = current level of cache << 1
+1:	// each level
+	add w7, w7, #2
+	cmp w7, w16
+	b.hs 4f
+	and w15, w17, #7
+	ubfx w17, w17, #3, #18
+	cmp w15, #2
+	b.lt 1b
+	bl \func
 	b 1b
 4:	// done
 	dsb sy
 	isb
 .endm
 
-.section .text.asm, "ax", %progbits
+TEXTSECTION(.text.asm.mmu)
 PROC(invalidate_dcache_set_sctlr, 2)
-	apply_all_dcache cacheop=isw
+	mov x6, x30
+	apply_all_dcache func=aarch64_invalidate_cache_level
 	msr sctlr_el3, x0
 	isb
+	mov x30, x6
 	ret
 ENDFUNC(invalidate_dcache_set_sctlr)
 
@@ -58,7 +78,9 @@ PROC(set_sctlr_flush_dcache, 2)
 	isb
 flush_dcache:
 	.global flush_dcache
-	apply_all_dcache cacheop=cisw
+	mov x6, x30
+	apply_all_dcache func=aarch64_flush_cache_level
+	mov x30, x6
 	ret
 ENDFUNC_NESTED(set_sctlr_flush_dcache)
 ENDFUNC(flush_dcache)
