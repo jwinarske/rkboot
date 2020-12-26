@@ -61,7 +61,7 @@ static void irq_handler(struct exc_state_save UNUSED *save) {
 #endif
 #if CONFIG_SPI
 	case 85:
-		rkspi_handle_interrupt(&spi1_state, spi1);
+		rkspi_handle_interrupt(&spi1_state, regmap_spi1);
 		dsb_sy();
 		break;
 #endif

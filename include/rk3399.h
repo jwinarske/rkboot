@@ -84,9 +84,6 @@ static volatile u32 *const cru = (volatile u32 *)0xff760000;
 static volatile u32 *const pmucru = (volatile u32 *)0xff750000;
 static volatile u32 *const grf = (volatile u32 *)0xff770000;
 
-struct rkspi_regs;
-static volatile struct rkspi_regs *const spi1 = (volatile struct rkspi_regs*)0xff1d0000;
-
 struct rki2c_regs;
 static volatile struct rki2c_regs *const i2c4 = (volatile struct rki2c_regs *)0xff3d0000;
 

@@ -396,6 +396,7 @@ _Noreturn void main(u64 sctlr) {
 	/* map PMU{,SGRF,GRF} */
 	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
 
+	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
 	mmu_map_mmio_identity(0xfe800000, 0xfe80ffff);
 	volatile struct dwc3_regs *dwc3 = (volatile struct dwc3_regs *)0xfe80c100;
 	/* set DRAM as Non-Secure */

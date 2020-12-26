@@ -74,6 +74,7 @@ HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
 	MMIO(PCIE_RCCONF, pcie_rcconf, 0xfd800000, u32)\
 	MMIO(PCIE_CONF_SETUP, pcie_conf_setup, 0xfda00000, u32)\
 	MMIO(PCIE_ADDR_XLATION, pcie_addr_xlation, 0xfdc00000, struct rkpcie_addr_xlation)\
+	MMIO(SPI1, spi1, 0xff1d0000, struct rkspi_regs)
 
 enum regmap_id {
 #define MMIO(name, snake, addr, type) REGMAP_##name,

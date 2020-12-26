@@ -84,12 +84,6 @@ parser.add_argument(
     help='PRNG to use for the memtest binary'
 )
 parser.add_argument(
-    '--elfloader-poll',
-    action='store_true',
-    dest='elfloader_poll',
-    help='use polling instead of IRQs for loading payloads'
-)
-parser.add_argument(
     '--payload-spi',
     action='append_const',
     dest='boot_media',
@@ -176,10 +170,6 @@ elif boot_media or decompressors:
         + "If you just want memtest and/or usbstage, don't configure with boot medium or decompression support"
     )
     sys.exit(1)
-
-use_irq = not args.elfloader_poll and bool(boot_media)
-for m in ('elfloader', 'dramstage/blk_sd', 'rk3399_spi'):
-    flags[m].append('-DCONFIG_ELFLOADER_IRQ='+('1' if use_irq else '0'))
 
 flags['dramstage/blk_sd'].append("-DCONFIG_ELFLOADER_DMA=1")
 

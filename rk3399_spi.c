@@ -16,7 +16,6 @@
 #include <log.h>
 #include <async.h>
 #include <assert.h>
-#include "rk3399_spi.h"
 #include <dump_mem.h>
 #include <cache.h>
 #include <iost.h>
@@ -25,7 +24,7 @@ static const u16 spi1_intr = 85;
 struct rkspi_xfer_state spi1_state = {};
 
 static void start_irq_flash_read(u32 addr, u8 *buf, u8 *end) {
-	volatile struct rkspi_regs *spi = spi1;
+	volatile struct rkspi_regs *spi = regmap_spi1;
 	size_t total_bytes = end - buf;
 	assert(total_bytes % 2 == 0);
 	spi->intr_mask = RKSPI_RX_FULL_INTR;
@@ -41,7 +40,7 @@ static void start_irq_flash_read(u32 addr, u8 *buf, u8 *end) {
 }
 
 void rkspi_end_irq_flash_read() {
-	volatile struct rkspi_regs *spi = spi1;
+	volatile struct rkspi_regs *spi = regmap_spi1;
 	printf("end rxlvl=%"PRIu32", rxthreshold=%"PRIu32" intr_status=0x%"PRIx32"\n", spi->rx_fifo_level, spi->rx_fifo_threshold, spi->intr_raw_status);
 	spi->enable = 0;
 	spi->slave_enable = 0;
@@ -80,21 +79,19 @@ void boot_spi() {
 		end = start +(16 << 20);
 	}
 
-	rk3399_spi_setup();
+	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
+	/* clk_spi1 = CPLL/8 = 100 MHz */
+	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 0) << 15 | SET_BITS16(7, 7) << 8;
+	dsb_st();
+	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 0) << 13;
+	regmap_spi1->baud = 2;
 	printf("setup\n");
-#if !CONFIG_ELFLOADER_IRQ
-	rkspi_read_flash_poll(spi1, start, end - start, spi_load_addr);
-	struct async_dummy async = {
-		.async = {async_pump_dummy},
-		.buf = {start, end}
-	};
-#else
+
 	struct async_dummy async = {
 		.async = {pump},
 		.buf = {start, start}
 	};
 	start_irq_flash_read(spi_load_addr, start, end);
-#endif
 	printf("start\n");
 
 	if (IOST_OK == decompress_payload(&async.async)) {
@@ -104,7 +101,7 @@ void boot_spi() {
 #if CONFIG_ELFLOADER_IRQ
 	rkspi_end_irq_flash_read();
 #endif
-	rk3399_spi_teardown();
+	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 1) << 13;
 
 	printf("had read %zu bytes\n", async.buf.end - start);
 	boot_medium_exit(BOOT_MEDIUM_SPI);

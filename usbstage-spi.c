@@ -5,9 +5,11 @@
 #include <rk3399.h>
 #include <rkspi.h>
 #include <rkspi_regs.h>
-#include "rk3399_spi.h"
 #include <dump_mem.h>
 #include <die.h>
+#include <aarch64.h>
+
+static volatile struct rkspi_regs *const spi1 = (struct rkspi_regs *)0xff1d0000;
 
 static void read_sfdp(u32 addr, u8 *buf, size_t size) {
 	assert(!(addr >> 24));
@@ -53,7 +55,12 @@ static void wait_until_ready() {
 }
 
 void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
-	rk3399_spi_setup();
+	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
+	/* clk_spi1 = CPLL/8 = 100 MHz */
+	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 0) << 15 | SET_BITS16(7, 7) << 8;
+	dsb_st();
+	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 0) << 13;
+	spi1->baud = 2;
 	u8 sfdp[1024];
 	read_sfdp(0, sfdp, 8);
 	assert_msg(sfdp[0] == 'S' && sfdp[1] == 'F' && sfdp[2] == 'D' && sfdp[3] == 'P', "SPI flash not present or not SFDP-compatible\n");
@@ -162,5 +169,5 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 	}
 	puts(" programmed.");
 	printf("written until %"PRIx64"\n", write_ptr);
-	rk3399_spi_teardown();
+	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 1) << 13;
 }
