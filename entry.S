@@ -1,14 +1,22 @@
 #include "config.h"
-
-#define SCTLR_I 0x1000
+#include <asm.h>
+#include <aarch64.h>
+#include <cortex_a53.h>
 
 .section .text.entry
 entry_point: .global entry_point
-mrs x0, SCTLR_EL3	// this is preserved in X0 for the entire file, in order to pass it to main in case it wants to return to bootloader
-orr x1, x0, #SCTLR_I
-ic iallu
-isb
-msr SCTLR_EL3, x1
+#ifdef FIRST_STAGE
+	cortex_a53_init x1, var_rev=0x04
+	isb
+#endif
+	mrs x0, SCTLR_EL3
+	/* preserve in X0 for the entire file, in order to pass it to main
+	in case it wants to return to bootloader */
+
+	orr x1, x0, #SCTLR_I
+	ic iallu
+	isb
+	msr SCTLR_EL3, x1
 
 #ifdef FIRST_STAGE	// selected by configure.py
 mov x1, #0x16e0000	// 24000000 (timer ticks per second)
@@ -50,6 +58,7 @@ greeting:
 .ascii CONFIG_GREETING
 .align 2
 post_greeting:
+
 mov x1, #0xff760000
 mov x2, #0xff000000
 movk x2, #0x0200
