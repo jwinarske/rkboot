@@ -16,6 +16,8 @@ FORCE_USED  _Noreturn void NO_ASAN __stack_chk_fail() {
 	halt_and_catch_fire();
 }
 
+_Noreturn void plat_panic() {halt_and_catch_fire();}
+
 _Noreturn void halt_and_catch_fire() {
 	while (1) {
 		__asm__ volatile("wfi");

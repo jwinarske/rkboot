@@ -1,178 +1,160 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <uart.h>
+#include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdarg.h>
 
 #include <plat.h>
 #include <die.h>
 
-static u32 NO_ASAN wait_until_fifo_free(u32 space_needed) {
-	u32 queue_space;
-	while (1) {
-		queue_space = UART_FIFO_DEPTH - uart->tx_level;
-		if (queue_space >= space_needed) {return queue_space;}
-		__asm__ volatile("yield");
-	}
-}
-
-static u32 NO_ASAN fmt_str(const char *str, u32 queue_space) {
-	while (1) {
-		const u8 c = (u8)*str++;
-		if (!c) {return queue_space;}
-		if (c == '\n') {
-			if (!queue_space) {
-				queue_space = wait_until_fifo_free(1);
-			}
-			queue_space -= 1;
-			uart->tx = '\r';
-		}
-		if (!queue_space) {
-			queue_space = wait_until_fifo_free(1);
-		}
-		queue_space -= 1;
-		uart->tx = c;
-	}
-}
-
-int fflush(FILE UNUSED *f) {
-	while (uart->tx_level) {asm("yield");}
-	return 0;
-}
-
 int puts(const char *str) {
-	u64 daif;
-	__asm__ volatile("mrs %0, DAIF;msr DAIFSet, #15" : "=r"(daif));
-	fmt_str(str, 0);
-	__asm__ volatile("msr DAIF, %0" : : "r"(daif));
-	return 0;
+	return printf("%s", str);
 }
 
-static u32 fmt_hex(u64 val, char pad, u8 width, u32 queue_space) {
+char *fmt_hex(u64 val, char pad, size_t width, char *out, char *end) {
 	u8 shift = val ? 60 - (__builtin_clzll(val) & ~3) : 0;
-	u8 digits = shift / 4 + 1;
+	size_t digits = shift / 4 + 1;
 	if (digits < width) {
-		u8 padlength = width - digits;
-		if (queue_space < width) {
-			queue_space = wait_until_fifo_free(width);
-		}
-		queue_space -= width;
-		while (padlength--) {uart->tx = pad;}
-	} else if (queue_space < digits) {
-		queue_space = wait_until_fifo_free(digits) - digits;
-	} else {queue_space -= digits;}
+		size_t padlength = width - digits;
+		if ((size_t)(end - out) < padlength) {return 0;}
+		while (padlength--) {*out++ = pad;}
+	}
+	if ((size_t)(end - out) < digits) {return 0;}
 	while (1) {
 		u8 d = (val >> shift) & 0xf;
 		u8 c = d >= 10 ? 'a' - 10 + d : '0' + d;
-		uart->tx = c;
-		if (!shift) {return queue_space;}
+		*out++ = c;
+		if (!shift) {return out;}
 		shift -= 4;
 	}
 }
 
-static u32 fmt_dec(u64 val, char pad, u8 width, u32 queue_space) {
+char *fmt_dec(u64 val, char pad, size_t width, char *out, char *end) {
 	char buf[24];
-	buf[23] = 0;
-	char *ptr = &buf[23];
+	char *ptr = buf + sizeof(buf), *buf_end = ptr;
 	do {
 		*--ptr = '0' + (val % 10);
 		val /= 10;
 	} while (val);
-	u8 digits = 23 - (ptr - buf);
+	size_t digits = buf_end - ptr;
 	if (digits < width) {
-		u8 padlength = width - digits;
-		if (queue_space < width) {
-			queue_space = wait_until_fifo_free(width);
-		}
-		queue_space -= width;
-		while (padlength--) {uart->tx = pad;}
+		size_t padlength = width - digits;
+		if ((size_t)(end - out) < padlength) {return 0;}
+		while (padlength--) {*out++ = pad;}
 	}
-	return fmt_str(ptr, queue_space);
+	if ((size_t)(end - out) < digits) {return 0;}
+	while (ptr < buf_end) {*out++ = *ptr++;}
+	return out;
 }
 
-enum {
-    FLAG_SIZE_T = 1,
-};
+_Noreturn static void format_overflow() {
+	static const char error[] = "ERROR: formatting overflow\r\n";
+	plat_write_console(error, sizeof(error) - 1);
+	plat_panic();
+}
 
-static u32 fmt_format(const char *fmt, va_list *va, u32 queue_space) {
-	u8 c;
-	/*va_list va;
-	va_copy(va, vargs);*/
-	while ((c = (u8)*fmt++)) {
+static void end_line(char *buf, char *out, char *end) {
+	if (out == end - 2) {format_overflow();}
+	*out++ = '\r';
+	*out++ = '\n';
+	plat_write_console(buf, out - buf);
+}
+
+int vprintf(const char *fmt, va_list va) {
+	char buf[CONFIG_BUF_SIZE];
+	char *end = buf + sizeof(buf), *out = buf;
+	char c;
+	size_t printed = 0;
+	while ((c = *fmt++)) {
 		if (c == '%') {
-			u64 flags = 0;
+			c = *fmt++;
+			if (c == '%') {
+				if (end == out) {format_overflow();}
+				*out++ = '%';
+				continue;
+			}
 			char pad = ' ';
-			u8 width = 0;
-			while (1) {
+			if (c == '0') {
+				pad = '0';
 				c = *fmt++;
-				if (c == 'z') {
-					flags |= FLAG_SIZE_T;
-				} else if (c == '0') {
-					if (width != 0) {
-						width *= 10;
-					} else {
-						pad = '0';
-					}
-				} else if (c >= '1' && c <= '9') {
-					width = width * 10 + c - '0';
-				} else {
-					break;
-				}
 			}
+			size_t width = 0;
+			while (c >= '0' && c <= '9') {
+				width = width * 10 + c - '0';
+				if ((size_t)(end - out) < width) {
+					static const char error[] = "BUG: field width too large for buffer\r\n";
+					plat_write_console(error, sizeof(error) - 1);
+					plat_panic();
+				}
+				c = *fmt++;
+			}
+			u64 value;
 			if (c == 's') {
-				const char *str = va_arg(*va, const char *);
-				queue_space = fmt_str(str, queue_space);
+				const char *str = va_arg(va, const char *);
+				while ((c = *str++) != 0) {
+					if (c == '\n') {
+						end_line(buf, out, end);
+						out = buf;
+						continue;
+					}
+					if (out == end) {format_overflow();}
+					*out++ = c;
+				}
+				continue;
+			} else if (c == 'z') {
+				value = va_arg(va, size_t);
+				c = *fmt++;
+			} else if (c == 'h') {
+				value = va_arg(va, int);
+				c = *fmt++;
+				if (c == 'h') {c = *fmt++;}
 			} else if (c == 'c') {
-				if (!queue_space) {
-					queue_space = wait_until_fifo_free(1);
-				}
-				queue_space -= 1;
-				uart->tx = va_arg(*va, int);
+				if (out == end) {format_overflow();}
+				*out++ = (char)va_arg(va, int);
+				continue;
 			} else {
-				u64 val = flags & FLAG_SIZE_T ? va_arg(*va, u64) : va_arg(*va, u32);
-				if (c == 'u') {
-					queue_space = fmt_dec(val, pad, width, queue_space);
-				} else if (c == 'x') {
-					queue_space = fmt_hex(val, pad, width, queue_space);
-				} else {
-					queue_space = fmt_str("ERROR: unknown format specifier", queue_space);
-					halt_and_catch_fire();
-				}
+				value = va_arg(va, unsigned int);
 			}
+			if (c == 'u') {
+				out = fmt_dec(value, pad, width, out, end);
+				if (!out) {format_overflow();}
+			} else if (c == 'x') {
+				out = fmt_hex(value, pad, width, out, end);
+				if (!out) {format_overflow();}
+			} else {
+				static const char error[] = "BUG: unknown conversion specification\r\n";
+				plat_write_console(error, sizeof(error) - 1);
+				plat_panic();
+			}
+		} else if (c == '\n') {
+			end_line(buf, out, end);
+			out = buf;
+			printed += out - buf + 2;
 		} else {
-			if (c == '\n') {
-				if (!queue_space) {
-					queue_space = wait_until_fifo_free(1);
-				}
-				queue_space -= 1;
-				uart->tx = '\r';
-			}
-			if (!queue_space) {
-				queue_space = wait_until_fifo_free(1);
-			}
-			queue_space -= 1;
-			uart->tx = c;
+			if (out == end) {format_overflow();}
+			*out++ = c;
 		}
 	}
-	/*va_end(va);*/
-	return queue_space;
+	if (buf < out) {
+		plat_write_console(buf, out - buf);
+		printed += out - buf;
+	}
+	return printed <= INT_MAX ? (int)printed : INT_MAX;
 }
 
 int printf(const char *fmt, ...) {
 	va_list va;
 	va_start(va, fmt);
-	u64 daif;
-	__asm__ volatile("mrs %0, DAIF;msr DAIFSet, #15" : "=r"(daif));
-	fmt_format(fmt, &va, 0);
-	__asm__ volatile("msr DAIF, %0" : : "r"(daif));
+	int res = vprintf(fmt, va);
 	va_end(va);
-	return 0;
+	return res;
 }
 
 int die(const char *fmt, ...) {
 	va_list va;
 	va_start(va, fmt);
-	fmt_format(fmt, &va, 0);
-	halt_and_catch_fire();
+	vprintf(fmt, va);
+	plat_panic();
 	va_end(va);
 }
 

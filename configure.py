@@ -176,6 +176,9 @@ flags['dramstage/blk_sd'].append("-DCONFIG_ELFLOADER_DMA=1")
 if bool(decompressors) and not boot_media:
     flags['dramstage/decompression'].append('-DCONFIG_ELFLOADER_MEMORY=1')
 
+flags['lib/uart16550a'].extend(('-DCONFIG_CONSOLE_UART_ADDR=0xff1a0000', '-DCONFIG_CONSOLE_FIFO_DEPTH=64'))
+flags['lib/uart'].append('-DCONFIG_BUF_SIZE=128')
+
 # ===== ninja skeleton =====
 srcdir = path.dirname(sys.argv[0])
 buildfile = open("build.ninja", "w", encoding='utf-8')
@@ -255,7 +258,7 @@ build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
 ))
 
 # ===== C compile jobs =====
-lib = {'lib/error', 'lib/uart', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
+lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 levinboot = {'main', 'pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
 elfloader = {'elfloader', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
 boot_media_handlers = ('main', 'elfloader')
@@ -297,6 +300,7 @@ dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', '
 modules = lib | levinboot | elfloader | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}
 if boot_media:
     modules |= dramstage_embedder
+print(f'# modules: {" ".join(modules)}')
 
 if args.full_debug:
     for f in modules:
@@ -375,7 +379,7 @@ def binary(name, modules, base_address):
 binary('sramstage', levinboot | {'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'uart', 'error', 'dump_fdt'), '00280000')
+binary('teststage', ('teststage', 'uart', 'uart16550a', 'error', 'dump_fdt'), '00280000')
 print("default sramstage.bin memtest.bin usbstage.bin teststage.bin")
 if args.tf_a_headers:
     binary('elfloader', elfloader | lib, '04000000')
