@@ -35,6 +35,7 @@ flags.update({
         '-DCONFIG_CONSOLE_FIFO_DEPTH=64',
     ],
     'lib/uart': ['-DCONFIG_BUF_SIZE=128'],
+    'aarch64/mmu.S': ['-DASSERTIONS=1', '-DDEV_ASSERTIONS=0']
 })
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
@@ -320,11 +321,12 @@ print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
 print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
 print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
 print(build('save_restore_aarch64.o', 'cc', path.join(srcdir, 'aarch64/save_restore.S')))
+print(build('mmu_aarch64.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
 print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
 print(build('string_aarch64.o', 'cc', path.join(srcdir, 'lib/string_aarch64.S')))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
-lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'save_restore_aarch64', 'sched_aarch64', 'string_aarch64'}
+lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
 usbstage |= {'exc_handlers'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))

@@ -12,7 +12,7 @@
 #define PRINT_MAPPINGS 1
 #endif
 
-static u32 next_pagetable = 1;
+u32 next_pagetable = 1;
 
 #define PGTAB_SUBTABLE (3)
 #define PGTAB_BLOCK(attridx) (1 | 1 << 10 | (attridx) << 2)
@@ -94,8 +94,9 @@ struct mmu_multimap {
 	u64 addr;
 	u64 desc;
 };
+const struct mmu_multimap *multimap(u64 *table, const struct mmu_multimap *map);
 
-static const struct mmu_multimap UNUSED *multimap(u64 *table, const struct mmu_multimap *map) {
+static const struct mmu_multimap UNUSED *multimap_reference(u64 *table, const struct mmu_multimap *map) {
 	unsigned level = 0;
 	u64 *table_ptrs[4] = {table};
 	u64 addr = map->addr;
