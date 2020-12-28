@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <log.h>
 #include <die.h>
+#include <arch.h>
 #include <aarch64.h>
 #include <mmu.h>
 #include <stdio.h>
@@ -18,13 +19,15 @@ static u32 next_pagetable = 1;
 #define PGTAB_PAGE(attridx) (3 | 1 << 10 | (attridx) << 2)
 #define PGTAB_CONTIGUOUS ((u64)1 << 52)
 #define PGTAB_OUTER_SHAREABLE ((u64)2 << 8)
+#define PGTAB_INNER_SHAREABLE ((u64)3 << 8)
 #define PGTAB_NSTABLE ((u64)1 << 63)
 #define PGTAB_NS (1 << 5)
 
 static u64 *alloc_page_table() {
-	debugs("alloc_page_table\n");
 	assert_msg(next_pagetable < num_pagetables, "ERROR: ran out of pagetables");
-	return &pagetables[next_pagetable++][0];
+	u64 *res = &pagetables[next_pagetable++][0];
+	debug("alloc_page_table: %"PRIx64"\n", (u64)res);
+	return res;
 }
 
 static void UNUSED dump_page_tables() {
@@ -74,54 +77,77 @@ static const struct pte_lvl {
 	{.lvl = 3, .shift = 12, .contiguous = 4, .last_level = 1, .mapping_allowed = 1},
 };
 #define GRANULE_SHIFT 12
-#define NUM_MAPPING_LEVELS 4
 #define MAPPING_LEVEL_SHIFT (GRANULE_SHIFT - 3)
+#define NUM_MAPPING_LEVELS 4
+/* the number of the highest (lowest-number) level that has mappings */
+#define MIN_MAPPING_LEVEL 1
 
-static inline u64 *entry2subtable(u64 entry) {
-	return (u64 *)(entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT);
+static inline u64 extr_addr(u64 entry) {
+	return entry & MASK64(48 - GRANULE_SHIFT) << GRANULE_SHIFT;
 }
 
-static u64 map_one(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
-	debug("map_one 0x%016"PRIx64"–0x%016"PRIx64"\n", first, last);
-	for_array(lvl, pte_lvls) {
-		u32 shift = pte_lvls[lvl].shift;
-		u64 mask = MASK64(shift);
-		_Bool end_aligned = (last & mask) == mask, not_also_last = first >> shift < last >> shift;
-		u32 first_entry = first >> shift & MASK64(MAPPING_LEVEL_SHIFT);
-		if (pte_lvls[lvl].mapping_allowed && (first & mask) == 0 && (end_aligned || not_also_last)) {
-			if (!end_aligned) {
-				/* round down to the nearest block boundary */
-				last = (last - ((u64)1 << shift)) | mask;
+static inline u64 *entry2subtable(u64 entry) {
+	return (u64 *)extr_addr(entry);
+}
+
+struct mmu_multimap {
+	u64 addr;
+	u64 desc;
+};
+
+static const struct mmu_multimap UNUSED *multimap(u64 *table, const struct mmu_multimap *map) {
+	unsigned level = 0;
+	u64 *table_ptrs[4] = {table};
+	u64 addr = map->addr;
+	u64 desc = map->desc;
+	map += 1;
+	while (1) {
+		debug("multimap: %"PRIx64" %"PRIx64" %"PRIx64" %u %"PRIx64": ", addr, desc, map->addr, level, (u64)table_ptrs[level]);
+		assert(addr < map->addr);
+		unsigned shift = pte_lvls[level].shift;
+		u64 next_addr = addr + (UINT64_C(1) << shift);
+		_Bool deeper = level < MIN_MAPPING_LEVEL;
+		/* mapping starts at the middle of this entry's range */
+		deeper |= (addr & MASK64(shift)) != 0;
+		/* the delta of vaddr and paddr is not aligned for this level */
+		deeper |= (~desc & 2) && ((addr - extr_addr(desc)) & MASK64(shift));
+		/* mapping ends in the middle of this entry's range */
+		deeper |= next_addr > map->addr;
+		unsigned pos = addr >> shift & MASK64(MAPPING_LEVEL_SHIFT);
+		debug("pos%x ", pos);
+		u64 *entry = table_ptrs[level] + pos;
+		if (deeper) {
+			debugs("going deeper\n");
+			assert(level < 3);
+			u64 *next_table;
+			if (~*entry & 1) {
+				next_table = alloc_page_table();
+				for_range(i, 0, 1 << MAPPING_LEVEL_SHIFT) {next_table[i] = 0;}
+				arch_flush_writes();
+				*entry = PGTAB_SUBTABLE | (u64)next_table;
+			} else {
+				assert(*entry & 2);
+				next_table = entry2subtable(*entry);
 			}
-			u32 last_entry = last >> shift & MASK64(MAPPING_LEVEL_SHIFT);
-			u64 attridx = flags & 7;
-			u64 template = pte_lvls[lvl].last_level ? PGTAB_PAGE(attridx) : PGTAB_BLOCK(attridx);
-			template |= PGTAB_OUTER_SHAREABLE;
-			template |= (flags >> 3 & 3) << 8;	/* Data access permissions */
-			template |= flags & MEM_NON_SECURE;	/* bit position matches up */
-			for_range(i, first_entry, last_entry + 1) {
-				assert(!(pt[i] & 1));
-				u64 addr = paddr + ((i - first_entry) << shift);
-				pt[i] = addr | template;
-			}
-			return last;
-		}
-		assert_msg(!pte_lvls[lvl].last_level, "mapping 0x%016"PRIx64"–0x%016"PRIx64" is more fine-grained than the granule\n", first, last);
-		u64 entry = pt[first_entry];
-		if ((entry & 3) != 3) {
-			assert_msg(!(entry & 1), "ERROR: trying to map over a block mapping; current descriptor: %"PRIx64"\n", entry);
-			u64 *next_pt = alloc_page_table();
-			for_range(i, 0, 1 << MAPPING_LEVEL_SHIFT) {next_pt[i] = 0;}
-			__asm__ volatile("dsb sy");
-			pt[first_entry] = (u64)next_pt | PGTAB_SUBTABLE;
-			pt = next_pt;
+			table_ptrs[++level] = next_table;
 		} else {
-			pt = entry2subtable(entry);
+			debugs("writing entry\n");
+			assert(~*entry & 1);
+			*entry = level == 3 ? desc : desc ^ 2;
+			desc += UINT64_C(1) << (desc & 2 ? shift : GRANULE_SHIFT);
+			if (next_addr == map->addr) {
+				addr = map->addr;
+				desc = map->desc;
+				map += 1;
+				if (!desc) {return map;}
+			}
+			while ((next_addr >> pte_lvls[level].shift & MASK64(MAPPING_LEVEL_SHIFT)) == 0) {
+				assert(level > 0);
+				level -= 1;
+			}
+			addr = next_addr;
 		}
-		/* clip off to the end of the next page table range */
-		if (first >> shift < last >> shift) {last = first | mask;}
 	}
-	assert(UNREACHABLE);
 }
 
 static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
@@ -129,11 +155,12 @@ static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 #if PRINT_MAPPINGS
 	printf("mapping 0x%"PRIx64"–0x%"PRIx64" to paddr 0x%"PRIx64" as %"PRIx64"\n", first, last, paddr, flags);
 #endif
-	u64 tmp;
-	while ((tmp = map_one(pt, first, last, paddr, flags)) < last) {
-		paddr += tmp - first + 1;
-		first = tmp +  1;
-	}
+	u64 attridx = flags & 7;
+	struct mmu_multimap map[2] = {
+		{first, paddr | PGTAB_PAGE(attridx) | (flags >> 3 & 3) << 8 | PGTAB_OUTER_SHAREABLE | (flags & MEM_NON_SECURE)},
+		{last + 1, 0}
+	};
+	multimap(pt, map);
 }
 
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags) {
