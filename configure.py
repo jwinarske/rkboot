@@ -30,6 +30,13 @@ def cesc(s): return s.replace('"', '\\"')
 
 # ===== parameter parsing and checking =====
 flags = defaultdict(list)
+flags.update({
+    'lib/uart16550a': [
+        '-DCONFIG_CONSOLE_UART_ADDR=0xff1a0000',
+        '-DCONFIG_CONSOLE_FIFO_DEPTH=64',
+    ],
+    'lib/uart': ['-DCONFIG_BUF_SIZE=128'],
+})
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
@@ -175,9 +182,6 @@ flags['dramstage/blk_sd'].append("-DCONFIG_ELFLOADER_DMA=1")
 
 if bool(decompressors) and not boot_media:
     flags['dramstage/decompression'].append('-DCONFIG_ELFLOADER_MEMORY=1')
-
-flags['lib/uart16550a'].extend(('-DCONFIG_CONSOLE_UART_ADDR=0xff1a0000', '-DCONFIG_CONSOLE_FIFO_DEPTH=64'))
-flags['lib/uart'].append('-DCONFIG_BUF_SIZE=128')
 
 # ===== ninja skeleton =====
 srcdir = path.dirname(sys.argv[0])
