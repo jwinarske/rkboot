@@ -104,6 +104,14 @@ int vprintf(const char *fmt, va_list va) {
 			} else if (c == 'z') {
 				value = va_arg(va, size_t);
 				c = *fmt++;
+			} else if (c == 'l') {
+				c = *fmt++;
+				if (c == 'l') {
+					value = va_arg(va, unsigned long long);
+					c = *fmt++;
+				} else {
+					value = va_arg(va, unsigned long);
+				}
 			} else if (c == 'h') {
 				value = va_arg(va, int);
 				c = *fmt++;
