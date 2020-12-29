@@ -130,6 +130,7 @@ int vprintf(const char *fmt, va_list va) {
 				out = fmt_hex(value, pad, width, out, end);
 				if (!out) {format_overflow();}
 			} else {
+				plat_write_console(buf, out - buf);
 				static const char error[] = "BUG: unknown conversion specification\r\n";
 				plat_write_console(error, sizeof(error) - 1);
 				plat_panic();
