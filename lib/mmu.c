@@ -211,8 +211,15 @@ void mmu_unmap_range(u64 first, u64 last) {
 	while ((first = unmap_one(pagetables[0], first, last)) < last) {first += 1;}
 }
 
+static UNUSED const struct mmu_multimap bin_multimap[] = {
+	{(u64)&__start__, (u64)&__start__ + (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RO_PRIV)},
+	{(u64)&__ro_end__, (u64)&__ro_end__ + (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV)},
+	{(u64)&__end__, 0}
+};
+
 void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges) {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
+	multimap(pagetables[0], bin_multimap);
 	for (const struct mapping *map = initial_mappings; map->last; ++map) {
 		map_range(pagetables[0], map->first, map->last, map->first, map->flags);
 	}

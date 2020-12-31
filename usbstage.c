@@ -21,7 +21,7 @@ volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
 	{.first = 0xff1a0000, .last = 0xff1a0fff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8effff, .flags = MEM_TYPE_NORMAL},
+	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL},
 	{.first = 0xff8f0000, .last = 0xffffffff, .flags = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0, .last = 0, .flags = 0}
 };

@@ -25,7 +25,6 @@
 volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
 
 static const struct mapping initial_mappings[] = {
-	MAPPING_BINARY_SRAM,
 	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL},
 	{.first = 0, .last = 0, .flags = 0}
