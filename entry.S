@@ -4,6 +4,9 @@
 #include <cortex_a53.h>
 
 .section .text.entry
+#ifdef FIRST_STAGE
+.ascii "RK33"
+#endif
 entry_point: .global entry_point
 #ifdef FIRST_STAGE
 	cortex_a53_init x1, var_rev=0x04

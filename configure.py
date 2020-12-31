@@ -390,7 +390,7 @@ if args.tf_a_headers:
     binary('elfloader', elfloader | lib, '04000000')
     print("default elfloader.bin")
 if boot_media:
-    binary('levinboot-img', levinboot | dramstage_embedder, 'ff8c2004')
+    binary('levinboot-img', levinboot | dramstage_embedder, 'ff8c2000')
     binary('levinboot-usb', levinboot | dramstage_embedder, 'ff8c2000')
     print(build('levinboot-spi.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool', flags='spi'))
     print(build('levinboot-sd.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool'))

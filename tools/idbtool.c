@@ -112,19 +112,17 @@ int main(int argc, char **argv) {
 		rc4(&idblock[0], 512, &rc4_state[0]);
 		write_buf(&idblock[0], 2048);
 		if (mode == MODE_SD_IMAGE) {
-			write_buf((const u8*)"RK33", 4);
 			write_buf(buf, size);
 		} else {
 			assert(mode == MODE_SPI_IMAGE);
 			write_buf(padding, sizeof(padding));
-			write_buf((const u8*)"RK33", 4);
-			if (size <= 2044) {
+			if (size <= 2048) {
 				write_buf(buf, size);
 				return 0;
 			}
-			write_buf(buf, 2044);
+			write_buf(buf, 2048);
 			write_buf(padding, sizeof(padding));
-			size_t pos = 2044;
+			size_t pos = 2048;
 			if (size >= 2048) {while (1) {
 				if (pos >= size - 2048) {break;}
 				write_buf(buf + pos, 2048);
