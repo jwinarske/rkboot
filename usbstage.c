@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <rk3399/usbstage.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdatomic.h>
@@ -16,20 +17,16 @@
 #include <dump_mem.h>
 #include <runqueue.h>
 
-volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+volatile struct uart *const console_uart = regmap_uart;
 
-const struct mapping initial_mappings[] = {
-	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
-	{.first = 0xff1a0000, .last = 0xff1a0fff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL},
-	{.first = 0xff8f0000, .last = 0xffffffff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0, .last = 0, .flags = 0}
-};
-
-const struct address_range critical_ranges[] = {
-	{.first = (void *)0xff8c0000, .last = __end__ - 1},
-	{.first = console_uart, .last = console_uart},
-	ADDRESS_RANGE_INVALID
+const struct mmu_multimap initial_mappings[] = {
+#include <rk3399/base_mappings.inc.c>
+	{.addr = 0, PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0},
+	{.addr = 0xf8000000, .desc = 0},
+	{.addr = 0xff8c0000, .desc =  PGTAB_PAGE(MEM_TYPE_WRITE_THROUGH) | MEM_ACCESS_RW_PRIV | 0xff8c0000},
+	{.addr = 0xff8c1000, .desc =  PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV | 0xff8c1000},
+	{.addr = 0xff8c2000, .desc = 0},
+	{}
 };
 
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
@@ -389,24 +386,12 @@ static void process_event(const struct dwc3_setup *setup, struct usbstage_state 
 }
 
 _Noreturn void main(u64 sctlr) {
-	puts("usbstage\n");
 	store.sctlr = sctlr;
 	stage_setup(&store);
-	mmu_setup(initial_mappings, critical_ranges);
-	/* map {PMU,}CRU, GRF */
-	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
-	/* map PMU{,SGRF,GRF} */
-	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
+	mmu_setup(initial_mappings);
+	puts("usbstage\n");
 
-	mmu_map_mmio_identity(0xff1d0000, 0xff1d0fff);
-	mmu_map_mmio_identity(0xfe800000, 0xfe80ffff);
-	volatile struct dwc3_regs *dwc3 = (volatile struct dwc3_regs *)0xfe80c100;
-	/* set DRAM as Non-Secure */
-	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
-
-	mmu_unmap_range(0xff8c0000, 0xff8c0fff);
-	mmu_map_range(0xff8c0000, 0xff8c0fff, 0xff8c0000, MEM_TYPE_WRITE_THROUGH);
-	dsb_st();
+	volatile struct dwc3_regs *const dwc3 = (struct dwc3_regs*)((char *)regmap_otg0 + 0xc100);
 	struct usbstage_bufs *bufs = (struct usbstage_bufs *)0xff8c0100;
 	const struct dwc3_setup setup = {
 		.dwc3 = dwc3,

@@ -24,16 +24,11 @@
 
 volatile struct uart *const console_uart = regmap_uart;
 
-static const struct mapping initial_mappings[] = {
-	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL},
-	{.first = 0, .last = 0, .flags = 0}
-};
-
-static const struct address_range critical_ranges[] = {
-	{.first = __start__, .last = __end__ - 1},
-	{.first = console_uart, .last = console_uart},
-	ADDRESS_RANGE_INVALID
+static const struct mmu_multimap initial_mappings[] = {
+#include <rk3399/base_mappings.inc.c>
+	{.addr = 0xff8c0000, .desc =  PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV | 0xff8c0000},
+	{.addr = 0xff8c2000, .desc = 0},
+	{}
 };
 
 static void sync_exc_handler(struct exc_state_save UNUSED *save) {
@@ -120,17 +115,8 @@ int32_t NO_ASAN main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
-
-	for_range(i, 0, NUM_REGMAP) {
-		static const u32 addrs[NUM_REGMAP] = {
-#define MMIO(name, snake, addr, type) addr,
-			DEFINE_REGMAP
-#undef MMIO
-		};
-		u64 base = REGMAP_BASE(i);
-		mmu_map_range(base, base + 0xfff, addrs[i], MEM_TYPE_DEV_nGnRnE);
-	}
-	__asm__("dsb ishst");
+	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
+	mmu_setup(initial_mappings);
 
 	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
 	regmap_gpio0->port |= 1 << 2;

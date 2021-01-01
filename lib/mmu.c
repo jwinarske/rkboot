@@ -7,21 +7,14 @@
 #include <stdio.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <plat.h>
+#include <uart.h>
 
 #ifdef DEBUG_MSG
 #define PRINT_MAPPINGS 1
 #endif
 
 u32 next_pagetable = 1;
-
-#define PGTAB_SUBTABLE (3)
-#define PGTAB_BLOCK(attridx) (1 | 1 << 10 | (attridx) << 2)
-#define PGTAB_PAGE(attridx) (3 | 1 << 10 | (attridx) << 2)
-#define PGTAB_CONTIGUOUS ((u64)1 << 52)
-#define PGTAB_OUTER_SHAREABLE ((u64)2 << 8)
-#define PGTAB_INNER_SHAREABLE ((u64)3 << 8)
-#define PGTAB_NSTABLE ((u64)1 << 63)
-#define PGTAB_NS (1 << 5)
 
 static u64 *alloc_page_table() {
 	assert_msg(next_pagetable < num_pagetables, "ERROR: ran out of pagetables");
@@ -30,12 +23,32 @@ static u64 *alloc_page_table() {
 	return res;
 }
 
-static void UNUSED dump_page_tables() {
+static void write_u64(volatile struct uart *uart, u64 val, unsigned width) {
+	while (uart->tx_level) {arch_relax_cpu();}
+	for_range(i, 0, width) {
+		uart->tx = (val & 15) < 10 ? (val & 15) + '0' : (val & 15) - 10 + 'a';
+		val >>= 4;
+	}
+}
+
+void UNUSED dump_page_tables(volatile struct uart *uart) {
 	for_range(table, 0, next_pagetable) {
 		for (u32 i = 0; i < ARRAY_SIZE(pagetables[table]); i += 4) {
-			printf("%3u: %016zx %016zx %016zx %016zx\n", i, pagetables[table][i], pagetables[table][i + 1], pagetables[table][i + 2], pagetables[table][i + 3]);
+			write_u64(uart, (u64)&pagetables[table][i], 8);
+			uart->tx = ':';
+			uart->tx = ' ';
+			write_u64(uart, pagetables[table][i], 16);
+			uart->tx = ' ';
+			write_u64(uart, pagetables[table][i + 1], 16);
+			uart->tx = ' ';
+			write_u64(uart, pagetables[table][i + 2], 16);
+			uart->tx = ' ';
+			write_u64(uart, pagetables[table][i + 3], 16);
+			uart->tx = '\r';
+			uart->tx = '\n';
 		}
 	}
+	write_u64(uart, (u64)console_uart, 16);
 }
 
 #define MASK64(n) (((u64)1 << (n)) - 1)
@@ -90,10 +103,6 @@ static inline u64 *entry2subtable(u64 entry) {
 	return (u64 *)extr_addr(entry);
 }
 
-struct mmu_multimap {
-	u64 addr;
-	u64 desc;
-};
 const struct mmu_multimap *multimap(u64 *table, const struct mmu_multimap *map);
 
 static const struct mmu_multimap UNUSED *multimap_reference(u64 *table, const struct mmu_multimap *map) {
@@ -165,7 +174,7 @@ static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags) {
 	map_range(pagetables[0], first, last, paddr, flags);
 #ifdef SPEW_MSG
-	dump_page_tables();
+	dump_page_tables(console_uart);
 #endif
 }
 
@@ -210,30 +219,13 @@ void mmu_unmap_range(u64 first, u64 last) {
 	while ((first = unmap_one(pagetables[0], first, last)) < last) {first += 1;}
 }
 
-static UNUSED const struct mmu_multimap bin_multimap[] = {
-	{(u64)&__start__, (u64)&__start__ + (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RO_PRIV)},
-	{(u64)&__ro_end__, (u64)&__ro_end__ + (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV)},
-	{(u64)&__end__, 0}
-};
-
-void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges) {
+void mmu_setup(const struct mmu_multimap *initial_mappings) {
 	for_range(i, 0, 512) {pagetables[0][i] = 0;}
-	multimap(pagetables[0], bin_multimap);
-	for (const struct mapping *map = initial_mappings; map->last; ++map) {
-		map_range(pagetables[0], map->first, map->last, map->first, map->flags);
+	while (initial_mappings->desc) {
+		initial_mappings = multimap(pagetables[0], initial_mappings);
 	}
 #ifdef SPEW_MSG
-	dump_page_tables();
-#endif
-#ifndef NDEBUG
-	u64 first, last;
-	for (size_t pos = 0; (first = (u64)critical_ranges[pos].first) <= (last = (u64)critical_ranges[pos].last); ++pos) {
-		for (u64 addr = first & ~(u64)0xfff; addr <= last; addr += 0x1000) {
-			u64 mapped = map_address(addr);
-			debug("%08zx maps to %08zx\n", addr, mapped);
-			assert(mapped == addr);
-		}
-	}
+	dump_page_tables((struct uart *)0xff1a0000);
 #endif
 	__asm__ volatile("msr mair_el3, %0" : : "r"(MMU_MAIR_VAL));
 #ifdef DEBUG_MSG

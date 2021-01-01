@@ -4,6 +4,25 @@
 #include <rk3399.h>
 #include <stage.h>
 #include <runqueue.h>
+#include <exc_handler.h>
+
+
+#define DEFINE_REGMAP\
+	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
+	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
+	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
+	MMIO(GPIO0, gpio0, 0xff720000, struct rkgpio_regs)\
+	MMIO(UART, uart, 0xff1a0000, struct uart)\
+	MMIO(CRU, cru, 0xff760000, u32)\
+	MMIO(PMU, pmu, 0xff310000, u32)\
+	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
+	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
+	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
+#define DEFINE_REGMAP64K\
+	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
+	X(GRF, grf, 0xff770000, u32)\
+
+#include <rk3399/regmap.h>
 
 #define MEMTEST_CHACHAISH
 #ifdef MEMTEST_SPLITTABLE
@@ -181,32 +200,35 @@ static _Bool memtest(u64 salt) {
 	return res;
 }
 
-volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+volatile struct uart *const console_uart = regmap_uart;
 
-static const struct mapping initial_mappings[] = {
+static const struct mmu_multimap initial_mappings[] = {
+#include <rk3399/base_mappings.inc.c>
 #ifdef UNCACHED_MEMTEST
-	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_DEV_GRE},
+	{.addr = 0, .desc = PGTAB_PAGE(MEM_TYPE_DEV_GRE)| MEM_ACCESS_RW_PRIV},
 #else
-	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
+	{.addr = 0, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV},
 #endif
-	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL}, /* stack */
-	{.first = 0xff760000, .last = 0xff77ffff, .flags = MEM_TYPE_DEV_nGnRnE}, /* CRU, GRF */
-	{.first = 0, .last = 0, .flags = 0}
+	{.addr = 0xf8000000, .desc = 0},
+	{.addr = 0xff8c0000, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0xff8c0000}, /* stack */
+	{.addr = 0xff8c2000, .desc = 0},
+	{}
 };
 
-static const struct address_range critical_ranges[] = {
-	{.first = __start__, .last = __end__ - 1},
-	{.first = console_uart, .last = console_uart},
-	ADDRESS_RANGE_INVALID
-};
+static void sync_exc_handler(struct exc_state_save UNUSED *save) {
+	u64 elr, esr, far;
+	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
+	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
+}
 
 _Noreturn void main(u64 sctlr) {
 	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
-	mmu_setup(initial_mappings, critical_ranges);
+	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
+	mmu_setup(initial_mappings);
 	puts("memtest\n");
+
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		if (!failed_rounds) {

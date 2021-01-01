@@ -44,10 +44,10 @@ void set_sctlr_flush_dcache(u64);
 
 static inline void UNUSED stage_teardown(struct stage_store *store) {
 	u64 sctlr = store->sctlr;
+	logs("end\n");
 	set_sctlr_flush_dcache(sctlr | SCTLR_I);
 	__asm__ volatile("msr scr_el3, %0" : : "r"(store->scr));
 	__asm__ volatile("msr vbar_el3, %0" : : "r"(store->vbar));
 	__asm__ volatile("isb;msr DAIFset, #0xf;isb");
-	logs("end\n");
 	__asm__ volatile("msr sctlr_el3, %0;isb;ic iallu;tlbi alle3" : : "r"(sctlr));
 }

@@ -7,9 +7,6 @@
 
 #ifndef __ASSEMBLER__
 
-struct address_range {volatile void *first, *last;};
-#define ADDRESS_RANGE_INVALID {.first = (void*)1, .last = 0}
-
 enum {
 	MEM_TYPE_DEV_nGnRnE = 0,
 	MEM_TYPE_DEV_nGnRE = 1,
@@ -24,18 +21,26 @@ enum {
 	MEM_ACCESS_RO_UNPRIV = 3 << 3,
 	MEM_NON_SECURE = 32,
 };
-struct mapping {u64 first, last; u64 flags;};
+
+#define PGTAB_SUBTABLE (3)
+#define PGTAB_BLOCK(attridx) (1 | 1 << 10 | (attridx) << 2)
+#define PGTAB_PAGE(attridx) (3 | 1 << 10 | (attridx) << 2)
+#define PGTAB_CONTIGUOUS ((u64)1 << 52)
+#define PGTAB_OUTER_SHAREABLE ((u64)2 << 8)
+#define PGTAB_INNER_SHAREABLE ((u64)3 << 8)
+#define PGTAB_NSTABLE ((u64)1 << 63)
+#define PGTAB_NS (1 << 5)
+
+struct mmu_multimap {
+	u64 addr;
+	u64 desc;
+};
 extern u8 __start__[], __ro_end__[], __end__[];
-#define MAPPING_BINARY_EXPLICIT(start) \
-	{.first = start, .last = (u64)&__ro_end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RO_PRIV}, \
-	{.first = (u64)&__ro_end__, .last = (u64)&__end__ - 1, .flags = MEM_TYPE_NORMAL | MEM_ACCESS_RW_PRIV}
-#define MAPPING_BINARY_SRAM MAPPING_BINARY_EXPLICIT(0xff8c2000)
-#define MAPPING_BINARY MAPPING_BINARY_EXPLICIT((u64)&__start__)
 
 void invalidate_dcache_set_sctlr(u64);
 void set_sctlr_flush_dcache(u64);
 void flush_dcache();
-void mmu_setup(const struct mapping *initial_mappings, const struct address_range *critical_ranges);
+void mmu_setup(const struct mmu_multimap *initial_mappings);
 void mmu_unmap_range(u64 first, u64 last);
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags);
 

@@ -26,17 +26,17 @@
 
 volatile struct uart *const console_uart = regmap_uart;
 
-static const struct mapping initial_mappings[] = {
-	{.first = 0, .last = (u64)&__start__ - 1, .flags = MEM_TYPE_NORMAL},
-	{.first = 0x4100000, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
-	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
-	{.first = 0, .last = 0, .flags = 0}
-};
-
-static const struct address_range critical_ranges[] = {
-	{.first = __start__, .last = __end__ - 1},
-	{.first = console_uart, .last = console_uart},
-	ADDRESS_RANGE_INVALID
+static const struct mmu_multimap initial_mappings[] = {
+#include <rk3399/base_mappings.inc.c>
+	{.addr = 0, PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0},
+	{.addr = (u64)&__start__, .desc = 0},
+	{.addr = 0x4100000, PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0x4100000},
+	{.addr = 0xf8000000, .desc = 0},
+	{.addr = 0xff8c0000, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0xff8c0000},
+	{.addr = 0xff8f0000, .desc = 0},
+	{.addr = 0xff3b0000, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0xff3b0000},
+	{.addr = 0xff3b2000, .desc = 0},
+	{}
 };
 
 static void sync_exc_handler(struct exc_state_save UNUSED *save) {
@@ -188,17 +188,7 @@ _Noreturn u32 main(u64 sctlr) {
 	store.sctlr = sctlr;
 	stage_setup(&store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	mmu_setup(initial_mappings, critical_ranges);
-	for_range(i, 0, NUM_REGMAP) {
-		static const u32 addrs[NUM_REGMAP] = {
-#define MMIO(name, snake, addr, type) addr,
-			DEFINE_REGMAP
-#undef MMIO
-		};
-		u64 base = REGMAP_BASE(i);
-		mmu_map_range(base, base + 0xfff, addrs[i], MEM_TYPE_DEV_nGnRnE);
-	}
-	mmu_flush();
+	mmu_setup(initial_mappings);
 	puts("elfloader\n");
 
 	/* set DRAM as Non-Secure; needed for DMA */

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <rk3399/usbstage.h>
 #include <inttypes.h>
 #include <assert.h>
 
@@ -9,7 +10,7 @@
 #include <die.h>
 #include <aarch64.h>
 
-static volatile struct rkspi_regs *const spi1 = (struct rkspi_regs *)0xff1d0000;
+static volatile struct rkspi_regs *const spi1 = regmap_spi1;
 
 static void read_sfdp(u32 addr, u8 *buf, size_t size) {
 	assert(!(addr >> 24));
@@ -55,6 +56,7 @@ static void wait_until_ready() {
 }
 
 void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
+	static volatile u32 *const cru = regmap_cru;
 	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
 	/* clk_spi1 = CPLL/8 = 100 MHz */
 	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 0) << 15 | SET_BITS16(7, 7) << 8;
