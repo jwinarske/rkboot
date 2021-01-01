@@ -85,8 +85,13 @@ msg: .asciz "exception handler %zx, SP=%zx\n"
 ENDFUNC(call_handler)
 
 SPROC(unhandled_exception, 2)
-	movz x1, 0xff1a, lsl 16
-	ldrb w2, [x0], #1
+	mrs x1, sctlr_el3
+	tbnz x1, 0, 1f
+	mov x1, 0xff1a0000
+	b 2f
+1:	adrp x1, console_uart
+	ldr x1, [x1, :lo12:console_uart]
+2:	ldrb w2, [x0], #1
 loop:
 	ldr w3, [x1, 0x80]
 	cbnz w3, loop
