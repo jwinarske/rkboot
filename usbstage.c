@@ -16,6 +16,8 @@
 #include <dump_mem.h>
 #include <runqueue.h>
 
+volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+
 const struct mapping initial_mappings[] = {
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
 	{.first = 0xff1a0000, .last = 0xff1a0fff, .flags = MEM_TYPE_DEV_nGnRnE},
@@ -26,7 +28,7 @@ const struct mapping initial_mappings[] = {
 
 const struct address_range critical_ranges[] = {
 	{.first = (void *)0xff8c0000, .last = __end__ - 1},
-	{.first = uart, .last = uart},
+	{.first = console_uart, .last = console_uart},
 	ADDRESS_RANGE_INVALID
 };
 

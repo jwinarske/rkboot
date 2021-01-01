@@ -181,13 +181,15 @@ static _Bool memtest(u64 salt) {
 	return res;
 }
 
+volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+
 static const struct mapping initial_mappings[] = {
 #ifdef UNCACHED_MEMTEST
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_DEV_GRE},
 #else
 	{.first = 0, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
 #endif
-	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
+	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
 	MAPPING_BINARY_SRAM,
 	{.first = 0xff8c0000, .last = 0xff8c1fff, .flags = MEM_TYPE_NORMAL}, /* stack */
 	{.first = 0xff760000, .last = 0xff77ffff, .flags = MEM_TYPE_DEV_nGnRnE}, /* CRU, GRF */
@@ -196,7 +198,7 @@ static const struct mapping initial_mappings[] = {
 
 static const struct address_range critical_ranges[] = {
 	{.first = __start__, .last = __end__ - 1},
-	{.first = uart, .last = uart},
+	{.first = console_uart, .last = console_uart},
 	ADDRESS_RANGE_INVALID
 };
 

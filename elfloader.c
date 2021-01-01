@@ -24,17 +24,19 @@
 #include <dwmmc.h>
 #include <iost.h>
 
+volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+
 static const struct mapping initial_mappings[] = {
 	MAPPING_BINARY,
 	{.first = 0, .last = (u64)&__start__ - 1, .flags = MEM_TYPE_NORMAL},
 	{.first = 0x4100000, .last = 0xf7ffffff, .flags = MEM_TYPE_NORMAL},
-	{.first = (u64)uart, .last = (u64)uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
+	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
 	{.first = 0, .last = 0, .flags = 0}
 };
 
 static const struct address_range critical_ranges[] = {
 	{.first = __start__, .last = __end__ - 1},
-	{.first = uart, .last = uart},
+	{.first = console_uart, .last = console_uart},
 	ADDRESS_RANGE_INVALID
 };
 

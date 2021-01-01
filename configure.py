@@ -32,7 +32,6 @@ def cesc(s): return s.replace('"', '\\"')
 flags = defaultdict(list)
 flags.update({
     'lib/uart16550a': [
-        '-DCONFIG_CONSOLE_UART_ADDR=0xff1a0000',
         '-DCONFIG_CONSOLE_FIFO_DEPTH=64',
     ],
     'lib/uart': ['-DCONFIG_BUF_SIZE=128'],

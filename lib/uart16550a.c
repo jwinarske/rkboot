@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <arch.h>
 #include <irq.h>
+#include <plat.h>
 
 HEADER_FUNC uint32_t mmio_r32(volatile uint32_t *reg) {return *reg;}
 HEADER_FUNC void mmio_w32(volatile uint32_t *reg, uint32_t val) {*reg = val;}
 
-struct uart *const console_uart = (struct uart *)CONFIG_CONSOLE_UART_ADDR;
 //static irq_lock_t console_lock = IRQ_LOCK_INIT;
 
 void plat_write_console(const char *str, size_t len) {

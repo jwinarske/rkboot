@@ -10,8 +10,8 @@ _Noreturn void __stack_chk_fail();
 FORCE_USED  _Noreturn void NO_ASAN __stack_chk_fail() {
 	const char *text = "STACK CORRUPTION\r\n";
 	for (char c; (c = *text) ; ++text) {
-		while (uart->tx_level) {__asm__ volatile("yield");}
-		uart->tx = *text;
+		while (console_uart->tx_level) {__asm__ volatile("yield");}
+		console_uart->tx = *text;
 	}
 	halt_and_catch_fire();
 }

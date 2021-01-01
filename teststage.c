@@ -6,6 +6,8 @@ __asm__(".section .text.entry, \"ax\", %progbits;entry_point: .global entry_poin
 
 void dump_fdt(const struct fdt_header *);
 
+volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+
 _Noreturn void main(u64 x0) {
 	puts("test stage\n");
 	u64 sctlr;

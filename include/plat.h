@@ -12,7 +12,7 @@ static const phys_addr_t PLAT_INVALID_PHYS_ADDR = 0xffffffff;
 #define PRIuTS PRIu64
 #define PRIxPHYS PRIx32
 
-static volatile struct uart *const uart = (volatile struct uart *)0xff1a0000;
+extern volatile struct uart *const console_uart;
 void plat_write_console(const char *str, size_t len);
 
 _Noreturn void plat_panic();
