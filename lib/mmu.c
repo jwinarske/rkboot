@@ -152,9 +152,7 @@ static const struct mmu_multimap UNUSED *multimap(u64 *table, const struct mmu_m
 
 static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 	assert(last > first);
-#if PRINT_MAPPINGS
-	printf("mapping 0x%"PRIx64"–0x%"PRIx64" to paddr 0x%"PRIx64" as %"PRIx64"\n", first, last, paddr, flags);
-#endif
+	debug("mapping 0x%"PRIx64"–0x%"PRIx64" to paddr 0x%"PRIx64" as %"PRIx64"\n", first, last, paddr, flags);
 	u64 attridx = flags & 7;
 	struct mmu_multimap map[2] = {
 		{first, paddr | PGTAB_PAGE(attridx) | (flags >> 3 & 3) << 8 | PGTAB_OUTER_SHAREABLE | (flags & MEM_NON_SECURE)},
