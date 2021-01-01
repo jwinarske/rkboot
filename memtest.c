@@ -202,11 +202,11 @@ static const struct address_range critical_ranges[] = {
 };
 
 _Noreturn void main(u64 sctlr) {
-	puts("memtest\n");
 	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
 	mmu_setup(initial_mappings, critical_ranges);
+	puts("memtest\n");
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		if (!failed_rounds) {

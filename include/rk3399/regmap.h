@@ -1,0 +1,37 @@
+/* SPDX-License-Identifier: CC0-1.0 */
+#pragma once
+#include <defs.h>
+
+
+enum regmap_id {
+#define MMIO(name, snake, addr, type) REGMAP_##name,
+	DEFINE_REGMAP
+#undef MMIO
+	NUM_REGMAP
+};
+
+enum regmap64k_id {
+#define X(caps, snake, addr, type) REGMAP64K_##caps,
+	DEFINE_REGMAP64K
+#undef X
+	NUM_REGMAP64K
+};
+_Static_assert(0x1000 * NUM_REGMAP + 0x10000 * NUM_REGMAP64K <= 0x200000, "regmaps don't fit into 2 MiB");
+
+enum {
+	/* 'static const's may not be "compile-time constants" but enums sure are … take that, compiler! :) */
+	regmap4k_base = (u64)((0x100000 - NUM_REGMAP) & 0xffff0) << 12,
+	regmap64k_base = regmap4k_base - 0x10000 * NUM_REGMAP64K
+};
+
+#define REGMAP_BASE(map) (uintptr_t)(regmap4k_base + 0x1000 * (map))
+#define REGMAP64K_BASE(map) (uintptr_t)(regmap64k_base + 0x10000 * (map))
+
+_Static_assert((u64)REGMAP64K_BASE(NUM_REGMAP64K) == regmap4k_base, "");
+
+#define MMIO(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = (type *)REGMAP_BASE(REGMAP_##name);
+	DEFINE_REGMAP
+#undef MMIO
+#define X(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = (type *)REGMAP64K_BASE(REGMAP64K_##name);
+	DEFINE_REGMAP64K
+#undef X

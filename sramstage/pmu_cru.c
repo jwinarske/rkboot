@@ -11,6 +11,7 @@
 
 void pmu_cru_setup() {
 	const u32 pd_busses = 0x20c00e79, pd_domains = 0x93cf833e;
+	static volatile u32 *const pmu = regmap_pmu;
 	pmu[PMU_BUS_IDLE_REQ] = pd_busses;
 	while (pmu[PMU_BUS_IDLE_ACK] != pd_busses) {__asm__("yield");}
 	debugs("bus idle ack\n");
@@ -20,6 +21,7 @@ void pmu_cru_setup() {
 	while(pmu[PMU_PWRDN_ST] != pd_domains) {__asm__("yield");}
 	debugs("domains powered down\n");
 
+	static volatile u32 *const pmucru = regmap_pmucru;
 	pmucru[PMUCRU_CLKGATE_CON+0] = 0x0b630b63;
 	pmucru[PMUCRU_CLKGATE_CON+1] = 0x0a800a80;
 	static const u16 clk_gates[] = {
@@ -35,6 +37,7 @@ void pmu_cru_setup() {
 
 		0x215, 0, 0x3f
 	};
+	static volatile u32 *const cru = regmap_cru;
 	for_array(i, clk_gates) {
 		u32 gates = clk_gates[i];
 		cru[CRU_CLKGATE_CON+i] = gates << 16 | gates;

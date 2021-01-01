@@ -19,6 +19,7 @@ struct dwmmc_state sdmmc_state = {
 };
 
 void rk3399_init_sdmmc() {
+	static volatile u32 *const cru = regmap_cru;
 	/* hclk_sd = 200 MHz */
 	cru[CRU_CLKSEL_CON + 13] = SET_BITS16(1, 0) << 15 | SET_BITS16(5, 4) << 8;
 	/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
@@ -32,9 +33,9 @@ void rk3399_init_sdmmc() {
 	cru[CRU_SDMMC_CON + 1] = SET_BITS16(2, 0) << 1 | SET_BITS16(8, 0) << 3 | SET_BITS16(1, 0) << 11;
 	cru[CRU_SDMMC_CON] = SET_BITS16(1, 0);
 	/* mux out the SD lines */
-	grf[GRF_GPIO4B_IOMUX] = SET_BITS16(2, 1) | SET_BITS16(2, 1) << 2 | SET_BITS16(2, 1) << 4 | SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8 | SET_BITS16(2, 1) << 10;
+	regmap_grf[GRF_GPIO4B_IOMUX] = SET_BITS16(2, 1) | SET_BITS16(2, 1) << 2 | SET_BITS16(2, 1) << 4 | SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8 | SET_BITS16(2, 1) << 10;
 	/* mux out card detect */
-	pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 14;
+	regmap_pmugrf[PMUGRF_GPIO0A_IOMUX] = SET_BITS16(2, 1) << 14;
 	/* reset SDMMC */
 	cru[CRU_SOFTRST_CON + 7] = SET_BITS16(1, 1) << 10;
 	usleep(100);

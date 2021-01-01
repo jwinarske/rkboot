@@ -35,7 +35,7 @@ static void start_irq_flash_read(u32 addr, u8 *buf, u8 *end) {
 	spi->ctrl0 = rkspi_mode_base | RKSPI_XFM_RX | RKSPI_BHT_APB_16BIT;
 	debug("start rxlvl=%"PRIu32", rxthreshold=%"PRIu32" intr_status=0x%"PRIx32"\n", spi->rx_fifo_level, spi->rx_fifo_threshold, spi->intr_raw_status);
 	atomic_thread_fence(memory_order_release);
-	gicv2_setup_spi(gic500d, 85, 0x80, 1, IGROUP_0 | INTR_LEVEL);
+	gicv2_setup_spi(regmap_gic500d, 85, 0x80, 1, IGROUP_0 | INTR_LEVEL);
 	rkspi_start_rx_xfer(&spi1_state, spi, total_bytes);
 }
 
@@ -47,8 +47,8 @@ void rkspi_end_irq_flash_read() {
 	spi->intr_raw_status = RKSPI_RX_FULL_INTR;
 	dsb_st();
 	spi->intr_mask = 0;
-	gicv2_disable_spi(gic500d, spi1_intr);
-	gicv2_wait_disabled(gic500d);
+	gicv2_disable_spi(regmap_gic500d, spi1_intr);
+	gicv2_wait_disabled(regmap_gic500d);
 }
 
 static struct async_buf pump(struct async_transfer *async_, size_t consume, size_t min_size) {
@@ -79,6 +79,7 @@ void boot_spi() {
 		end = start +(16 << 20);
 	}
 
+	static volatile u32 *const cru = regmap_cru;
 	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
 	/* clk_spi1 = CPLL/8 = 100 MHz */
 	cru[CRU_CLKSEL_CON+59] = SET_BITS16(1, 0) << 15 | SET_BITS16(7, 7) << 8;

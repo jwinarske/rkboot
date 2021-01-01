@@ -147,7 +147,7 @@ void boot_emmc() {
 	mmu_map_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1, (u64)&desc_buf, MEM_TYPE_UNCACHED);
 	dsb_ishst();
 	
-	if (cru[CRU_CLKGATE_CON+6] & 7 << 12) {
+	if (regmap_cru[CRU_CLKGATE_CON+6] & 7 << 12) {
 		puts("sramstage left eMMC disabled\n");
 		boot_medium_exit(BOOT_MEDIUM_EMMC);
 		return;
@@ -184,13 +184,13 @@ void boot_emmc() {
 	infos("eMMC abort failed, shutting down the controller\n");
 shut_down_emmc:
 	regmap_emmc->power_control = 0;
-	gicv2_disable_spi(gic500d, 43);
-	gicv2_wait_disabled(gic500d);
+	gicv2_disable_spi(regmap_gic500d, 43);
+	gicv2_wait_disabled(regmap_gic500d);
 	/* shut down phy */
-	grf[GRF_EMMCPHY_CON+6] = SET_BITS16(2, 0);
+	regmap_grf[GRF_EMMCPHY_CON+6] = SET_BITS16(2, 0);
 	dsb_st();	/* GRF_EMMCPHY_CONx seem to be in the clk_emmc domain. ensure completion to avoid hangs */
 	/* gate eMMC clocks */
-	cru[CRU_CLKGATE_CON+6] = SET_BITS16(3, 7) << 12;
+	regmap_cru[CRU_CLKGATE_CON+6] = SET_BITS16(3, 7) << 12;
 	/* Linux will hang if bus clocks are gated */
 	//cru[CRU_CLKGATE_CON+32] = SET_BITS16(1, 1) << 8 | SET_BITS16(1, 1) << 10;
 out:

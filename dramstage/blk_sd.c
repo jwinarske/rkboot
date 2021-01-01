@@ -22,6 +22,7 @@
 #include <dump_mem.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
+	static volatile u32 *const cru = regmap_cru;
 	switch (clk) {
 	case DWMMC_CLOCK_400K:
 		/* clk_sdmmc = 24 MHz / 30 = 800 kHz */
@@ -134,10 +135,9 @@ static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_e
 void boot_sd() {
 	infos("trying SD\n");
 	mmu_unmap_range((u64)desc_buf, (u64)desc_buf + 0xfff);
-	mmu_map_mmio_identity(0xfe320000, 0xfe320fff);
 	mmu_map_range((u64)desc_buf, (u64)desc_buf + 0xfff, (u64)desc_buf, MEM_TYPE_UNCACHED);
 	dsb_ishst();
-	if (cru[CRU_CLKGATE_CON+12] & 1 << 13) {
+	if (regmap_cru[CRU_CLKGATE_CON+12] & 1 << 13) {
 		puts("sramstage left SD disabled\n");
 		goto out;
 	}
@@ -172,7 +172,7 @@ void boot_sd() {
 	goto out;
 shut_down_mshc:
 	infos("hardware in unknown state, shutting down the MSHC");
-	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 1) << 13;
+	regmap_cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 1) << 13;
 out:
 	boot_medium_exit(BOOT_MEDIUM_SD);
 }

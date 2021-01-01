@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 #include <defs.h>
+#include <rk3399/sramstage.h>
 
 #define for_dslice(i) for (u32 i = 0; i < 4; ++i)
 #define for_aslice(i) for (u32 i = 0; i < 3; ++i)
@@ -213,14 +214,14 @@ void encode_dram_size(const struct sdram_geometry *geo);
 
 enum {MC_NUM_CHANNELS = 2, MC_CHANNEL_STRIDE = 0x8000, MC_NUM_FREQUENCIES = 3};
 HEADER_FUNC volatile struct phy_regs *phy_for(u32 channel) {
-	return (volatile struct phy_regs *)(0xffa82000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+	return (volatile struct phy_regs *)(regmap_dmc + (0x2000 + MC_CHANNEL_STRIDE * (uintptr_t)channel) / 4);
 }
 HEADER_FUNC volatile u32 *pctl_base_for(u32 channel) {
-	return (volatile u32 *)(0xffa80000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+	return regmap_dmc + (MC_CHANNEL_STRIDE * (uintptr_t)channel) / 4;
 }
 HEADER_FUNC volatile u32 *pi_base_for(u32 channel) {
-	return (volatile u32 *)(0xffa80800 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+	return regmap_dmc + (0x800 + MC_CHANNEL_STRIDE * (uintptr_t)channel) / 4;
 }
 HEADER_FUNC volatile u32 *msch_base_for(u32 channel) {
-	return (volatile u32 *)(0xffa84000 + MC_CHANNEL_STRIDE * (uintptr_t)channel);
+	return regmap_dmc + (0x4000 + MC_CHANNEL_STRIDE * (uintptr_t)channel) / 4;
 }

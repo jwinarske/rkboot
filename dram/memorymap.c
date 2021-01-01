@@ -155,6 +155,6 @@ void encode_dram_size(const struct sdram_geometry *geo) {
 	}
 	/* 0x32C1F2C1 */
 	printf("osreg2=%08x, osreg3=%08x\n", osreg2, osreg3);
-	pmugrf[PMUGRF_OS_REG2] = osreg2;
-	pmugrf[PMUGRF_OS_REG3] = osreg3;
+	regmap_pmugrf[PMUGRF_OS_REG2] = osreg2;
+	regmap_pmugrf[PMUGRF_OS_REG3] = osreg3;
 }

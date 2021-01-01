@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include "ddrinit.h"
-
+#include "rk3399-dmc.h"
 #include <stdatomic.h>
 #include <inttypes.h>
 
@@ -10,13 +10,11 @@
 #include <rkpll.h>
 #include <runqueue.h>
 #include <sched_aarch64.h>
-#include <rk3399/sramstage.h>
-#include "rk3399-dmc.h"
 #include <gic.h>
 #include <irq.h>
 
 static void set_ddr_reset_request(_Bool controller, _Bool phy) {
-	cru[CRU_SOFTRST_CON + 4] = 0x33000000 | (controller << 12) | (controller << 8) | (phy << 13) | (phy << 9);
+	regmap_cru[CRU_SOFTRST_CON + 4] = 0x33000000 | (controller << 12) | (controller << 8) | (phy << 13) | (phy << 9);
 }
 
 static void softreset_memory_controller() {
@@ -100,7 +98,7 @@ static void configure(struct ddrinit_state *st, const struct dram_cfg *cfg, u32 
 	for_channel(ch) {
 		if (st->chan_st[ch] != CHAN_ST_CONFIGURED) {continue;}
 
-		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
+		regmap_grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 0) << 8;
 		apply32v(&phy_for(ch)->PHY_GLOBAL(957), SET_BITS32(2, 2) << 24);
 	}
 }
@@ -112,7 +110,7 @@ void ddrinit_configure(struct ddrinit_state *st) {
 	logs("initializing DRAM\n");
 
 	/* not doing this will make the CPU hang */
-	pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
+	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
 	udelay(1000);
 	/* map memory controller ranges */
 	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
@@ -147,7 +145,8 @@ static void update_phy_bank(volatile struct phy_regs *phy, u32 bank, const struc
 /* this function seems very prone to system hangs if we try to yield inbetween, probably because of the bus idle. it usually finishes in around 25 μs, so that sholudn't be a problem */
 static void fast_freq_switch(u8 freqset, u32 freq) {
 	irq_save_t irq = irq_save_mask();	/* just for safety */
-	grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
+	regmap_grf[GRF_SOC_CON0] = SET_BITS16(3, 7);
+	static volatile u32 *const pmu = regmap_pmu;
 	pmu[PMU_NOC_AUTO_ENA] |= 0x180;
 	pmu[PMU_BUS_IDLE_REQ] |= 3 << 18;
 	while ((pmu[PMU_BUS_IDLE_ST] & (3 << 18)) != (3 << 18)) {
@@ -158,9 +157,9 @@ static void fast_freq_switch(u8 freqset, u32 freq) {
 	while (!(cic[CIC_STATUS] & 4)) {
 		debugs("waiting for CIC ready\n");
 	}
-	rkpll_configure(cru + CRU_DPLL_CON, freq);
+	rkpll_configure(regmap_cru + CRU_DPLL_CON, freq);
 	timestamp_t start = get_timestamp();
-	while (!rkpll_switch(cru + CRU_DPLL_CON)) {
+	while (!rkpll_switch(regmap_cru + CRU_DPLL_CON)) {
 		if (get_timestamp() - start > USECS(100)) {
 			die("failed to lock-on DPLL\n");
 		}
@@ -218,6 +217,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_u
 
 static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct phy_update *phy_upd) {
 	atomic_store_explicit(&st->sync, 0, memory_order_release);
+	static volatile struct gic_distributor *const gic500d = regmap_gic500d;
 	/* disable DDRC interrupts during switch, since the handler will try to read from registers behind an idled bus */
 	gicv2_disable_spi(gic500d, 35);
 	gicv2_disable_spi(gic500d, 36);
@@ -243,7 +243,7 @@ static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 p
 
 void ddrinit_set_channel_stride(u32 val) {
 	/* channel stride: 0xc – 128B, 0xd – 256B, 0xe – 512B, 0xf – 4KiB (other values for different capacities) */
-	pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
+	regmap_pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
 }
 
 static void both_channels_ready(struct ddrinit_state *st) {
@@ -329,7 +329,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 	case CHAN_ST_CONFIGURED:
 		if (~int_status & PCTL_INT0_INIT_DONE) {break;}
 		pctl[PCTL_INT_ACK] = PCTL_INT0_INIT_DONE;
-		grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 1) << 8;
+		regmap_grf[GRF_DDRC_CON + 2*ch] = SET_BITS16(1, 1) << 8;
 		for_dslice(i) {
 			for_range(reg, 53, 58) {phy->dslice[i][reg] = 0x08200820;}
 			clrset32(&phy->dslice[i][58], 0xffff, 0x0820);

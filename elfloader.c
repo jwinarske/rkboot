@@ -24,7 +24,7 @@
 #include <dwmmc.h>
 #include <iost.h>
 
-volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+volatile struct uart *const console_uart = regmap_uart;
 
 static const struct mapping initial_mappings[] = {
 	{.first = 0, .last = (u64)&__start__ - 1, .flags = MEM_TYPE_NORMAL},
@@ -184,36 +184,31 @@ u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 _Noreturn u32 main(u64 sctlr) {
-	puts("elfloader\n");
 	struct stage_store store;
 	store.sctlr = sctlr;
 	stage_setup(&store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	mmu_setup(initial_mappings, critical_ranges);
-	mmu_map_mmio_identity(0xff750000, 0xff77ffff);	/* {PMU,}CRU, GRF */
-	mmu_map_mmio_identity(0xff310000, 0xff33ffff);	/* PMU{,SGRF,GRF} */
-	mmu_map_range(0xff8c0000, 0xff8dffff, 0xff8c0000, MEM_TYPE_NORMAL);	/* SRAM */
-	mmu_map_range(0xff3b0000, 0xff3b1fff, 0xff3b0000, MEM_TYPE_NORMAL);	/* PMUSRAM */
-	mmu_map_mmio_identity(0xff3d0000, 0xff3dffff);	/* i2c4 */
-	mmu_map_mmio_identity((u64)gpio0, (u64)gpio0 + 0xfff);
-	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
 	for_range(i, 0, NUM_REGMAP) {
 		static const u32 addrs[NUM_REGMAP] = {
 #define MMIO(name, snake, addr, type) addr,
 			DEFINE_REGMAP
 #undef MMIO
 		};
-		u64 base = (u64)regmap_base(i);
+		u64 base = REGMAP_BASE(i);
 		mmu_map_range(base, base + 0xfff, addrs[i], MEM_TYPE_DEV_nGnRnE);
 	}
 	mmu_flush();
+	puts("elfloader\n");
 
 	/* set DRAM as Non-Secure; needed for DMA */
-	pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
+	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
 
-	assert_msg(rkpll_switch(pmucru + PMUCRU_PPLL_CON), "PPLL did not lock-on\n");
 	/* clk_i2c4 = PPLL/4 = 169 MHz, DTS has 200 */
-	pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
+	regmap_pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
+
+	volatile u32 *const pmugrf = regmap_pmugrf;
+	volatile struct rki2c_regs *const i2c4 = regmap_i2c4;
 	printf("RKI2C4_CON: %"PRIx32"\n", i2c4->control);
 	struct rki2c_config i2c_cfg = rki2c_calc_config_v1(169, 1000000, 600, 20);
 	printf("setup %"PRIx32" %"PRIx32"\n", i2c_cfg.control, i2c_cfg.clkdiv);
@@ -248,7 +243,7 @@ _Noreturn u32 main(u64 sctlr) {
 	static const u32 all_exit_mask = (1 << NUM_BOOT_MEDIUM) - 1;
 	if (available_boot_media) {
 		fiq_handler_spx = irq_handler_spx = irq_handler;
-		gicv3_per_cpu_setup(gic500r);
+		gicv3_per_cpu_setup(regmap_gic500r);
 		static const struct {
 			u16 intid;
 			u8 priority;
@@ -261,7 +256,7 @@ _Noreturn u32 main(u64 sctlr) {
 			{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
 		};
 		for_array(i, intids) {
-			gicv2_setup_spi(gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
+			gicv2_setup_spi(regmap_gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
 		}
 
 		for_range(i, 0, NUM_DRAMSTAGE_VSTACK) {
@@ -335,7 +330,7 @@ _Noreturn u32 main(u64 sctlr) {
 				printf("[%"PRIuTS"] payload loaded in %"PRIuTS" μs\n", xfer_end, (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
 				/* leave the user at least 500 ms to let go for each payload  */
 				while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
-				u32 gpio_bits = gpio0->read;
+				u32 gpio_bits = regmap_gpio0->read;
 				debug("GPIO0: %"PRIx32"\n", gpio_bits);
 				if ((~gpio_bits & 32) && available_boot_media >> 1 >> boot_medium != 0) {
 					printf("boot overridden\n");
@@ -355,9 +350,11 @@ _Noreturn u32 main(u64 sctlr) {
 			state = monitor_boot_state(state, all_exit_mask, state & all_exit_mask);
 		}
 
-		for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
-		gicv2_wait_disabled(gic500d);
-		gicv3_per_cpu_teardown(gic500r);
+		for_array(i, intids) {
+			gicv2_disable_spi(regmap_gic500d, intids[i].intid);
+		}
+		gicv2_wait_disabled(regmap_gic500d);
+		gicv3_per_cpu_teardown(regmap_gic500r);
 	} else {
 #if CONFIG_ELFLOADER_DECOMPRESSION
 		struct async_dummy async = {

@@ -22,7 +22,7 @@
 #include <dwmmc.h>
 #include <uart.h>
 
-volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
+volatile struct uart *const console_uart = regmap_uart;
 
 static const struct mapping initial_mappings[] = {
 	{.first = (u64)console_uart, .last = (u64)console_uart + 0xfff, .flags = MEM_TYPE_DEV_nGnRnE},
@@ -121,33 +121,25 @@ int32_t NO_ASAN main(u64 sctlr) {
 	store.sctlr = sctlr;
 	stage_setup(&store);
 
-	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
-	gpio0->port |= 1 << 2;
-	gpio0->direction |= 1 << 2;
-	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	mmu_setup(initial_mappings, critical_ranges);
-	/* map {PMU,}CRU, GRF */
-	mmu_map_mmio_identity(0xff750000, 0xff77ffff);
-	/* map PMU{,SGRF,GRF} */
-	mmu_map_mmio_identity(0xff310000, 0xff33ffff);
-	/* map GPIOs */
-	mmu_map_mmio_identity(0xff720000, 0xff730fff);
-	mmu_map_mmio_identity(0xff780000, 0xff790fff);
 	for_range(i, 0, NUM_REGMAP) {
 		static const u32 addrs[NUM_REGMAP] = {
 #define MMIO(name, snake, addr, type) addr,
 			DEFINE_REGMAP
 #undef MMIO
 		};
-		u64 base = (u64)regmap_base(i);
+		u64 base = REGMAP_BASE(i);
 		mmu_map_range(base, base + 0xfff, addrs[i], MEM_TYPE_DEV_nGnRnE);
 	}
 	__asm__("dsb ishst");
 
+	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
+	regmap_gpio0->port |= 1 << 2;
+	regmap_gpio0->direction |= 1 << 2;
+
 	pmu_cru_setup();
 
-	mmu_map_mmio_identity(0xfee00000, 0xfeffffff);
-	dsb_ishst();
+	static volatile struct gic_distributor *const gic500d = regmap_gic500d;
+	static volatile struct gic_redistributor *const gic500r = regmap_gic500r;
 	gicv2_global_setup(gic500d);
 	fiq_handler_spx = irq_handler_spx = irq_handler;
 	gicv3_per_cpu_setup(gic500r);
@@ -164,7 +156,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 		{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
 	};
 	for_array(i, intids) {
-		gicv2_setup_spi(gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
+		gicv2_setup_spi(regmap_gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
 	}
 
 	ddrinit_configure(&ddrinit_st);

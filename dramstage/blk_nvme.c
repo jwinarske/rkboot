@@ -60,7 +60,7 @@ static UNINITIALIZED _Alignas(1 << PLAT_PAGE_SHIFT) u8 uncached_buf[NUM_UBUF][1 
 
 static _Bool finish_pcie_link() {
 	timestamp_t start = get_timestamp(), gen1_trained, retrained;
-	volatile u32 *pcie_client = regmap_base(REGMAP_PCIE_CLIENT);
+	static volatile u32 *const pcie_client = regmap_pcie_client;
 	while (1) {
 		u32 basic_status1 = pcie_client[RKPCIE_CLIENT_BASIC_STATUS+1];
 		info("PCIe link status %08"PRIx32" %08"PRIx32"\n", pcie_client[RKPCIE_CLIENT_DEBUG_OUT+0], basic_status1);
@@ -72,15 +72,15 @@ static _Bool finish_pcie_link() {
 		}
 		usleep(1000);
 	}
-	volatile u32 *pcie_mgmt = regmap_base(REGMAP_PCIE_MGMT);
+	static volatile u32 *const pcie_mgmt = regmap_pcie_mgmt;
 	u32 plc0 = pcie_mgmt[RKPCIE_MGMT_PLC0];
 	if (~plc0 & RKPCIE_MGMT_PLC0_LINK_TRAINED) {return 0;}
 	info("trained %"PRIu32"x link (waited %"PRIuTS" μs)\n", 1 << (plc0 >> 1 & 3), (gen1_trained - start) / TICKS_PER_MICROSECOND);
-	volatile u32 *pcie_rcconf = regmap_base(REGMAP_PCIE_RCCONF);
-	volatile u32 *lcs = pcie_rcconf + RKPCIE_RCCONF_PCIECAP + PCIECAP_LCS;
+	static volatile u32 *const pcie_rcconf = regmap_pcie_rcconf;
 	for_range(i, 0, 0x138 >> 2) {
 		spew("%03"PRIx32": %08"PRIx32"\n", i*4, pcie_rcconf[i]);
 	}
+	static volatile u32 *const lcs = pcie_rcconf + RKPCIE_RCCONF_PCIECAP + PCIECAP_LCS;
 	info("LCS: %08"PRIx32"\n", *lcs);
 	*lcs |= PCIECAP_LCS_RL;
 	u32 lcs_val;
@@ -200,6 +200,7 @@ struct nvme_blockdev nvme_blk = {
 };
 
 void boot_nvme() {
+	static volatile u32 *const cru = regmap_cru;
 	if ((cru[CRU_CLKGATE_CON+12] & 1 << 6) || (cru[CRU_CLKGATE_CON+20] & 3 << 10)) {
 		info("sramstage left PCIe disabled\n");
 		goto out;
@@ -207,7 +208,7 @@ void boot_nvme() {
 	if (!finish_pcie_link()) {goto shut_down_phys;}
 	/* map MMIO regions 1 and 2 (1MiB each, creates one 2MiB block mapping) }*/
 	mmu_map_range(0xfa000000, 0xfa1fffff, 0xfa000000, MEM_TYPE_DEV_nGnRnE);
-	volatile struct rkpcie_addr_xlation *xlat = regmap_base(REGMAP_PCIE_ADDR_XLATION);
+	volatile struct rkpcie_addr_xlation *xlat = regmap_pcie_addr_xlation;
 	/* map configuration space for bus 0 in MMIO region 1 */
 	xlat->ob[1].addr[0] = 19;	/* forward 20 bits of address starting at 0 (ECAM mapping) */
 	xlat->ob[1].addr[1] = 0;
@@ -379,7 +380,7 @@ shut_down_log:
 	conf[PCI_CMDSTS] = 0;	/* soft-disconnect the device */
 	goto out;
 shut_down_phys:
-	grf[GRF_SOC_CON0+5] = SET_BITS16(4, 15) << 3;	/* disable all lanes */
+	regmap_grf[GRF_SOC_CON0+5] = SET_BITS16(4, 15) << 3;	/* disable all lanes */
 	dsb_st();
 	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 1) << 6;	/* clk_pciephy_ref100m */
 	cru[CRU_CLKGATE_CON+20] = SET_BITS16(2, 3) << 10	/* {a,p}clk_pcie */

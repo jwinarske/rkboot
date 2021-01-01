@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <rk3399/dramstage.h>
-#include <rk3399.h>
 #include <rkcrypto_v1_regs.h>
 #include <log.h>
 

@@ -72,24 +72,3 @@ enum {
 };
 
 enum {CYCLES_PER_MICROSECOND = TICKS_PER_MICROSECOND};
-
-struct gic_distributor;
-struct gic_redistributor;
-static volatile struct gic_distributor *const gic500d = (volatile struct gic_distributor *)0xfee00000;
-static volatile struct gic_redistributor *const gic500r = (volatile struct gic_redistributor *)0xfef00000;
-static volatile u32 *const pmu = (volatile u32 *)0xff310000;
-static volatile u32 *const pmugrf = (volatile u32 *)0xff320000;
-static volatile u32 *const pmusgrf = (volatile u32 *)0xff330000;
-static volatile u32 *const cru = (volatile u32 *)0xff760000;
-static volatile u32 *const pmucru = (volatile u32 *)0xff750000;
-static volatile u32 *const grf = (volatile u32 *)0xff770000;
-
-struct rki2c_regs;
-static volatile struct rki2c_regs *const i2c4 = (volatile struct rki2c_regs *)0xff3d0000;
-
-struct rkgpio_regs;
-static volatile struct rkgpio_regs *const gpio0 = (volatile struct rkgpio_regs *)0xff720000;
-static volatile struct rkgpio_regs *const gpio1 = (volatile struct rkgpio_regs *)0xff730000;
-static volatile struct rkgpio_regs *const gpio2 = (volatile struct rkgpio_regs *)0xff780000;
-static volatile struct rkgpio_regs *const gpio3 = (volatile struct rkgpio_regs *)0xff788000;
-static volatile struct rkgpio_regs *const gpio4 = (volatile struct rkgpio_regs *)0xff790000;

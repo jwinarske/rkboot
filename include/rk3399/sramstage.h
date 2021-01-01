@@ -29,29 +29,35 @@ HEADER_FUNC u64 vstack_base(enum sramstage_vstack vstack) {
 #define DEFINE_REGMAP\
 	MMIO(EMMC, emmc, 0xfe330000, struct sdhci_regs)\
 	MMIO(SDMMC, sdmmc, 0xfe320000, struct dwmmc_regs)\
+	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
+	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
 	MMIO(CIC, cic, 0xff620000, u32)\
 	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
 	MMIO(CRYPTO1, crypto1, 0xff8b8000, struct rkcrypto_v1_regs)\
 	MMIO(PCIE_CLIENT, pcie_client, 0xfd000000, u32)\
 	MMIO(PCIE_MGMT, pcie_mgmt, 0xfd900000, u32)\
+	MMIO(PCIE_RCCONF, pcie_rcconf, 0xfd800000, u32)\
 	MMIO(PCIE_CONF_SETUP, pcie_conf_setup, 0xfda00000, u32)\
+	MMIO(PCIE_ADDR_XLATION, pcie_addr_xlation, 0xfdc00000, struct rkpcie_addr_xlation)\
+	MMIO(SPI1, spi1, 0xff1d0000, struct rkspi_regs)\
+	MMIO(I2C4, i2c4, 0xff3d0000, struct rki2c_regs)\
+	MMIO(GPIO0, gpio0, 0xff720000, struct rkgpio_regs)\
+	MMIO(GPIO1, gpio1, 0xff730000, struct rkgpio_regs)\
+	MMIO(GPIO2, gpio2, 0xff780000, struct rkgpio_regs)\
+	MMIO(GPIO3, gpio3, 0xff788000, struct rkgpio_regs)\
+	MMIO(GPIO4, gpio4, 0xff790000, struct rkgpio_regs)\
+	MMIO(UART, uart, 0xff1a0000, struct uart)\
+	MMIO(CRU, cru, 0xff760000, u32)\
+	MMIO(PMU, pmu, 0xff310000, u32)\
+	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
+	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
+	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
+#define DEFINE_REGMAP64K\
+	X(DMC, dmc, 0xffa80000, u32)\
+	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
+	X(GRF, grf, 0xff770000, u32)\
 
-enum regmap_id {
-#define MMIO(name, snake, addr, type) REGMAP_##name,
-	DEFINE_REGMAP
-#undef MMIO
-	NUM_REGMAP
-};
-
-#define REGMAP_BASE(map) (void *)(uintptr_t)(0xfffff000 - 0x1000 * map)
-
-HEADER_FUNC void *regmap_base(enum regmap_id map) {
-	return REGMAP_BASE(map);
-}
-
-#define MMIO(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = REGMAP_BASE(REGMAP_##name);
-	DEFINE_REGMAP
-#undef MMIO
+#include "regmap.h"
 
 #define DEFINE_RK3399_INIT_FLAGS\
 	X(DDRC0_INIT, 15) X(DDRC1_INIT, 15)\

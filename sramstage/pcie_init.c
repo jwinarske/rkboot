@@ -39,7 +39,9 @@ enum {
 #define SELECT(reg) (SET_BITS16(6,(reg)) << 1)
 #define OBSERVE(val) ((val) >> 8 & 15)
 
-static volatile u32 *const phyctrl = grf + GRF_SOC_CON0+8, *const physts = grf + GRF_SOC_STATUS+1;
+static volatile u32
+	*const phyctrl = regmap_grf + GRF_SOC_CON0+8,
+	*const physts = regmap_grf + GRF_SOC_STATUS+1;
 
 static void write_reg(u32 reg, u32 val) {
 	*phyctrl = SELECT(reg) | SET_BITS16(4, val) << 7;
@@ -88,11 +90,12 @@ enum {
 
 void pcie_init() {
 	infos("initializing PCIe\n");
-	gpio2->port &= ~((u32)1 << 28);
-	gpio2->direction |= 1 << 28;
+	regmap_gpio2->port &= ~((u32)1 << 28);
+	regmap_gpio2->direction |= 1 << 28;
 	/* enable regulator */
-	gpio1->port |= 1 << 24;
-	gpio1->direction |= 1 << 24;
+	regmap_gpio1->port |= 1 << 24;
+	regmap_gpio1->direction |= 1 << 24;
+	static volatile u32 *const cru = regmap_cru;
 	cru[CRU_SOFTRST_CON+8] = SET_BITS16(8, 0xff);
 	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 0) << 6;	/* clk_pciephy_ref100m */
 	cru[CRU_CLKGATE_CON+20] = SET_BITS16(2, 0) << 10	/* {a,p}clk_pcie */
@@ -101,7 +104,7 @@ void pcie_init() {
 	usleep(10);
 	cru[CRU_SOFTRST_CON+8] = SET_BITS16(1, 0) << 7;	/* resetn_pciephy */
 	dsb_st();
-	grf[GRF_SOC_CON0+5] = SET_BITS16(4, 0) << 3;	/* enable all lanes */
+	regmap_grf[GRF_SOC_CON0+5] = SET_BITS16(4, 0) << 3;	/* enable all lanes */
 	if (!wait_pll_lock()) {goto shut_down_phy;}
 	write_reg(RKPCIEPHY_CFG_CLKSEL, RKPCIEPHY_separate_rate);
 	write_reg(RKPCIEPHY_CFG_CLK_EN, RKPCIEPHY_SEL_PLL_100M);
@@ -135,12 +138,12 @@ void pcie_init() {
 	regmap_pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_SCC;
 	regmap_pcie_conf_setup[PCIE_RCCONF_LCS] |= PCIE_RCCONF_LCS_RCB;
 	regmap_pcie_client[RKPCIE_CLIENT_CONF] = CLRSET16(0, RKPCIE_CLI_LINK_TRAIN_EN);
-	gpio2->port |= 1 << 28;
+	regmap_gpio2->port |= 1 << 28;
 	/* detection and link training takes ~100ms without CPU intervention, do the rest in dramstage */
 	rk3399_set_init_flags(RK3399_INIT_PCIE);
 	return;
 shut_down_phy:
-	grf[GRF_SOC_CON0+5] = SET_BITS16(4, 15) << 3;	/* disable all lanes */
+	regmap_grf[GRF_SOC_CON0+5] = SET_BITS16(4, 15) << 3;	/* disable all lanes */
 	dsb_st();
 	cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 1) << 6;	/* clk_pciephy_ref100m */
 	cru[CRU_CLKGATE_CON+20] = SET_BITS16(2, 3) << 10	/* {a,p}clk_pcie */

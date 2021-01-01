@@ -125,8 +125,8 @@ static void load_elf(const struct elf_header *header) {
 
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	/* GPIO0B3: White and green LED on the RockPro64 and Pinebook Pro respectively, not connected on the Rock Pi 4 */
-	gpio0->port |= 1 << 11;
-	gpio0->direction |= 1 << 11;
+	regmap_gpio0->port |= 1 << 11;
+	regmap_gpio0->direction |= 1 << 11;
 
 	info("trng: %"PRIx32" %"PRIx32"\n", regmap_crypto1->control, regmap_crypto1->interrupt_status);
 
@@ -156,10 +156,10 @@ _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	bl33_ep.args.arg1 = 0;
 	bl33_ep.args.arg2 = 0;
 	bl33_ep.args.arg3 = 0;
-	assert_msg(rkpll_switch(cru + CRU_BPLL_CON), "BPLL did not lock-on\n");
+
 	/* aclkm_core_b = clk_core_b = BPLL */
-	cru[CRU_CLKSEL_CON + 2] = SET_BITS16(5, 0) << 8 | SET_BITS16(2, 1) << 6 | SET_BITS16(5, 0);
-	cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
+	regmap_cru[CRU_CLKSEL_CON + 2] = SET_BITS16(5, 0) << 8 | SET_BITS16(2, 1) << 6 | SET_BITS16(5, 0);
+	regmap_cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
 	stage_teardown(store);
 	fflush(stdout);
 	((bl31_entry)header->entry)(&bl_params, &reset_gpio.h, 0, 0);
