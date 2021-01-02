@@ -19,4 +19,4 @@
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\
 
-#include "regmap.h"
+#include "vmmap.h"

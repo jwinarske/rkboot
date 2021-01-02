@@ -22,7 +22,7 @@
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\
 
-#include <rk3399/regmap.h>
+#include <rk3399/vmmap.h>
 
 #define MEMTEST_CHACHAISH
 #ifdef MEMTEST_SPLITTABLE
