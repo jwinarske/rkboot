@@ -8,8 +8,7 @@
 /* these constants set all bits that are res1 in the base architecture, even if some extensions define a meaning for the value of 0 */
 #define SCTLR_EL1_RES1 0x30d00980
 #define SCTLR_EL2_RES1_E2H 0x30500980
-#define SCTLR_EL2_RES1_HV 0x30c50830
-#define SCTLR_EL3_RES1 0x30c50830
+#define SCTLR_EL23_RES1 0x30c50830
 
 #define SCR_IRQ  2
 #define SCR_FIQ 4
