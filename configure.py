@@ -326,8 +326,8 @@ print(build('save_restore_aarch64.o', 'cc', path.join(srcdir, 'aarch64/save_rest
 print(build('mmu_aarch64.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
 print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
 print(build('string_aarch64.o', 'cc', path.join(srcdir, 'lib/string_aarch64.S')))
-print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
-print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
+print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=1'))
+print(build('entry.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=0'))
 lib |= {'dcache-el3', 'entry', 'exc_handlers-el3', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
@@ -366,10 +366,10 @@ print(build('dramcfg.o', 'cc', path.join(srcdir, 'dram/dramcfg.c'), (name + ".ge
 levinboot |= {'dramcfg'}
 
 # ===== linking and image post processing =====
-levinboot = (levinboot | lib | {'entry-first'}) - {'entry'}
+levinboot = (levinboot | lib) - {'entry'}
 print(build('dramstage.lz4', 'lz4', 'elfloader.bin', flags='--content-size'))
 print(build('dramstage.lz4.o', 'incbin', 'dramstage.lz4'))
-dramstage_embedder |= {'dramstage.lz4'}
+dramstage_embedder |= {'dramstage.lz4', 'entry-first'}
 
 base_addresses = set()
 def binary(name, modules, base_address):
@@ -383,7 +383,7 @@ def binary(name, modules, base_address):
     ))
     print(build(name + '.bin', 'bin', name + '.elf'))
 
-binary('sramstage', levinboot | {'sramstage/return_to_brom'}, 'ff8c2000')
+binary('sramstage', levinboot | {'entry-first', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'uart16550a', 'error', 'dump_fdt'), '00280000')

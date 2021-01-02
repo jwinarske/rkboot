@@ -3,12 +3,12 @@
 #include <aarch64.h>
 #include <cortex_a53.h>
 
-.section .text.entry
-#ifdef FIRST_STAGE
+TEXTSECTION(.text.entry)
+#if CONFIG_FIRST_STAGE
 .ascii "RK33"
 #endif
 entry_point: .global entry_point
-#ifdef FIRST_STAGE
+#ifdef CONFIG_FIRST_STAGE
 	cortex_a53_init x1, var_rev=0x04
 	isb
 #endif
@@ -21,7 +21,7 @@ entry_point: .global entry_point
 	isb
 	msr SCTLR_EL3, x1
 
-#ifdef FIRST_STAGE	// selected by configure.py
+#if CONFIG_FIRST_STAGE
 mov x1, #0x16e0000	// 24000000 (timer ticks per second)
 movk x1, #0x3600
 msr CNTFRQ_EL0, x1
