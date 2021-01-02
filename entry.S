@@ -105,6 +105,8 @@ br x2
 #endif
 
 prepare_main:
+	aarch64_misc_init x1, x2
+
 adr x1, __bss_start__
 adr x2, __bss_noinit__
 zero_bss:

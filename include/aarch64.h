@@ -1,6 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 
+#define MDCR_SPD32_LEGACY 0
+#define MDCR_SPD32_DISABLED 0x8000
+#define MDCR_SPD32_ENABLED 0xc000
+
+#define PMCR_LC 0x40
+#define PMCR_LP 0x80
+
 #define SCTLR_M 1
 #define SCTLR_C 4
 #define SCTLR_SA 8
@@ -77,6 +84,13 @@
 	.if (\val) & 0x000000000000ffff
 		movk \reg, #((\val) & 0xffff)
 	.endif
+.endm
+.macro aarch64_misc_init scratch0 scratch1
+	mov \scratch0, #MDCR_SPD32_ENABLED
+	mov \scratch1, #(PMCR_LP | PMCR_LC)
+	msr MDCR_EL3, \scratch0
+	msr PMCR_EL0, \scratch1
+	msr CPTR_EL3, xzr	/* don't enable any traps */
 .endm
 #else
 #include "defs.h"
