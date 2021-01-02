@@ -12,19 +12,9 @@ void pcie_init();
 struct stage_store;
 u32 end_sramstage(struct stage_store *store);
 
-#define DEFINE_SRAMSTAGE_VSTACKS\
+#define DEFINE_VSTACK\
 	X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)
-
-enum sramstage_vstack {
-#define X(name) SRAMSTAGE_VSTACK_##name,
-	DEFINE_SRAMSTAGE_VSTACKS
-#undef X
-	NUM_SRAMSTAGE_VSTACK
-};
-
-HEADER_FUNC u64 vstack_base(enum sramstage_vstack vstack) {
-	return 0xffe01400 + 0x2000 * vstack;
-}
+#define VSTACK_DEPTH UINT64_C(0x1000)
 
 #define DEFINE_REGMAP\
 	MMIO(EMMC, emmc, 0xfe330000, struct sdhci_regs)\

@@ -2,6 +2,16 @@
 #pragma once
 #include <defs.h>
 
+enum vstack {
+#define X(name) VSTACK_##name,
+	DEFINE_VSTACK
+#undef X
+	NUM_VSTACK
+};
+
+#define VSTACK_BASE(vstack) (UINT64_C(0xffe00000) + (VSTACK_DEPTH + 0x1000) * ((vstack) + 1))
+
+enum {vstacks_end = VSTACK_BASE(NUM_VSTACK - 1)};
 
 enum regmap_id {
 #define MMIO(name, snake, addr, type) REGMAP_##name,
@@ -35,3 +45,5 @@ _Static_assert((u64)REGMAP64K_BASE(NUM_REGMAP64K) == regmap4k_base, "");
 #define X(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = (type *)REGMAP64K_BASE(REGMAP64K_##name);
 	DEFINE_REGMAP64K
 #undef X
+
+_Static_assert(vstacks_end <= regmap64k_base, "VStacks and regmaps don't fit into 2 MiB");

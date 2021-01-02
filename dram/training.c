@@ -183,7 +183,7 @@ void ddrinit_train(struct ddrinit_state *st) {
 		.pc = (u64)training_task,
 		.pad = 0,
 		.args = {(u64)st, 1},
-	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_DDRC1) - sizeof(struct sched_thread_start));
+	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_DDRC1) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);
 	training_task(st, 0);

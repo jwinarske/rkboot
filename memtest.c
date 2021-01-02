@@ -6,6 +6,8 @@
 #include <runqueue.h>
 #include <exc_handler.h>
 
+#define DEFINE_VSTACK X(CPU0) X(CPU1)
+#define VSTACK_DEPTH 0x1000
 
 #define DEFINE_REGMAP\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
@@ -200,6 +202,9 @@ static _Bool memtest(u64 salt) {
 	return res;
 }
 
+
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+
 volatile struct uart *const console_uart = regmap_uart;
 
 static const struct mmu_multimap initial_mappings[] = {
@@ -212,6 +217,11 @@ static const struct mmu_multimap initial_mappings[] = {
 	{.addr = 0xf8000000, .desc = 0},
 	{.addr = 0xff8c0000, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0xff8c0000}, /* stack */
 	{.addr = 0xff8c2000, .desc = 0},
+#define X(name)\
+	{.addr = VSTACK_BASE(VSTACK_##name) - VSTACK_DEPTH, .desc =  (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV) + (u64)&vstack_frames[VSTACK_##name]},\
+	{.addr = VSTACK_BASE(VSTACK_##name), .desc = 0},
+	DEFINE_VSTACK
+#undef X
 	{}
 };
 

@@ -377,7 +377,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 			.pc = (u64)both_channels_ready,
 			.pad = 0,
 			.args = {(u64)st, },
-		}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_DDRC0) - sizeof(struct sched_thread_start));
+		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_DDRC0) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);
 		return;

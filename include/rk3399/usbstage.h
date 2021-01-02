@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 
+#define DEFINE_VSTACK X(CPU0)
+#define VSTACK_DEPTH UINT64_C(0x3000)
 
 #define DEFINE_REGMAP\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\

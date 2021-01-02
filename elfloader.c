@@ -24,6 +24,8 @@
 #include <dwmmc.h>
 #include <iost.h>
 
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+
 volatile struct uart *const console_uart = regmap_uart;
 
 static const struct mmu_multimap initial_mappings[] = {
@@ -178,7 +180,6 @@ _Bool wait_for_boot_cue(enum boot_medium medium) {
 	}
 }
 
-static UNINITIALIZED _Alignas(4096) u8 vstack_frames[3*NUM_DRAMSTAGE_VSTACK][4096];
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[20][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
@@ -249,9 +250,9 @@ _Noreturn u32 main(u64 sctlr) {
 			gicv2_setup_spi(regmap_gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
 		}
 
-		for_range(i, 0, NUM_DRAMSTAGE_VSTACK) {
-			u64 limit = 0x100005000 + i * 0x4000;
-			mmu_map_range(limit, limit + 0x2fff, (u64)&vstack_frames[3*i][0], MEM_TYPE_NORMAL);
+		for_range(i, 0, NUM_VSTACK) {
+			u64 limit = VSTACK_BASE(i) - VSTACK_DEPTH;
+			mmu_map_range(limit, limit + (VSTACK_DEPTH - 1), (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
 		}
 		dsb_ishst();
 
@@ -261,7 +262,7 @@ _Noreturn u32 main(u64 sctlr) {
 			.pc = (u64)boot_sd,
 			.pad = 0,
 			.args = {},
-		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_SD) - sizeof(struct sched_thread_start));
+		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_SD) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
@@ -271,7 +272,7 @@ _Noreturn u32 main(u64 sctlr) {
 			.pc = (u64)boot_emmc,
 			.pad = 0,
 			.args = {},
-		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_EMMC) - sizeof(struct sched_thread_start));
+		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_EMMC) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
@@ -281,7 +282,7 @@ _Noreturn u32 main(u64 sctlr) {
 			.pc = (u64)boot_nvme,
 			.pad = 0,
 			.args = {},
-		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_NVME) - sizeof(struct sched_thread_start));
+		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_NVME) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
@@ -291,7 +292,7 @@ _Noreturn u32 main(u64 sctlr) {
 			.pc = (u64)boot_spi,
 			.pad = 0,
 			.args = {},
-		}, *runnable = (struct sched_thread_start *)(vstack_base(DRAMSTAGE_VSTACK_SPI) - sizeof(struct sched_thread_start));
+		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_SPI) - sizeof(struct sched_thread_start));
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif

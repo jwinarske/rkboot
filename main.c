@@ -22,6 +22,8 @@
 #include <dwmmc.h>
 #include <uart.h>
 
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+
 volatile struct uart *const console_uart = regmap_uart;
 
 static const struct mmu_multimap initial_mappings[] = {
@@ -98,7 +100,6 @@ static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT | 
 _Atomic(size_t) rk3399_init_flags = start_flags;
 
 UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
-static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_SRAMSTAGE_VSTACK][4096];
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[9][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
@@ -149,9 +150,9 @@ int32_t NO_ASAN main(u64 sctlr) {
 
 	misc_init();
 
-	for_range(i, 0, NUM_SRAMSTAGE_VSTACK) {
-		u64 limit = 0xffe01000 + i * 0x2000;
-		mmu_map_range(limit, limit + 0xfff, (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
+	for_range(i, 0, NUM_VSTACK) {
+		u64 limit = VSTACK_BASE(i) - VSTACK_DEPTH;
+		mmu_map_range(limit, limit + (VSTACK_DEPTH - 1), (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
 	}
 	dsb_ishst();
 
@@ -161,7 +162,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 		.pc = (u64)rk3399_init_sdmmc,
 		.pad = 0,
 		.args = {},
-	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_SDMMC) - sizeof(struct sched_thread_start));
+	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_SDMMC) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
@@ -172,7 +173,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 		.pc = (u64)emmc_init,
 		.pad = 0,
 		.args = {(u64)&emmc_state},
-	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_EMMC) - sizeof(struct sched_thread_start));
+	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_EMMC) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
@@ -183,7 +184,7 @@ int32_t NO_ASAN main(u64 sctlr) {
 		.pc = (u64)pcie_init,
 		.pad = 0,
 		.args = {},
-	}, *runnable = (struct sched_thread_start *)(vstack_base(SRAMSTAGE_VSTACK_PCIE) - sizeof(struct sched_thread_start));
+	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_PCIE) - sizeof(struct sched_thread_start));
 	*runnable = thread_start;
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif

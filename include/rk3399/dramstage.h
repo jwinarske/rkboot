@@ -51,18 +51,8 @@ _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
 
-#define DEFINE_DRAMSTAGE_VSTACKS X(SD) X(EMMC) X(NVME) X(SPI)
-
-enum dramstage_vstack {
-#define X(name) DRAMSTAGE_VSTACK_##name,
-	DEFINE_DRAMSTAGE_VSTACKS
-#undef X
-	NUM_DRAMSTAGE_VSTACK
-};
-
-HEADER_FUNC u64 vstack_base(enum dramstage_vstack vstack) {
-	return 0x100008000 + 0x4000 * vstack;
-}
+#define DEFINE_VSTACK X(SD) X(EMMC) X(NVME) X(SPI)
+#define VSTACK_DEPTH UINT64_C(0x3000)
 
 #define DEFINE_REGMAP\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
