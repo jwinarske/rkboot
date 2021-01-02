@@ -113,8 +113,6 @@ struct payload_desc *get_payload_desc() {
 	return payload;
 }
 
-UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
-
 static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}

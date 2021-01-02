@@ -29,8 +29,6 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
-
 static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];

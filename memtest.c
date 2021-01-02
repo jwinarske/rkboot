@@ -166,7 +166,6 @@ static void timed_flush() {
 #endif
 }
 
-UNINITIALIZED _Alignas(16) u8 exc_stack[4096] = {};
 static struct sched_runqueue runqueue = {};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];

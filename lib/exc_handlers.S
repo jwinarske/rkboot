@@ -33,13 +33,13 @@ exc_handler name=fiq_handler_sp0, spsel=1
 .asciz "FIQ SP_EL0"
 exc_handler name=serror_handler_sp0, spsel=1
 .asciz "SError SP_EL0"
-exc_handler sync_exc_handler_spx, spsel=0
+exc_handler sync_exc_handler_spx, spsel=1
 .asciz "sync SP_ELx"
-exc_handler irq_handler_spx, spsel=0
+exc_handler irq_handler_spx, spsel=1
 .asciz "IRQ SP_ELx"
-exc_handler fiq_handler_spx, spsel=0
+exc_handler fiq_handler_spx, spsel=1
 .asciz "FIQ SP_ELx"
-exc_handler serror_handler_spx, spsel=0
+exc_handler serror_handler_spx, spsel=1
 .asciz "SError SP_ELx"
 exc_handler sync_exc_handler_aarch64, spsel=1
 .asciz "sync aarch64"
