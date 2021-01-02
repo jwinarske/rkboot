@@ -317,8 +317,10 @@ for f in modules:
     print(build(base+'.o', 'cc', src, **build_flags))
 
 # ===== special compile jobs =====
-print('build dcache.o: cc {}'.format(esc(path.join(srcdir, 'lib/dcache.S'))))
-print(build('exc_handlers.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S')))
+print(build('dcache-el3.o', 'cc', path.join(srcdir, 'lib/dcache.S'), flags='-DCONFIG_EL=3'))
+print(build('dcache-el2.o', 'cc', path.join(srcdir, 'lib/dcache.S'), flags='-DCONFIG_EL=2'))
+print(build('exc_handlers-el3.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S'), flags='-DCONFIG_EL=3'))
+print(build('exc_handlers-el2.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S'), flags='-DCONFIG_EL=2'))
 print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
 print(build('save_restore_aarch64.o', 'cc', path.join(srcdir, 'aarch64/save_restore.S')))
 print(build('mmu_aarch64.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
@@ -326,8 +328,7 @@ print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
 print(build('string_aarch64.o', 'cc', path.join(srcdir, 'lib/string_aarch64.S')))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S')))
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DFIRST_STAGE'))
-lib |= {'dcache', 'entry', 'exc_handlers', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
-usbstage |= {'exc_handlers'}
+lib |= {'dcache-el3', 'entry', 'exc_handlers-el3', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
 phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))

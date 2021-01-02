@@ -63,18 +63,19 @@ ENDFUNC(aarch64_flush_cache_level)
 	isb
 .endm
 
+.macro mmu_helpers el
 TEXTSECTION(.text.asm.mmu)
 PROC(invalidate_dcache_set_sctlr, 2)
 	mov x6, x30
 	apply_all_dcache func=aarch64_invalidate_cache_level
-	msr sctlr_el3, x0
+	msr SCTLR_EL\el, x0
 	isb
 	mov x30, x6
 	ret
 ENDFUNC(invalidate_dcache_set_sctlr)
 
 PROC(set_sctlr_flush_dcache, 2)
-	msr sctlr_el3, x0
+	msr SCTLR_EL\el, x0
 	isb
 flush_dcache:
 	.global flush_dcache
@@ -84,3 +85,6 @@ flush_dcache:
 	ret
 ENDFUNC_NESTED(set_sctlr_flush_dcache)
 ENDFUNC(flush_dcache)
+.endm
+
+mmu_helpers el=CONFIG_EL

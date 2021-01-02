@@ -84,8 +84,9 @@ SPROC(call_handler, 6)
 msg: .asciz "exception handler %zx, SP=%zx\n"
 ENDFUNC(call_handler)
 
+.macro unh_exc el
 SPROC(unhandled_exception, 2)
-	mrs x1, sctlr_el3
+	mrs x1, SCTLR_EL\el
 	tbnz x1, 0, 1f
 	mov x1, 0xff1a0000
 	b 2f
@@ -102,6 +103,8 @@ hang:
 	wfi
 	b hang
 ENDFUNC(unhandled_exception)
+.endm
+unh_exc el=CONFIG_EL
 
 .section .bss, "wa", %nobits
 .macro vector name
