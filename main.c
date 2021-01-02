@@ -111,10 +111,8 @@ void rk3399_set_init_flags(size_t flags) {
 	atomic_fetch_or_explicit(&rk3399_init_flags, flags, memory_order_release);
 }
 
-int32_t NO_ASAN main(u64 sctlr) {
-	struct stage_store store;
-	store.sctlr = sctlr;
-	stage_setup(&store);
+int32_t NO_ASAN main(struct stage_store *store) {
+	stage_setup(store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	mmu_setup(initial_mappings);
 
@@ -221,5 +219,5 @@ int32_t NO_ASAN main(u64 sctlr) {
 	gicv2_wait_disabled(gic500d);
 	gicv3_per_cpu_teardown(gic500r);
 	fiq_handler_spx = irq_handler_spx = 0;
-	return end_sramstage(&store);
+	return end_sramstage(store);
 }

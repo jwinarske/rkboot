@@ -230,10 +230,8 @@ static void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
 }
 
-_Noreturn void main(u64 sctlr) {
-	struct stage_store store;
-	store.sctlr = sctlr;
-	stage_setup(&store);
+_Noreturn void main(struct stage_store *store) {
+	stage_setup(store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	mmu_setup(initial_mappings);
 	puts("memtest\n");

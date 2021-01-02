@@ -12,14 +12,18 @@ entry_point: .global entry_point
 	cortex_a53_init x1, var_rev=0x04
 	isb
 #endif
+	stp x29, x30, [sp, #-48]!
 	mrs x0, SCTLR_EL3
-	/* preserve in X0 for the entire file, in order to pass it to main
-	in case it wants to return to bootloader */
-
+	mrs x1, VBAR_EL3
+	mrs x2, SCR_EL3
+	add x29, sp, #0
+	stp x0, x1, [x29, #16]
+	str x2, [x29, #32]
 	orr x1, x0, #SCTLR_I
 	ic iallu
 	isb
 	msr SCTLR_EL3, x1
+	isb
 
 #if CONFIG_FIRST_STAGE
 mov x1, #0x16e0000	// 24000000 (timer ticks per second)
@@ -113,4 +117,6 @@ zero_bss:
 	stp xzr, xzr, [x1], #16
 	cmp x1, x2
 	b.ls zero_bss
+
+	add x0, x29, #16
 b main

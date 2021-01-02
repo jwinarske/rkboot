@@ -20,11 +20,6 @@ struct stage_store {
 };
 
 static inline void UNUSED stage_setup(struct stage_store *store) {
-	u64 vbar,  scr;
-	__asm__("mrs %0, vbar_el3; mrs %1,  scr_el3" : "=r"(vbar),  "=r"(scr));
-	debug("VBAR=%08zx,  SCR=%zx\n",  vbar,  scr);
-	store->vbar = vbar;
-	store->scr = scr;
 	__asm__ volatile("msr scr_el3, %0" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ));
 	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(__exc_base__));
 #ifdef CONFIG_CRC

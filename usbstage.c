@@ -301,7 +301,7 @@ enum usbstage_command {
 	NUM_CMD
 };
 
-static struct stage_store store;
+static struct stage_store *stage_store;
 void handoff(u64, u64, u64, u64, u64, u64, u64, u64);
 __asm__("handoff: add x8, sp, #0; add sp, x1, #0; stp x30, x8, [sp, #-16]!; blr x0;ldp x30, x8, [sp]; add sp, x8, #0");
 
@@ -335,7 +335,7 @@ static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state 
 				if (evtcount) {dwc3->event_count = evtcount;}
 				__asm__("yield");
 			}
-			stage_teardown(&store);
+			stage_teardown(stage_store);
 			FALLTHROUGH;
 		case CMD_CALL:;
 			handoff(header[1], header[2], header[3], header[4], header[5], header[6], header[7], header[8]);
@@ -383,9 +383,9 @@ static void process_event(const struct dwc3_setup *setup, struct usbstage_state 
 	puts("\n");
 }
 
-_Noreturn void main(u64 sctlr) {
-	store.sctlr = sctlr;
-	stage_setup(&store);
+_Noreturn void main(struct stage_store *store) {
+	stage_setup(store);
+	stage_store = store;
 	mmu_setup(initial_mappings);
 	puts("usbstage\n");
 
