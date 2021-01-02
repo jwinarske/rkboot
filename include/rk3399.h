@@ -31,6 +31,7 @@ enum {
 
 enum {
 	PMUSGRF_DDR_RGN_CON = 0,
+	PMUSGRF_SOC_CON0 = 0xc000 >> 2,
 	PMUSGRF_SOC_CON4 = 0xe010 >> 2,
 };
 

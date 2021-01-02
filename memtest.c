@@ -227,10 +227,26 @@ static void sync_exc_handler(struct exc_state_save UNUSED *save) {
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
 }
 
-_Noreturn void main() {
-	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	puts("memtest\n");
+struct percpu_data {
+	void *cpu_stack_base;
+};
+struct percpu_index {
+	u64 mpidr;
+	struct percpu_data *data;
+};
+struct percpu_data percpu_data[6] = {
+	{
+		.cpu_stack_base = (void*)VSTACK_BASE(VSTACK_CPU1),
+	},
+};
+struct percpu_index percpu_index[7] = {
+	{.mpidr = 0x80000001, percpu_data + 0}
+};
 
+void cortex_a53_exit(u32 flags);
+void reset_entry();
+
+_Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		if (!failed_rounds) {
@@ -240,4 +256,18 @@ _Noreturn void main() {
 		}
 		failed_rounds += !memtest(round++ << 29);
 	}
+}
+
+_Noreturn void main() {
+	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
+	puts("memtest\n");
+
+	regmap_pmusgrf[PMUSGRF_SOC_CON0] = 0x80008000;
+	regmap_pmusgrf[0xc180/4] = (u32)(u64)reset_entry;
+	fflush(stdout);
+	//secondary_cpu_main(0);
+	regmap_pmu[PMU_PWRDN_CON] &= ~(u32)2;
+	//cortex_a53_exit(1);
+	//while (1) {puts(".");}
+	die("reached end of main\n");
 }
