@@ -22,6 +22,9 @@ entry_point: .global entry_point
 	orr x1, x0, #SCTLR_I
 	ic iallu
 	isb
+	msr DAIFSet, 15
+	mov32 x0, (SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ)
+	msr SCR_EL3, x0
 	msr SCTLR_EL3, x1
 	isb
 
@@ -109,7 +112,11 @@ br x2
 #endif
 
 prepare_main:
+	adrp x1, __exc_base__
+	msr VBAR_EL3, x1
+
 	aarch64_misc_init x1, x2
+	isb
 
 adr x1, __bss_start__
 adr x2, __bss_noinit__
@@ -118,5 +125,6 @@ zero_bss:
 	cmp x1, x2
 	b.ls zero_bss
 
+	msr DAIFClr, #15
 	add x0, x29, #16
 b main

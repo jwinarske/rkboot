@@ -20,8 +20,6 @@ struct stage_store {
 };
 
 static inline void UNUSED stage_setup(struct stage_store *store) {
-	__asm__ volatile("msr scr_el3, %0" : : "r"((u64)SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ));
-	__asm__ volatile("msr vbar_el3, %0;isb;msr DAIFclr, #0xf;isb" : : "r"(__exc_base__));
 #ifdef CONFIG_CRC
 	u64 *crc_start = (u64*)__start__, *crc_mid = (u64*)(((u64)__ro_end__ + 0xfff) & ~(u64)0xfff), *crc_end = (u64*)(((u64)__data_end__ + 0xfff) & ~(u64)0xfff);
 	u32 crc_ro =  compute_crc32c(crc_start, crc_mid, ~(u32)0);
