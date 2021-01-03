@@ -4,11 +4,24 @@
 #include <mmu.h>
 #include <cortex_a53.h>
 
+#if CONFIG_FIRST_STAGE
+	#if defined(CONFIG_EL) && CONFIG_EL != 3
+		#error first stage must run in EL3
+	#endif
+	#define CONFIG_EL 3
+#elif CONFIG_EL != 3 && CONFIG_EL != 2
+	#error entry only implemented at EL2 and EL3
+#endif
+
+.macro entry el:req
 TEXTSECTION(.text.entry)
 #if CONFIG_FIRST_STAGE
 .ascii "RK33"
 #endif
 entry_point: .global entry_point
+	.if \el == 2
+		mov x20, x0
+	.endif
 #if CONFIG_FIRST_STAGE
 	cortex_a53_init x1, var_rev=0x04
 	isb
@@ -27,10 +40,18 @@ entry_point: .global entry_point
 	ic iallu
 	isb
 	msr DAIFSet, 15
+.if \el == 3
 	mov32 x0, (SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ)
 	mov32 x1, (SCTLR_I | SCTLR_SA | SCTLR_EL23_RES1)
 	msr SCR_EL3, x0
-	msr SCTLR_EL3, x1
+.elseif \el == 2
+	mov x0, #(HCR_FMO | HCR_IMO | HCR_AMO)
+	mov32 x1, (SCTLR_I | SCTLR_SA | SCTLR_EL23_RES1)
+	msr HCR_EL2, x0
+.else
+	.error don't support EL\el entry yet
+.endif
+	msr SCTLR_EL\el, x1
 	isb
 
 #if CONFIG_FIRST_STAGE
@@ -118,9 +139,11 @@ br x2
 
 prepare_main:
 	adrp x1, __exc_base__
-	msr VBAR_EL3, x1
+	msr VBAR_EL\el, x1
 
-	aarch64_misc_init x1, x2
+	.if \el == 3
+		aarch64_misc_init x1, x2
+	.endif
 	isb
 
 	adrp x19, pagetables
@@ -138,12 +161,16 @@ prepare_main:
 		mov x1, x0
 		cbnz x2, 1b
 
+.if \el == 2 || \el == 3
 	ldr x0, =(MMU_MAIR_VAL)
 	ldr x1, =(MMU_TCR_VAL)
-	msr TTBR0_EL3, x19
-	msr MAIR_EL3, x0
-	msr TCR_EL3, x1
-	tlbi alle3
+.else
+	.error MMU setup unknown for EL\el
+.endif
+	msr TTBR0_EL\el, x19
+	msr MAIR_EL\el, x0
+	msr TCR_EL\el, x1
+	tlbi alle\el
 
 	mov32 x0, (SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA | SCTLR_M | SCTLR_C)
 	bl invalidate_dcache_set_sctlr
@@ -188,10 +215,14 @@ prepare_main:
 	isb
 	ret
 #else
+	.if \el == 2
+		mov x0, x20
+	.endif
 	mov x30, #0
 	b main
 #endif
 
+.if \el == 3
 TEXTSECTION(.text.asm.next_stage)
 next_stage:	.global next_stage
 	msr DAIFSet, #15
@@ -217,3 +248,7 @@ next_stage:	.global next_stage
 	ic iallu
 	isb
 	br x23
+.endif
+.endm
+
+entry el=CONFIG_EL

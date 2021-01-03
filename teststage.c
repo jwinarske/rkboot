@@ -1,19 +1,53 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
-#include <fdt.h>
+#include <inttypes.h>
+#include <stdio.h>
 
-__asm__(".section .text.entry, \"ax\", %progbits;entry_point: .global entry_point; adr x5, #0x10000;add sp, x5, #0;b main");
+#include <die.h>
+#include <fdt.h>
+#include <mmu.h>
+
+#define DEFINE_VSTACK X(CPU0)
+#define VSTACK_DEPTH 0x1000
+
+#define DEFINE_REGMAP\
+	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
+	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
+	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
+	MMIO(GPIO0, gpio0, 0xff720000, struct rkgpio_regs)\
+	MMIO(UART, uart, 0xff1a0000, struct uart)\
+	MMIO(CRU, cru, 0xff760000, u32)\
+	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
+	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
+	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
+#define DEFINE_REGMAP64K\
+	X(GRF, grf, 0xff770000, u32)\
+
+#include <rk3399/vmmap.h>
+
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
+
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
+u64 (*const pagetables)[512] = pagetable_frames;
+const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
+
+volatile struct uart *const console_uart = regmap_uart;
+
+const struct mmu_multimap initial_mappings[] = {
+	{.addr = 0x100000, .desc = MMU_MAPPING(UNCACHED, 0x100000)},
+	/* continue to start of binary mapping */
+#include <rk3399/base_mappings.inc.c>
+	{.addr = (u64)&__end__, .desc = MMU_MAPPING(UNCACHED, (u64)&__end__)},
+	{.addr = 0xf8000000, .desc = 0},
+	VSTACK_MULTIMAP(CPU0),
+	{}
+};
 
 void dump_fdt(const struct fdt_header *);
 
-volatile struct uart *const console_uart = (struct uart*)0xff1a0000;
-
 _Noreturn void main(u64 x0) {
 	puts("test stage\n");
-	u64 sctlr;
-	__asm__ volatile("mrs %0, sctlr_el2" : "=r"(sctlr));
-	debug("SCTLR_EL2: %016zx\n", sctlr);
-	__asm__ volatile("msr sctlr_el2, %0" : : "r"(sctlr | SCTLR_I));
+	printf("FDT pointer: %"PRIx64"\n", x0);
 	const struct fdt_header *fdt = (const struct fdt_header*)x0;
 	dump_fdt(fdt);
 	halt_and_catch_fire();

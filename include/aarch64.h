@@ -1,6 +1,44 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 
+#define HCR_VM 1
+#define HCR_SWIO 2
+#define HCR_PTW 4
+#define HCR_FMO 8
+#define HCR_IMO 16
+#define HCR_AMO 0x20
+#define HCR_VF 0x40
+#define HCR_VI 0x80
+#define HCR_VSE 0x100
+#define HCR_FB 0x200
+#define HCR_BSU_ISH 0x400
+#define HCR_BSU_OSH 0x800
+#define HCR_BSU_SY 0xc00
+#define HCR_DC 0x1000
+#define HCR_TWI 0x2000
+#define HCR_TWE 0x4000
+#define HCR_TID 0x8000	/* bits 15:18 are trap enables for various ID registers */
+#define HCR_TSC 0x80000
+#define HCR_TIDCP 0x100000
+#define HCR_TACR 0x200000
+#define HCR_TSW 0x400000
+#define HCR_TPCP 0x800000
+#define HCR_TPU 0x1000000
+#define HCR_TTLB 0x2000000
+#define HCR_TVM 0x4000000
+#define HCR_TGE 0x8000000
+#define HCR_TDZ 0x10000000
+#define HCR_HCD 0x20000000
+#define HCR_TRVM 0x40000000
+#define HCR_RW (UINT64_C(1) << 31)
+#define HCR_CD (UINT64_C(1) << 32)
+#define HCR_ID (UINT64_C(1) << 33)
+#define HCR_E2H (UINT64_C(1) << 34) /* ARMv8.1-VHE */
+/* various extension bits defaulting to Res0 */
+#define HCR_TEA (UINT64_C(1) << 37)
+#define HCR_MIOCNCE (UINT64_C(1) << 38)
+/* various Res0 bits or extension bits defaulting to it */
+
 #define MDCR_SPD32_LEGACY 0
 #define MDCR_SPD32_DISABLED 0x8000
 #define MDCR_SPD32_ENABLED 0xc000
