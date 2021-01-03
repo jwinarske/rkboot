@@ -35,6 +35,8 @@ struct mmu_multimap {
 	u64 addr;
 	u64 desc;
 };
+const struct mmu_multimap *mmu_multimap(u64 *table, const struct mmu_multimap *map);
+
 extern u8 __start__[], __ro_end__[], __end__[];
 
 void flush_dcache();

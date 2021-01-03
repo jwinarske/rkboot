@@ -103,8 +103,6 @@ static inline u64 *entry2subtable(u64 entry) {
 	return (u64 *)extr_addr(entry);
 }
 
-const struct mmu_multimap *multimap(u64 *table, const struct mmu_multimap *map);
-
 static const struct mmu_multimap UNUSED *multimap_reference(u64 *table, const struct mmu_multimap *map) {
 	unsigned level = 0;
 	u64 *table_ptrs[4] = {table};
@@ -168,7 +166,7 @@ static void map_range(u64 *pt, u64 first, u64 last, u64 paddr, u64 flags) {
 		{first, paddr | PGTAB_PAGE(attridx) | (flags >> 3 & 3) << 8 | PGTAB_OUTER_SHAREABLE | (flags & MEM_NON_SECURE)},
 		{last + 1, 0}
 	};
-	multimap(pt, map);
+	mmu_multimap(pt, map);
 }
 
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags) {

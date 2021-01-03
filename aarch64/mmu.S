@@ -196,7 +196,7 @@ CPP #defines are used for clarification in some of these cases.
 .endm
 
 .text
-multimap: .global multimap
+mmu_multimap: .global mmu_multimap
 .cfi_startproc
 	mov x15, x30
 .cfi_register x30, x15

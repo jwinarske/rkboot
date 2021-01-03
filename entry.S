@@ -133,7 +133,7 @@ prepare_main:
 	adrp x1, initial_mappings
 	add x1, x1, :lo12:initial_mappings
 	1:	mov x0, x19
-		bl multimap
+		bl mmu_multimap
 		ldr x2, [x0, #8]
 		mov x1, x0
 		cbnz x2, 1b
