@@ -113,8 +113,7 @@ void rk3399_set_init_flags(size_t flags) {
 	atomic_fetch_or_explicit(&rk3399_init_flags, flags, memory_order_release);
 }
 
-int32_t NO_ASAN main(struct stage_store *store) {
-	stage_setup(store);
+void main() {
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 
 	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
@@ -221,5 +220,5 @@ int32_t NO_ASAN main(struct stage_store *store) {
 	gicv3_per_cpu_teardown(gic500r);
 	fiq_handler_spx = irq_handler_spx = 0;
 	info("[%"PRIuTS"] sramstage finish\n", get_timestamp());
-	return end_sramstage(store);
+	end_sramstage();
 }

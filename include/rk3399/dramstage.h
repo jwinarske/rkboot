@@ -25,7 +25,6 @@ enum iost decompress_payload(struct async_transfer *async);
 enum iost boot_blockdev(struct async_blockdev *blk);
 
 /* boot commit functions: only run after all boot medium threads have finished running */
-struct stage_store;
 struct fdt_header;
 
 struct fdt_addendum {
@@ -35,7 +34,7 @@ struct fdt_addendum {
 };
 
 void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, const struct fdt_addendum *info);
-_Noreturn void commit(struct payload_desc *payload, struct stage_store *store);
+_Noreturn void commit(struct payload_desc *payload);
 
 /* this enumeration defines the boot order */
 #define DEFINE_BOOT_MEDIUM X(SD) X(EMMC) X(NVME) X(SPI)

@@ -66,12 +66,6 @@ parser.add_argument(
     help='modules to select debug verbosity for (comma-separated)'
 )
 parser.add_argument(
-    '--crc',
-    action='store_true',
-    dest='crc',
-    help='compute and print a CRC32C at the beginning of each stage'
-)
-parser.add_argument(
     '--uncached-memtest',
     action='store_true',
     dest='uncached_memtest',
@@ -146,8 +140,6 @@ parser.add_argument(
     help='configure dramstage to decompress its payload using zstd'
 )
 args = parser.parse_args()
-if args.crc:
-    flags['main'].append('-DCONFIG_CRC')
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')

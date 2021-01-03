@@ -9,8 +9,7 @@ struct sdhci_state;
 void emmc_init(struct sdhci_state *st);
 void pcie_init();
 
-struct stage_store;
-u32 end_sramstage(struct stage_store *store);
+void end_sramstage();
 
 #define DEFINE_VSTACK\
 	X(CPU0) X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)

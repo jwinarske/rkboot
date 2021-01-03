@@ -123,7 +123,7 @@ static void load_elf(const struct elf_header *header) {
 
 void next_stage(u64, u64, u64, u64, u64, u64);
 
-_Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
+_Noreturn void commit(struct payload_desc *payload) {
 	/* GPIO0B3: White and green LED on the RockPro64 and Pinebook Pro respectively, not connected on the Rock Pi 4 */
 	regmap_gpio0->port |= 1 << 11;
 	regmap_gpio0->direction |= 1 << 11;

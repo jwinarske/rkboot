@@ -184,8 +184,7 @@ static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[20][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
-_Noreturn u32 main(struct stage_store *store) {
-	stage_setup(store);
+_Noreturn void main() {
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	puts("elfloader\n");
 
@@ -354,5 +353,5 @@ _Noreturn u32 main(struct stage_store *store) {
 	}
 	fiq_handler_spx = irq_handler_spx = 0;
 
-	commit(payload, store);
+	commit(payload);
 }

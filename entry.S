@@ -156,7 +156,6 @@ prepare_main:
 
 #if CONFIG_FIRST_STAGE > 1
 	msr DAIFClr, #15
-	add x0, x29, #16
 	bl main
 	msr DAIFSet, #15
 	ldp x0, x1, [x29, #16]
