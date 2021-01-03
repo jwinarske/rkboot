@@ -154,10 +154,25 @@ prepare_main:
 		cmp x1, x2
 		b.lo 1b
 
+	adrp x29, boot_stack_end
+	ldr x29, [x29, #:lo12:boot_stack_end]
 #if CONFIG_FIRST_STAGE > 1
+	stp xzr, xzr, [x29, #-32]!
+	add x0, sp, #0
+	mrs x1, SPSel
+	stp x0, x1, [x29, #16]
+#else
+	stp xzr, xzr, [x29, #-16]!
+#endif
+	msr SPSel, 1
+	add sp, x29, #0
 	msr DAIFClr, #15
+#if CONFIG_FIRST_STAGE > 1
 	bl main
 	msr DAIFSet, #15
+	ldp x29, x0, [sp, #16]
+	msr SPSel, x0
+	add sp, x29, #0
 	ldp x0, x1, [x29, #16]
 	ldp x2, x19, [x29, #32]
 	msr VBAR_EL3, x1
@@ -173,13 +188,7 @@ prepare_main:
 	isb
 	ret
 #else
-	msr SPSel, 1
-	adrp x29, boot_stack_end
-	ldr x29, [x29, #:lo12:boot_stack_end]
-	add sp, x29, #0
-	sub x29, x29, #16
-	stp xzr, xzr, [sp, #-16]!
-	msr DAIFClr, 15
+	mov x30, #0
 	b main
 #endif
 
