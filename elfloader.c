@@ -28,7 +28,7 @@ static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
 
 volatile struct uart *const console_uart = regmap_uart;
 
-static const struct mmu_multimap initial_mappings[] = {
+const struct mmu_multimap initial_mappings[] = {
 #include <rk3399/base_mappings.inc.c>
 	{.addr = 0, PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0},
 	{.addr = (u64)&__start__, .desc = 0},
@@ -185,7 +185,6 @@ const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 _Noreturn u32 main(struct stage_store *store) {
 	stage_setup(store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	mmu_setup(initial_mappings);
 	puts("elfloader\n");
 
 	/* set DRAM as Non-Secure; needed for DMA */

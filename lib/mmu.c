@@ -218,25 +218,3 @@ void mmu_unmap_range(u64 first, u64 last) {
 	assert(last > first);
 	while ((first = unmap_one(pagetables[0], first, last)) < last) {first += 1;}
 }
-
-void mmu_setup(const struct mmu_multimap *initial_mappings) {
-	for_range(i, 0, 512) {pagetables[0][i] = 0;}
-	while (initial_mappings->desc) {
-		initial_mappings = multimap(pagetables[0], initial_mappings);
-	}
-#ifdef SPEW_MSG
-	dump_page_tables((struct uart *)0xff1a0000);
-#endif
-	__asm__ volatile("msr mair_el3, %0" : : "r"(MMU_MAIR_VAL));
-	u64 tcr = MMU_TCR_VAL;
-	u64 ttbr0 = (u64)&pagetables[0];
-	debug("writing 0x%016zx to TCR_EL3, 0x%016zx to TTBR0_EL3\n", tcr, ttbr0);
-	__asm__ volatile("msr tcr_el3, %0" : : "r"(tcr));
-	__asm__ volatile("dsb ish;isb;msr ttbr0_el3, %0" : : "r"(ttbr0) : "memory", "cc");
-	u64 clidr;
-	__asm__ volatile("mrs %0, clidr_el1" : "=r"(clidr));
-	debug("CLIDR_EL1=%016zx\n", clidr);
-	debugs("starting MMU\n");
-	invalidate_dcache_set_sctlr((u64)SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA | SCTLR_M | SCTLR_C);
-	puts("welcome to MMU land\n");
-}

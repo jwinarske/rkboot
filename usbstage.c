@@ -389,7 +389,6 @@ static void process_event(const struct dwc3_setup *setup, struct usbstage_state 
 _Noreturn void main(struct stage_store *store) {
 	stage_setup(store);
 	stage_store = store;
-	mmu_setup(initial_mappings);
 	puts("usbstage\n");
 
 	volatile struct dwc3_regs *const dwc3 = (struct dwc3_regs*)((char *)regmap_otg0 + 0xc100);

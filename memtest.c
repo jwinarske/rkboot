@@ -206,7 +206,7 @@ static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
 
 volatile struct uart *const console_uart = regmap_uart;
 
-static const struct mmu_multimap initial_mappings[] = {
+const struct mmu_multimap initial_mappings[] = {
 #include <rk3399/base_mappings.inc.c>
 #ifdef UNCACHED_MEMTEST
 	{.addr = 0, .desc = PGTAB_PAGE(MEM_TYPE_DEV_GRE)| MEM_ACCESS_RW_PRIV},
@@ -233,7 +233,6 @@ static void sync_exc_handler(struct exc_state_save UNUSED *save) {
 _Noreturn void main(struct stage_store *store) {
 	stage_setup(store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	mmu_setup(initial_mappings);
 	puts("memtest\n");
 
 	u64 round = 0, failed_rounds = 0;

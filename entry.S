@@ -1,6 +1,7 @@
 #include "config.h"
 #include <asm.h>
 #include <aarch64.h>
+#include <mmu.h>
 #include <cortex_a53.h>
 
 TEXTSECTION(.text.entry)
@@ -18,7 +19,7 @@ entry_point: .global entry_point
 	mrs x2, SCR_EL3
 	add x29, sp, #0
 	stp x0, x1, [x29, #16]
-	str x2, [x29, #32]
+	stp x2, x19, [x29, #32]
 	ic iallu
 	isb
 	msr DAIFSet, 15
@@ -118,19 +119,43 @@ prepare_main:
 	aarch64_misc_init x1, x2
 	isb
 
-adr x1, __bss_start__
-adr x2, __bss_noinit__
-zero_bss:
-	stp xzr, xzr, [x1], #16
-	cmp x1, x2
-	b.ls zero_bss
+	adrp x19, pagetables
+	ldr x19, [x19, :lo12:pagetables]
+	mov x1, x19
+	add x2, x19, #0x1000
+	1:	stp xzr, xzr, [x1], #16
+		cmp x1, x2
+		b.lo 1b
+	adrp x1, initial_mappings
+	add x1, x1, :lo12:initial_mappings
+	1:	mov x0, x19
+		bl multimap
+		ldr x2, [x0, #8]
+		mov x1, x0
+		cbnz x2, 1b
+
+	ldr x0, =(MMU_MAIR_VAL)
+	ldr x1, =(MMU_TCR_VAL)
+	msr TTBR0_EL3, x19
+	msr MAIR_EL3, x0
+	msr TCR_EL3, x1
+	tlbi alle3
+
+	mov32 x0, (SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA | SCTLR_M | SCTLR_C)
+	bl invalidate_dcache_set_sctlr
+
+	adr x1, __bss_start__
+	adr x2, __bss_noinit__
+	1:	stp xzr, xzr, [x1], #16
+		cmp x1, x2
+		b.lo 1b
 
 	msr DAIFClr, #15
 	add x0, x29, #16
 	bl main
 	msr DAIFSet, #15
 	ldp x0, x1, [x29, #16]
-	ldr x2, [x29, #32]
+	ldp x2, x19, [x29, #32]
 	msr VBAR_EL3, x1
 	msr SCR_EL3, x2
 	orr x0, x0, #SCTLR_I

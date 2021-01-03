@@ -26,7 +26,7 @@ static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
 
 volatile struct uart *const console_uart = regmap_uart;
 
-static const struct mmu_multimap initial_mappings[] = {
+const struct mmu_multimap initial_mappings[] = {
 #include <rk3399/base_mappings.inc.c>
 	{.addr = 0xff8c0000, .desc =  PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV | 0xff8c0000},
 	{.addr = 0xff8c2000, .desc = 0},
@@ -114,7 +114,6 @@ void rk3399_set_init_flags(size_t flags) {
 int32_t NO_ASAN main(struct stage_store *store) {
 	stage_setup(store);
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	mmu_setup(initial_mappings);
 
 	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
 	regmap_gpio0->port |= 1 << 2;

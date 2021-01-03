@@ -37,10 +37,7 @@ struct mmu_multimap {
 };
 extern u8 __start__[], __ro_end__[], __end__[];
 
-void invalidate_dcache_set_sctlr(u64);
-void set_sctlr_flush_dcache(u64);
 void flush_dcache();
-void mmu_setup(const struct mmu_multimap *initial_mappings);
 void mmu_unmap_range(u64 first, u64 last);
 void mmu_map_range(u64 first, u64 last, u64 paddr, u64 flags);
 
