@@ -27,6 +27,5 @@ u32 end_sramstage(struct stage_store *store) {
 		assert(res >= NUM_DECODE_STATUS);
 		ptr += res - NUM_DECODE_STATUS;
 	}
-	stage_teardown(store);
 	next_stage(0, 0, 0, 0, loadaddr, (void *)0x1000);
 }

@@ -28,7 +28,3 @@ static inline void UNUSED stage_setup(struct stage_store *store) {
 	printf("CRC32C(%08zx, %08zx): %08x\n", (u64)crc_start, (u64)crc_end, ~crc_all);
 #endif
 }
-
-static inline void UNUSED stage_teardown(struct stage_store *store) {
-	logs("end\n");
-}

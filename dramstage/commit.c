@@ -160,8 +160,8 @@ _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	/* aclkm_core_b = clk_core_b = BPLL */
 	regmap_cru[CRU_CLKSEL_CON + 2] = SET_BITS16(5, 0) << 8 | SET_BITS16(2, 1) << 6 | SET_BITS16(5, 0);
 	regmap_cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
+	info("[%"PRIuTS"] handing off to BL31\n", get_timestamp());
 	fflush(stdout);
-	stage_teardown(store);
 	next_stage((u64)&bl_params, (u64)&reset_gpio.h, 0, 0, header->entry, 0x1000);
 	die("BL31 return");
 }

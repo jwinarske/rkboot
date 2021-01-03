@@ -220,5 +220,6 @@ int32_t NO_ASAN main(struct stage_store *store) {
 	gicv2_wait_disabled(gic500d);
 	gicv3_per_cpu_teardown(gic500r);
 	fiq_handler_spx = irq_handler_spx = 0;
+	info("[%"PRIuTS"] sramstage finish\n", get_timestamp());
 	return end_sramstage(store);
 }
