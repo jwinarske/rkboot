@@ -228,21 +228,11 @@ void mmu_setup(const struct mmu_multimap *initial_mappings) {
 	dump_page_tables((struct uart *)0xff1a0000);
 #endif
 	__asm__ volatile("msr mair_el3, %0" : : "r"(MMU_MAIR_VAL));
-#ifdef DEBUG_MSG
-	u64 mair;
-	__asm__ volatile("mrs %0, mair_el3" : "=r"(mair));
-	debug("MAIR is %zx\n", mair);
-#endif
 	u64 tcr = MMU_TCR_VAL;
 	u64 ttbr0 = (u64)&pagetables[0];
 	debug("writing 0x%016zx to TCR_EL3, 0x%016zx to TTBR0_EL3\n", tcr, ttbr0);
 	__asm__ volatile("msr tcr_el3, %0" : : "r"(tcr));
 	__asm__ volatile("dsb ish;isb;msr ttbr0_el3, %0" : : "r"(ttbr0) : "memory", "cc");
-	__asm__ volatile("msr sctlr_el3, %0" : : "r"((u64)SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA));
-#ifdef DEBUG_MSG
-	__asm__ volatile("mrs %0, ttbr0_el3;mrs %1, tcr_el3": "=r"(ttbr0), "=r"(tcr));
-	printf("TTBR0 is %zx, TCR=%zx\n", ttbr0, tcr);
-#endif
 	u64 clidr;
 	__asm__ volatile("mrs %0, clidr_el1" : "=r"(clidr));
 	debug("CLIDR_EL1=%016zx\n", clidr);

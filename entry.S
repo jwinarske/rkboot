@@ -19,11 +19,11 @@ entry_point: .global entry_point
 	add x29, sp, #0
 	stp x0, x1, [x29, #16]
 	str x2, [x29, #32]
-	orr x1, x0, #SCTLR_I
 	ic iallu
 	isb
 	msr DAIFSet, 15
 	mov32 x0, (SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ)
+	mov32 x1, (SCTLR_I | SCTLR_SA | SCTLR_EL23_RES1)
 	msr SCR_EL3, x0
 	msr SCTLR_EL3, x1
 	isb
