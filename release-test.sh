@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
 atf="$1"
 artifacts="$2"
 src=`dirname "$0"`

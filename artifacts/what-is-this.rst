@@ -1,3 +1,4 @@
+.. SPDX-License-Identifier: CC0-1.0
 This directory is .gitignored because it is where test artifacts for `release-test.sh` may be stored.
 Artifacts used by `release-test.sh` include:
 

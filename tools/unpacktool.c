@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>

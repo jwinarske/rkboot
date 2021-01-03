@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 .macro extract_address out:req in:req lpa_enabled=0
 	/* extracts the address from an VMSAv8-64 descriptor */
 	.if \lpa_enabled

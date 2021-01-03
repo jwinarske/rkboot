@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: CC0-1.0 */
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
