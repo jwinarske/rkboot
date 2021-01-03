@@ -161,6 +161,10 @@ prepare_main:
 		mov x1, x0
 		cbnz x2, 1b
 
+#ifdef DEBUG_MSG
+	bl plat_dump_pgtab
+#endif
+
 .if \el == 2 || \el == 3
 	ldr x0, =(MMU_MAIR_VAL)
 	ldr x1, =(MMU_TCR_VAL)

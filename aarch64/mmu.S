@@ -295,21 +295,3 @@ addr_invariant_failed:
 	b plat_asm_fail
 9:	.asciz "BUG: invariant addr < next_map_addr violated\r\n"; .align 2
 #endif
-
-plat_asm_fail:
-	mrs x1, sctlr_el3
-	tbnz x1, 0, 1f
-	mov x1, 0xff1a0000
-	b 2f
-1:	adrp x1, console_uart
-	ldr x1, [x1, :lo12:console_uart]
-2:	ldr w2, [x1, 0x80]
-		yield
-		cbnz x2, 2b
-	mov x2, #'!'
-	str w2, [x1]
-	1:	ldrb w2, [x0], 1
-		cbz x2, 1f
-		str w2, [x1]
-		b 1b
-1:	wfi;b 1b

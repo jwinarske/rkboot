@@ -321,7 +321,9 @@ print(build('entry-ret2brom.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCON
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=1'))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_EL=3 -DCONFIG_FIRST_STAGE=0'))
 print(build('entry-el2.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_FIRST_STAGE=0'))
-lib |= {'dcache-el3', 'entry', 'exc_handlers-el3', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
+print(build('rk3399/debug-el3.o', 'cc', path.join(srcdir, 'rk3399/debug.S'), flags='-DCONFIG_EL=3'))
+print(build('rk3399/debug-el2.o', 'cc', path.join(srcdir, 'rk3399/debug.S'), flags='-DCONFIG_EL=2'))
+lib |= {'dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
 phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))
@@ -379,7 +381,7 @@ def binary(name, modules, base_address):
 binary('sramstage', levinboot | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'entry-el2', 'dcache-el2', 'exc_handlers-el2', 'mmu_aarch64', 'uart', 'uart16550a', 'error', 'mmu', 'dump_fdt'), '00280000')
+binary('teststage', ('teststage', 'entry-el2', 'dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'mmu_aarch64', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
 print("default sramstage.bin memtest.bin usbstage.bin teststage.bin")
 if args.tf_a_headers:
     binary('elfloader', elfloader | lib, '04000000')
