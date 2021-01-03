@@ -15,10 +15,10 @@ enum {
 	MEM_TYPE_NORMAL = 4,
 	MEM_TYPE_UNCACHED = 5,
 	MEM_TYPE_WRITE_THROUGH = 6,
-	MEM_ACCESS_RW_PRIV = 0 << 3,
-	MEM_ACCESS_RW_UNPRIV = 1 << 3,
-	MEM_ACCESS_RO_PRIV = 2 << 3,
-	MEM_ACCESS_RO_UNPRIV = 3 << 3,
+	MEM_ACCESS_RW_PRIV = 0 << 6,
+	MEM_ACCESS_RW_UNPRIV = 1 << 6,
+	MEM_ACCESS_RO_PRIV = 2 << 6,
+	MEM_ACCESS_RO_UNPRIV = 3 << 6,
 	MEM_NON_SECURE = 32,
 };
 
@@ -30,6 +30,9 @@ enum {
 #define PGTAB_INNER_SHAREABLE ((u64)3 << 8)
 #define PGTAB_NSTABLE ((u64)1 << 63)
 #define PGTAB_NS (1 << 5)
+
+#define MMU_MAPPING(type, phys_addr)\
+	((PGTAB_PAGE(MEM_TYPE_##type) | PGTAB_OUTER_SHAREABLE) + (phys_addr))
 
 struct mmu_multimap {
 	u64 addr;

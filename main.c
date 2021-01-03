@@ -29,7 +29,7 @@ volatile struct uart *const console_uart = regmap_uart;
 
 const struct mmu_multimap initial_mappings[] = {
 #include <rk3399/base_mappings.inc.c>
-	{.addr = 0xff8c0000, .desc =  PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV | 0xff8c0000},
+	{.addr = 0xff8c0000, .desc =  MMU_MAPPING(NORMAL, 0xff8c0000)},
 	{.addr = 0xff8c2000, .desc = 0},
 	VSTACK_MULTIMAP(CPU0),
 	{}

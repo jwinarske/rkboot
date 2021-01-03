@@ -21,7 +21,7 @@ enum regmap_id {
 };
 
 #define VSTACK_MULTIMAP(name)\
-	{.addr = VSTACK_BASE(VSTACK_##name) - VSTACK_DEPTH, .desc =  (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV) + (u64)&vstack_frames[VSTACK_##name]},\
+	{.addr = VSTACK_BASE(VSTACK_##name) - VSTACK_DEPTH, .desc =  MMU_MAPPING(NORMAL, (u64)&vstack_frames[VSTACK_##name])},\
 	{.addr = VSTACK_BASE(VSTACK_##name), .desc = 0}
 
 enum regmap64k_id {
