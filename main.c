@@ -101,7 +101,7 @@ static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT | 
 
 _Atomic(size_t) rk3399_init_flags = start_flags;
 
-static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[9][512];
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[6][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 

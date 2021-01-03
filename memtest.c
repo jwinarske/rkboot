@@ -168,9 +168,6 @@ static void timed_flush() {
 
 static struct sched_runqueue runqueue = {};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
-static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
-u64 (*const pagetables)[512] = pagetable_frames;
-const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 static _Bool memtest(u64 salt) {
 	_Bool res = 1;
@@ -204,6 +201,10 @@ static _Bool memtest(u64 salt) {
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
 void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
+
+static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[9][512];
+u64 (*const pagetables)[512] = pagetable_frames;
+const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 volatile struct uart *const console_uart = regmap_uart;
 
