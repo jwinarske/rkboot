@@ -203,6 +203,7 @@ static _Bool memtest(u64 salt) {
 
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
 
 volatile struct uart *const console_uart = regmap_uart;
 
@@ -214,13 +215,8 @@ const struct mmu_multimap initial_mappings[] = {
 	{.addr = 0, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV},
 #endif
 	{.addr = 0xf8000000, .desc = 0},
-	{.addr = 0xff8c0000, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0xff8c0000}, /* stack */
-	{.addr = 0xff8c2000, .desc = 0},
-#define X(name)\
-	{.addr = VSTACK_BASE(VSTACK_##name) - VSTACK_DEPTH, .desc =  (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV) + (u64)&vstack_frames[VSTACK_##name]},\
-	{.addr = VSTACK_BASE(VSTACK_##name), .desc = 0},
-	DEFINE_VSTACK
-#undef X
+	VSTACK_MULTIMAP(CPU0),
+	VSTACK_MULTIMAP(CPU1),
 	{}
 };
 

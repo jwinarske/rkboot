@@ -23,6 +23,7 @@
 #include <uart.h>
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
 
 volatile struct uart *const console_uart = regmap_uart;
 
@@ -30,6 +31,7 @@ const struct mmu_multimap initial_mappings[] = {
 #include <rk3399/base_mappings.inc.c>
 	{.addr = 0xff8c0000, .desc =  PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV | 0xff8c0000},
 	{.addr = 0xff8c2000, .desc = 0},
+	VSTACK_MULTIMAP(CPU0),
 	{}
 };
 
@@ -146,11 +148,11 @@ int32_t NO_ASAN main(struct stage_store *store) {
 
 	misc_init();
 
-	for_range(i, 0, NUM_VSTACK) {
+	for_range(i, VSTACK_CPU0+1, NUM_VSTACK) {
 		u64 limit = VSTACK_BASE(i) - VSTACK_DEPTH;
 		mmu_map_range(limit, limit + (VSTACK_DEPTH - 1), (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
 	}
-	dsb_ishst();
+	mmu_flush();
 
 #if CONFIG_SD
 	{struct sched_thread_start thread_start = {

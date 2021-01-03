@@ -9,10 +9,12 @@ TEXTSECTION(.text.entry)
 .ascii "RK33"
 #endif
 entry_point: .global entry_point
-#ifdef CONFIG_FIRST_STAGE
+#if CONFIG_FIRST_STAGE
 	cortex_a53_init x1, var_rev=0x04
 	isb
-#endif
+#if CONFIG_FIRST_STAGE > 1
+	/* save BROM execution state on stack.
+	can't assume we even have a stack otherwise */
 	stp x29, x30, [sp, #-48]!
 	mrs x0, SCTLR_EL3
 	mrs x1, VBAR_EL3
@@ -20,6 +22,8 @@ entry_point: .global entry_point
 	add x29, sp, #0
 	stp x0, x1, [x29, #16]
 	stp x2, x19, [x29, #32]
+#endif
+#endif
 	ic iallu
 	isb
 	msr DAIFSet, 15
@@ -150,6 +154,7 @@ prepare_main:
 		cmp x1, x2
 		b.lo 1b
 
+#if CONFIG_FIRST_STAGE > 1
 	msr DAIFClr, #15
 	add x0, x29, #16
 	bl main
@@ -168,6 +173,16 @@ prepare_main:
 	ldp x29, x30, [sp], #48
 	isb
 	ret
+#else
+	msr SPSel, 1
+	adrp x29, boot_stack_end
+	ldr x29, [x29, #:lo12:boot_stack_end]
+	add sp, x29, #0
+	sub x29, x29, #16
+	stp xzr, xzr, [sp, #-16]!
+	msr DAIFClr, 15
+	b main
+#endif
 
 TEXTSECTION(.text.asm.next_stage)
 next_stage:	.global next_stage

@@ -326,6 +326,7 @@ print(build('save_restore_aarch64.o', 'cc', path.join(srcdir, 'aarch64/save_rest
 print(build('mmu_aarch64.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
 print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
 print(build('string_aarch64.o', 'cc', path.join(srcdir, 'lib/string_aarch64.S')))
+print(build('entry-ret2brom.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=2'))
 print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=1'))
 print(build('entry.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=0'))
 lib |= {'dcache-el3', 'entry', 'exc_handlers-el3', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'string_aarch64'}
@@ -383,7 +384,7 @@ def binary(name, modules, base_address):
     ))
     print(build(name + '.bin', 'bin', name + '.elf'))
 
-binary('sramstage', levinboot | {'entry-first', 'sramstage/return_to_brom'}, 'ff8c2000')
+binary('sramstage', levinboot | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
 binary('teststage', ('teststage', 'uart', 'uart16550a', 'error', 'dump_fdt'), '00280000')

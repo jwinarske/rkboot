@@ -17,6 +17,9 @@
 #include <dump_mem.h>
 #include <runqueue.h>
 
+static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
+
 volatile struct uart *const console_uart = regmap_uart;
 
 const struct mmu_multimap initial_mappings[] = {
@@ -24,8 +27,8 @@ const struct mmu_multimap initial_mappings[] = {
 	{.addr = 0, PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0},
 	{.addr = 0xf8000000, .desc = 0},
 	{.addr = 0xff8c0000, .desc =  PGTAB_PAGE(MEM_TYPE_WRITE_THROUGH) | MEM_ACCESS_RW_PRIV | 0xff8c0000},
-	{.addr = 0xff8c1000, .desc =  PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV | 0xff8c1000},
-	{.addr = 0xff8c2000, .desc = 0},
+	{.addr = 0xff8c1000, .desc = 0},
+	VSTACK_MULTIMAP(CPU0),
 	{}
 };
 

@@ -13,7 +13,7 @@ struct stage_store;
 u32 end_sramstage(struct stage_store *store);
 
 #define DEFINE_VSTACK\
-	X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)
+	X(CPU0) X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)
 #define VSTACK_DEPTH UINT64_C(0x1000)
 
 #define DEFINE_REGMAP\

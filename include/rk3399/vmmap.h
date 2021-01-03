@@ -20,6 +20,10 @@ enum regmap_id {
 	NUM_REGMAP
 };
 
+#define VSTACK_MULTIMAP(name)\
+	{.addr = VSTACK_BASE(VSTACK_##name) - VSTACK_DEPTH, .desc =  (PGTAB_PAGE(MEM_TYPE_NORMAL) | MEM_ACCESS_RW_PRIV) + (u64)&vstack_frames[VSTACK_##name]},\
+	{.addr = VSTACK_BASE(VSTACK_##name), .desc = 0}
+
 enum regmap64k_id {
 #define X(caps, snake, addr, type) REGMAP64K_##caps,
 	DEFINE_REGMAP64K

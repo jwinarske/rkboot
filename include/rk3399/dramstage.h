@@ -51,7 +51,7 @@ _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
 
-#define DEFINE_VSTACK X(SD) X(EMMC) X(NVME) X(SPI)
+#define DEFINE_VSTACK X(CPU0) X(SD) X(EMMC) X(NVME) X(SPI)
 #define VSTACK_DEPTH UINT64_C(0x3000)
 
 #define DEFINE_REGMAP\

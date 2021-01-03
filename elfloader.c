@@ -25,6 +25,7 @@
 #include <iost.h>
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
+void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
 
 volatile struct uart *const console_uart = regmap_uart;
 
@@ -38,6 +39,7 @@ const struct mmu_multimap initial_mappings[] = {
 	{.addr = 0xff8f0000, .desc = 0},
 	{.addr = 0xff3b0000, .desc = PGTAB_PAGE(MEM_TYPE_NORMAL)| MEM_ACCESS_RW_PRIV | 0xff3b0000},
 	{.addr = 0xff3b2000, .desc = 0},
+	VSTACK_MULTIMAP(CPU0),
 	{}
 };
 
@@ -245,7 +247,7 @@ _Noreturn u32 main(struct stage_store *store) {
 			gicv2_setup_spi(regmap_gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
 		}
 
-		for_range(i, 0, NUM_VSTACK) {
+		for_range(i, VSTACK_CPU0+1, NUM_VSTACK) {
 			u64 limit = VSTACK_BASE(i) - VSTACK_DEPTH;
 			mmu_map_range(limit, limit + (VSTACK_DEPTH - 1), (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
 		}
