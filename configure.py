@@ -303,10 +303,9 @@ if args.full_debug:
         flags[f].append('-DDEBUG_MSG')
 
 for f in modules:
-    d, sep, base = f.rpartition("/")
     build_flags = {'flags': " ".join(flags[f])} if f in flags else {}
     src = path.join(srcdir, f+'.c')
-    print(build(base+'.o', 'cc', src, **build_flags))
+    print(build(f+'.o', 'cc', src, **build_flags))
 
 # ===== special compile jobs =====
 print(build('dcache-el3.o', 'cc', path.join(srcdir, 'lib/dcache.S'), flags='-DCONFIG_EL=3'))
@@ -371,7 +370,7 @@ def binary(name, modules, base_address):
     print(build(
         name + '.elf',
         'ld',
-        tuple(x.rpartition("/")[2] + '.o' for x in set(modules)),
+        tuple(x + '.o' for x in set(modules)),
         deps=base_address + '.ld',
         flags='-T {}.ld'.format(base_address)
     ))
