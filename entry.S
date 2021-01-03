@@ -127,4 +127,45 @@ zero_bss:
 
 	msr DAIFClr, #15
 	add x0, x29, #16
-b main
+	bl main
+	msr DAIFSet, #15
+	ldp x0, x1, [x29, #16]
+	ldr x2, [x29, #32]
+	msr VBAR_EL3, x1
+	msr SCR_EL3, x2
+	orr x0, x0, #SCTLR_I
+	bl set_sctlr_flush_dcache
+	tlbi alle3
+	dsb sy
+	ldr x0, [x29, #16]
+	msr SCTLR_EL3, x0
+	add sp, x29, #0
+	ldp x29, x30, [sp], #48
+	isb
+	ret
+
+TEXTSECTION(.text.asm.next_stage)
+next_stage:	.global next_stage
+	msr DAIFSet, #15
+	mov x19, x0
+	mov x20, x1
+	mov x21, x2
+	mov x22, x3
+	mov x23, x4
+	add sp, x5, #0
+	mov w1, #0xffff4800	/* this is the BROM exception vector base, just to have it safely hang/ignore any exceptions that do occur, instead of going to our handlers that will not work anymore after handoff */
+	msr VBAR_EL3, x1
+	mov32 x0, (SCTLR_I | SCTLR_SA | SCTLR_EL23_RES1)
+	bl set_sctlr_flush_dcache
+	tlbi alle3
+	dsb sy
+	mov x0, x19
+	mov x1, x20
+	mov x2, x21
+	mov x3, x22
+	mov32 x4, (SCTLR_SA | SCTLR_EL23_RES1)
+	msr SCTLR_EL3, x4
+	isb
+	ic iallu
+	isb
+	br x23

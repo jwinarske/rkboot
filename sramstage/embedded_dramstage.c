@@ -9,8 +9,7 @@ extern const u8 _binary_dramstage_lz4_start[], _binary_dramstage_lz4_end[];
 
 extern const struct decompressor lz4_decompressor;
 
-__asm__("jump: add sp, x5, #0; br x4");
-_Noreturn void jump(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
+_Noreturn void next_stage(u64 x0, u64 x1, u64 x2, u64 x3, void *entry, void *stack);
 
 u32 end_sramstage(struct stage_store *store) {
 	void *loadaddr = (void *)0x4000000;
@@ -29,5 +28,5 @@ u32 end_sramstage(struct stage_store *store) {
 		ptr += res - NUM_DECODE_STATUS;
 	}
 	stage_teardown(store);
-	jump(0, 0, 0, 0, loadaddr, (void *)0x1000);
+	next_stage(0, 0, 0, 0, loadaddr, (void *)0x1000);
 }

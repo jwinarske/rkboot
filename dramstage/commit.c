@@ -86,8 +86,6 @@ struct program_header {
 	u64 alignment;
 };
 
-typedef void (*bl31_entry)(bl_params_t *, struct bl_aux_param_header *, u64, u64);
-
 static void load_elf(const struct elf_header *header) {
 	for_range(i, 0, 16) {
 		const u32 *x = (u32*)((u64)header + 16*i);
@@ -122,6 +120,8 @@ static void load_elf(const struct elf_header *header) {
 		while (dest < end) {*dest++ = 0;}
 	}
 }
+
+void next_stage(u64, u64, u64, u64, u64, u64);
 
 _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	/* GPIO0B3: White and green LED on the RockPro64 and Pinebook Pro respectively, not connected on the Rock Pi 4 */
@@ -162,7 +162,6 @@ _Noreturn void commit(struct payload_desc *payload, struct stage_store *store) {
 	regmap_cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
 	fflush(stdout);
 	stage_teardown(store);
-	((bl31_entry)header->entry)(&bl_params, &reset_gpio.h, 0, 0);
-	puts("return\n");
-	halt_and_catch_fire();
+	next_stage((u64)&bl_params, (u64)&reset_gpio.h, 0, 0, header->entry, 0x1000);
+	die("BL31 return");
 }

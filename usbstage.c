@@ -305,6 +305,8 @@ static struct stage_store *stage_store;
 void handoff(u64, u64, u64, u64, u64, u64, u64, u64);
 __asm__("handoff: add x8, sp, #0; add sp, x1, #0; stp x30, x8, [sp, #-16]!; blr x0;ldp x30, x8, [sp]; add sp, x8, #0");
 
+void next_stage(u64, u64, u64, u64, u64, u64);
+
 void usbstage_flash_spi(const u8 *buf, u64 start, u64 length);
 
 static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state *st) {
@@ -336,7 +338,8 @@ static void xfer_complete(const struct dwc3_setup *setup, struct usbstage_state 
 				__asm__("yield");
 			}
 			stage_teardown(stage_store);
-			FALLTHROUGH;
+			next_stage(header[3], header[4], header[5], header[6], header[1], header[2]);
+			assert(UNREACHABLE);
 		case CMD_CALL:;
 			handoff(header[1], header[2], header[3], header[4], header[5], header[6], header[7], header[8]);
 
