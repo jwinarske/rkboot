@@ -8,6 +8,7 @@
 #include <sdhci_helpers.h>
 #include <sdhci_regs.h>
 #include <rk3399.h>
+#include <rk3399/emmcphy.h>
 #include <aarch64.h>
 #include <mmu.h>
 #include <timer.h>
@@ -48,13 +49,20 @@ _Bool sdhci_init_early(struct sdhci_state *st) {
 	return 1;
 }
 
-extern struct sdhci_phy emmc_phy;
+static struct rk3399_emmcphy emmc_phy = {
+	.phy = {
+		.setup = rk3399_emmcphy_setup,
+		.lock_freq = rk3399_emmcphy_lock_freq,
+	},
+	.syscon = regmap_grf + GRF_EMMCPHY_CON,
+};
 struct sdhci_state emmc_state = {
 	.regs = regmap_emmc,
-	.phy = &emmc_phy,
+	.phy = &emmc_phy.phy,
 };
 
 void emmc_init(struct sdhci_state *st) {
+	static volatile u32 *const cru = regmap_cru;
 	/* aclk_emmc = CPLL/4 = 200 MHz */
 	cru[CRU_CLKSEL_CON+21] = SET_BITS16(1, 0) << 7 | SET_BITS16(5, 3);
 	/* clk_emmc = CPLL/4 = 200 MHz, as specified by capability register */
@@ -70,10 +78,10 @@ void emmc_init(struct sdhci_state *st) {
 	usleep(100);
 
 	if (!sdhci_init_early(st)) {
-		gicv2_disable_spi(gic500d, 43);
-		gicv2_wait_disabled(gic500d);
+		gicv2_disable_spi(regmap_gic500d, 43);
+		gicv2_wait_disabled(regmap_gic500d);
 		/* shut down phy */
-		grf[GRF_EMMCPHY_CON+6] = SET_BITS16(2, 0);
+		regmap_grf[GRF_EMMCPHY_CON+6] = SET_BITS16(2, 0);
 		dsb_st();	/* GRF_EMMCPHY_CONx seem to be in the clk_emmc domain. ensure completion to avoid hangs */
 		/* gate eMMC clocks */
 		cru[CRU_CLKGATE_CON+6] = SET_BITS16(3, 7) << 12;

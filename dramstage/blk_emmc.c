@@ -10,6 +10,7 @@
 #include <aarch64.h>
 #include <mmc.h>
 #include <rk3399.h>
+#include <rk3399/emmcphy.h>
 #include <sdhci.h>
 #include <sdhci_regs.h>
 #include <sdhci_helpers.h>
@@ -38,10 +39,16 @@ static void UNUSED mmc_print_csd_cid(u32 *cxd) {
 	}
 }
 
-extern struct sdhci_phy emmc_phy;
+static struct rk3399_emmcphy emmc_phy = {
+	.phy = {
+		.setup = rk3399_emmcphy_setup,
+		.lock_freq = rk3399_emmcphy_lock_freq,
+	},
+	.syscon = regmap_grf + GRF_EMMCPHY_CON,
+};
 struct sdhci_state emmc_state = {
 	.regs = regmap_emmc,
-	.phy = &emmc_phy,
+	.phy = &emmc_phy.phy,
 };
 
 struct emmc_blockdev {
