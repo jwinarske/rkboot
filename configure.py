@@ -313,8 +313,8 @@ print(build('aarch64/dcache-el2.o', 'cc', path.join(srcdir, 'aarch64/dcache.S'),
 print(build('exc_handlers-el3.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S'), flags='-DCONFIG_EL=3'))
 print(build('exc_handlers-el2.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S'), flags='-DCONFIG_EL=2'))
 print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
-print(build('save_restore_aarch64.o', 'cc', path.join(srcdir, 'aarch64/save_restore.S')))
-print(build('mmu_aarch64.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
+print(build('aarch64/save_restore.o', 'cc', path.join(srcdir, 'aarch64/save_restore.S')))
+print(build('aarch64/mmu.S.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
 print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
 print(build('aarch64/string.o', 'cc', path.join(srcdir, 'aarch64/string.S')))
 print(build('entry-ret2brom.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=2'))
@@ -324,7 +324,7 @@ print(build('entry-el2.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_E
 print(build('rk3399/debug-el3.o', 'cc', path.join(srcdir, 'rk3399/debug.S'), flags='-DCONFIG_EL=3'))
 print(build('rk3399/debug-el2.o', 'cc', path.join(srcdir, 'rk3399/debug.S'), flags='-DCONFIG_EL=2'))
 print(build('cpu_onoff.o', 'cc', path.join(srcdir, 'cpu_onoff.S')))
-lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'gicv3', 'save_restore_aarch64', 'mmu_aarch64', 'sched_aarch64', 'aarch64/string'}
+lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'gicv3', 'aarch64/save_restore', 'aarch64/mmu.S', 'sched_aarch64', 'aarch64/string'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
 phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))
@@ -382,7 +382,7 @@ def binary(name, modules, base_address):
 binary('sramstage', levinboot | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest', 'cpu_onoff'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'mmu_aarch64', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
+binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
 print("default sramstage.bin memtest.bin usbstage.bin teststage.bin")
 if args.tf_a_headers:
     binary('elfloader', elfloader | lib, '04000000')
