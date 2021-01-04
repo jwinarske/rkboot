@@ -3,24 +3,48 @@
 import re, sys, os
 import os.path as path
 from collections import namedtuple, defaultdict
+from functools import partial
 import argparse
 
 escape_re = re.compile('(\\$|:| |\\n)')
 def esc(s):
     return escape_re.sub('$\\1', s)
 
-def build(out, rule, inp, deps=(), **overrides):
-    res = 'build {out}: {rule} {inp}'.format(
-        out=esc(out) if isinstance(out, (str, bytes)) else " ".join(esc(s) for s in out),
-        rule=rule,
-        inp=esc(inp) if isinstance(inp, (str, bytes)) else " ".join(esc(s) for s in inp),
-    )
-    if deps:
-        res += ' | ' + (esc(deps) if isinstance(deps, (str, bytes)) else " ".join(esc(s) for s in deps))
-    for var, val in overrides.items():
-        if val:
-            res += '\n    {var} = {val}'.format(var=esc(var), val=esc(val))
-    return res
+class NinjaFile:
+    def __init__(self, file):
+        self.file = file
+
+    def __call__(self, out, rule, inp, deps=(), **overrides):
+        if isinstance(out, (str, bytes)):
+            out = (out,)
+        if isinstance(inp, (str, bytes)):
+            inp = (inp,)
+        res = 'build {out}: {rule} {inp}'.format(
+            out=" ".join(esc(s) for s in out),
+            rule=rule,
+            inp=" ".join(esc(s) for s in inp),
+        )
+        if deps:
+            res += ' | ' + (esc(deps) if isinstance(deps, (str, bytes)) else " ".join(esc(s) for s in deps))
+        for var, val in overrides.items():
+            if val:
+                res += '\n    {var} = {val}'.format(var=esc(var), val=esc(val))
+        self.file.write(res + '\n')
+
+    def comment(self, comment):
+        for line in comment.split('\n'):
+            self.file.write(f'# {line}\n')
+
+    def rule(self, name, command, **kwargs):
+        self.file.write(f'rule {name}\n    command = {command}\n')
+        for name, value in kwargs.items():
+            self.file.write(f'    {name} = {value}\n')
+
+    def glb_var(self, name, value):
+        self.file.write(f'{name} = {value}\n')
+
+    def default(self, *targets):
+        self.file.write(f'default {" ".join(esc(f) for f in targets)}\n')
 
 shescape_re = re.compile('( |\\$|\\?|\\n|>|<|\'|")')
 def shesc(s):
@@ -178,10 +202,10 @@ if bool(decompressors) and not boot_media:
 # ===== ninja skeleton =====
 srcdir = path.dirname(sys.argv[0])
 buildfile = open("build.ninja", "w", encoding='utf-8')
-sys.stdout = buildfile
+build = NinjaFile(buildfile)
 
 cc = os.getenv('CC', 'cc')
-print(f'# C compiler: {cc}')
+build.comment(f'C compiler: {cc}')
 is_gcc = cc.endswith('gcc')
 warnflags = os.getenv('WARNFLAGS')
 if not warnflags:
@@ -208,50 +232,38 @@ ldflags = os.getenv('LDFLAGS', '')
 extraldflags = os.getenv('EXTRALDFLAGS', '--gc-sections -static')
 ldflags += " " + extraldflags
 
-genld = path.join(srcdir, 'gen_linkerscript.sh')
+src = partial(path.join, srcdir)
 
-print('''
-cflags ={cflags}
-ldflags = {ldflags}
+build.glb_var('cflags', esc(cflags))
+build.glb_var('ldflags', esc(ldflags))
+build.glb_var('incbin_flags', '--rename-section .data=.rodata,alloc,load,readonly,data,contents')
 
-incbin_flags = --rename-section .data=.rodata,alloc,load,readonly,data,contents
 
-rule buildcc
-    depfile = $out.d
-    deps = gcc
-    command = {buildcc} -MD -MF $out.d {buildcflags} $flags $in -o $out
-rule cc
-    depfile = $out.d
-    deps = gcc
-    command = {cc} $cflags -MD -MF $out.d $flags -c $in -o $out
-rule ld
-    command = {ld} $ldflags $flags $in -o $out
-rule bin
-    command = {objcopy} -O binary $in $out
-rule incbin
-    command = {objcopy} -I binary -O elf64-littleaarch64 -B aarch64 $incbin_flags $flags $in $out
-rule run
-    command = $bin $flags <$in >$out
-rule regtool
-    command = ./regtool $preflags --read $in $flags --hex >$out
-rule ldscript
-    command = bash {genld} $flags >$out
-rule lz4
-    command = lz4 -c $flags $in > $out
-
-build idbtool: buildcc {src}/tools/idbtool.c
-build regtool: buildcc {src}/tools/regtool.c {src}/tools/regtool_rpn.c
-'''.format(
-    cflags=esc(cflags),
-    ldflags=ldflags,
-    src=esc(srcdir),
-    cc=cc,
+build.rule('buildcc',
+    depfile="$out.d",
+    deps="gcc",
+    command = '{cc} -MD -MF $out.d {cflags} $flags $in -o $out'.format(
+        cc=os.getenv('CC_BUILD', 'cc'),
+        cflags=os.getenv('CFLAGS_BUILD', '')
+    ),
+)
+build.rule('cc', f'{cc} -MD -MF $out.d {cflags} $flags -c $in -o $out',
+    depfile="$out.d",
+    deps="gcc",
+)
+build.rule('ld', '{ld} $ldflags $flags $in -o $out'.format(
     ld=os.getenv('LD', 'ld'),
-    buildcc=os.getenv('CC_BUILD', 'cc'),
-    buildcflags=os.getenv('CFLAGS_BUILD', ''),
-    objcopy=os.getenv('OBJCOPY', 'objcopy'),
-    genld=esc(genld)
 ))
+objcopy = os.getenv('OBJCOPY', 'objcopy')
+build.rule('bin', f'{objcopy} -O binary $in $out')
+build.rule('incbin', f'{objcopy} -I binary -O elf64-littleaarch64 -B aarch64 $incbin_flags $flags $in $out')
+build.rule('run', '$bin $flags <$in >$out')
+build.rule('regtool', './regtool $preflags --read $in $flags --hex >$out')
+build.rule('ldscript', f'bash {esc(src("gen_linkerscript.sh"))} $flags >$out')
+build.rule('lz4', 'lz4 -c $flags $in >$out')
+
+build('idbtool', 'buildcc', src('tools/idbtool.c'))
+build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')])
 
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
@@ -296,7 +308,7 @@ dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', '
 modules = lib | levinboot | elfloader | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}
 if boot_media:
     modules |= dramstage_embedder
-print(f'# modules: {" ".join(modules)}')
+build.comment(f'modules: {" ".join(modules)}')
 
 if args.full_debug:
     for f in modules:
@@ -304,26 +316,25 @@ if args.full_debug:
 
 for f in modules:
     build_flags = {'flags': " ".join(flags[f])} if f in flags else {}
-    src = path.join(srcdir, f+'.c')
-    print(build(f+'.o', 'cc', src, **build_flags))
+    build(f+'.o', 'cc', src(f+'.c'), **build_flags)
 
 # ===== special compile jobs =====
-print(build('aarch64/dcache-el3.o', 'cc', path.join(srcdir, 'aarch64/dcache.S'), flags='-DCONFIG_EL=3'))
-print(build('aarch64/dcache-el2.o', 'cc', path.join(srcdir, 'aarch64/dcache.S'), flags='-DCONFIG_EL=2'))
-print(build('exc_handlers-el3.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S'), flags='-DCONFIG_EL=3'))
-print(build('exc_handlers-el2.o', 'cc', path.join(srcdir, 'lib/exc_handlers.S'), flags='-DCONFIG_EL=2'))
-print(build('gicv3.o', 'cc', path.join(srcdir, 'lib/gicv3.S')))
-print(build('aarch64/save_restore.o', 'cc', path.join(srcdir, 'aarch64/save_restore.S')))
-print(build('aarch64/mmu.S.o', 'cc', path.join(srcdir, 'aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S'])))
-print(build('sched_aarch64.o', 'cc', path.join(srcdir, 'lib/sched_aarch64.S')))
-print(build('aarch64/string.o', 'cc', path.join(srcdir, 'aarch64/string.S')))
-print(build('entry-ret2brom.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=2'))
-print(build('entry-first.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_FIRST_STAGE=1'))
-print(build('entry.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_EL=3 -DCONFIG_FIRST_STAGE=0'))
-print(build('entry-el2.o', 'cc', path.join(srcdir, 'entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_FIRST_STAGE=0'))
-print(build('rk3399/debug-el3.o', 'cc', path.join(srcdir, 'rk3399/debug.S'), flags='-DCONFIG_EL=3'))
-print(build('rk3399/debug-el2.o', 'cc', path.join(srcdir, 'rk3399/debug.S'), flags='-DCONFIG_EL=2'))
-print(build('cpu_onoff.o', 'cc', path.join(srcdir, 'cpu_onoff.S')))
+build('aarch64/dcache-el3.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=3')
+build('aarch64/dcache-el2.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=2')
+build('exc_handlers-el3.o', 'cc', src('lib/exc_handlers.S'), flags='-DCONFIG_EL=3')
+build('exc_handlers-el2.o', 'cc', src('lib/exc_handlers.S'), flags='-DCONFIG_EL=2')
+build('gicv3.o', 'cc', src('lib/gicv3.S'))
+build('aarch64/save_restore.o', 'cc', src('aarch64/save_restore.S'))
+build('aarch64/mmu.S.o', 'cc', src('aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S']))
+build('sched_aarch64.o', 'cc', src('lib/sched_aarch64.S'))
+build('aarch64/string.o', 'cc', src('aarch64/string.S'))
+build('entry-ret2brom.o', 'cc', src('entry.S'), flags='-DCONFIG_FIRST_STAGE=2')
+build('entry-first.o', 'cc', src('entry.S'), flags='-DCONFIG_FIRST_STAGE=1')
+build('entry.o', 'cc', src('entry.S'), flags='-DCONFIG_EL=3 -DCONFIG_FIRST_STAGE=0')
+build('entry-el2.o', 'cc', src('entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_FIRST_STAGE=0')
+build('rk3399/debug-el3.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=3')
+build('rk3399/debug-el2.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=2')
+build('cpu_onoff.o', 'cc', src('cpu_onoff.S'))
 lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'gicv3', 'aarch64/save_restore', 'aarch64/mmu.S', 'sched_aarch64', 'aarch64/string'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
@@ -350,49 +361,49 @@ regtool_targets = {
     'adrctl28_44_f1': phy_job('adrctl', 1, range=(28, 44)),
 }
 for name, job in regtool_targets.items():
-    macro_files = tuple(path.join(srcdir, f'dram/{x}.txt') for x in job.macros)
-    print(build(
+    macro_files = tuple(src(f'dram/{x}.txt') for x in job.macros)
+    build(
 	name+'.gen.c', 'regtool',
-	path.join(srcdir, "dram", job.input+'-fields.txt'),
+	src("dram", job.input+'-fields.txt'),
 	('regtool',) + macro_files,
 	preflags = ' '.join(f'--read {f}' for f in macro_files),
 	flags=job.flags
-    ))
-print(build('dramcfg.o', 'cc', path.join(srcdir, 'dram/dramcfg.c'), (name + ".gen.c" for name in regtool_targets)))
+    )
+build('dramcfg.o', 'cc', src('dram/dramcfg.c'), (name + ".gen.c" for name in regtool_targets))
 levinboot |= {'dramcfg'}
 
 # ===== linking and image post processing =====
 levinboot = (levinboot | lib) - {'entry'}
-print(build('dramstage.lz4', 'lz4', 'elfloader.bin', flags='--content-size'))
-print(build('dramstage.lz4.o', 'incbin', 'dramstage.lz4'))
+build('dramstage.lz4', 'lz4', 'elfloader.bin', flags='--content-size')
+build('dramstage.lz4.o', 'incbin', 'dramstage.lz4')
 dramstage_embedder |= {'dramstage.lz4', 'entry-first'}
 
 base_addresses = set()
 def binary(name, modules, base_address):
     base_addresses.add(base_address)
-    print(build(
+    build(
         name + '.elf',
         'ld',
         tuple(x + '.o' for x in set(modules)),
         deps=base_address + '.ld',
         flags='-T {}.ld'.format(base_address)
-    ))
-    print(build(name + '.bin', 'bin', name + '.elf'))
+    )
+    build(name + '.bin', 'bin', name + '.elf')
 
 binary('sramstage', levinboot | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest', 'cpu_onoff'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
-print("default sramstage.bin memtest.bin usbstage.bin teststage.bin")
+binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
+build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
 if args.tf_a_headers:
     binary('elfloader', elfloader | lib, '04000000')
-    print("default elfloader.bin")
+    build.default('elfloader.bin')
 if boot_media:
     binary('levinboot-img', levinboot | dramstage_embedder, 'ff8c2000')
     binary('levinboot-usb', levinboot | dramstage_embedder, 'ff8c2000')
-    print(build('levinboot-spi.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool', flags='spi'))
-    print(build('levinboot-sd.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool'))
-    print("default levinboot-sd.img levinboot-spi.img levinboot-usb.bin")
+    build('levinboot-spi.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool', flags='spi')
+    build('levinboot-sd.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool')
+    build.default('levinboot-sd.img', 'levinboot-spi.img', 'levinboot-usb.bin')
 
 for addr in base_addresses:
-    print(build(addr + '.ld', 'ldscript', (), deps=genld, flags="0x"+addr))
+    build(addr + '.ld', 'ldscript', (), deps=src("gen_linkerscript.sh"), flags="0x"+addr)
