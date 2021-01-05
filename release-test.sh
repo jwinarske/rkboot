@@ -53,25 +53,25 @@ if [ -z "$skip" -o "$skip" == "2" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == "3" ]; then
-	echo "Configuration 3: sramstage + elfloader + teststage"
+	echo "Configuration 3: sramstage + usbstage + elfloader + teststage"
 	"$src/configure.py" --with-tf-a-headers "$atf"
-	until ninja sramstage.bin elfloader.bin teststage.bin && prompt || usbtool --call sramstage.bin --load 4000000 elfloader.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 teststage.bin --jump 4000000 1000; do true; done
+	until ninja sramstage.bin usbstage.bin elfloader.bin teststage.bin && prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 elfloader.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 teststage.bin --start 4000000 1000; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "4" ]; then
-	echo "Configuration 4: sramstage + elfloader + kernel"
+	echo "Configuration 4: sramstage + usbstage + elfloader + kernel"
 	"$src/configure.py" --with-tf-a-headers "$atf"
-	until ninja sramstage.bin elfloader.bin && prompt || usbtool --call sramstage.bin --load 4000000 elfloader.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 "$artifacts/Image" --jump 4000000 1000; do true; done
+	until ninja sramstage.bin usbstage.bin elfloader.bin && prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 elfloader.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 "$artifacts/Image" --start 4000000 1000; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "5" ]; then
-	echo "Configuration 5: sramstage + elfloader + teststage, gzip compression"
+	echo "Configuration 5: sramstage + usbstage + elfloader + teststage, gzip compression"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-gzip
-	ninja sramstage.bin elfloader.bin teststage.bin
+	ninja sramstage.bin usbstage.bin elfloader.bin teststage.bin
 	gzip -k teststage.bin
 	until prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
 		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | gzip | cat "$artifacts/bl31.gz" - teststage.bin.gz | \
-		usbtool --call sramstage.bin --load 4000000 elfloader.bin --load 4400000 -  --jump 4000000 1000; do true; done
+		usbtool --call sramstage.bin --run usbstage.bin --load 4000000 elfloader.bin --load 4400000 -  --start 4000000 1000; do true; done
 	rm teststage.bin.gz
 fi
 
@@ -103,17 +103,17 @@ if [ -z "$skip" -o "$skip" == "9" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == 10 ]; then
-	echo "Configuration 10: levinboot + eMMC elfloader, configured for initcpio use (LZ4+gzip decompression)"
+	echo "Configuration 10: levinboot + usbstage + eMMC elfloader, configured for initcpio use (LZ4+gzip decompression)"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{emmc,lz4,gzip,initcpio}
-	until ninja sramstage.bin elfloader.bin; do read -p "press enter to rebuild";done
-	until prompt || usbtool --call sramstage.bin --load 4000000 elfloader.bin --jump 4000000 1000;do true; done
+	until ninja sramstage.bin usbstage.bin elfloader.bin; do read -p "press enter to rebuild";done
+	until prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 elfloader.bin --start 4000000 1000;do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == 11 ]; then
-	echo "Configuration 11: levinboot + NVMe elfloader, configured for initcpio use (LZ4 decompression)"
+	echo "Configuration 11: levinboot + usbstage + NVMe elfloader, configured for initcpio use (LZ4 decompression)"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{nvme,lz4,initcpio}
-	until ninja sramstage.bin elfloader.bin; do read -p "press enter to rebuild";done
-	until prompt || usbtool --call sramstage.bin --load 4000000 elfloader.bin --jump 4000000 1000;do true; done
+	until ninja sramstage.bin usbstage.bin elfloader.bin; do read -p "press enter to rebuild";done
+	until prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 elfloader.bin --start 4000000 1000;do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "99" ]; then

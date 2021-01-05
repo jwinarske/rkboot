@@ -85,32 +85,6 @@ size_t read_file(int fd, uint8_t *buf, size_t size) {
 	return pos;
 }
 
-_Bool transfer_patched(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t opcode) {
-	uint32_t crc_table[256];
-	for (uint32_t i = 0; i < 256; ++i) {crc_table[i] = crc32_byte(i, crc32c_poly);}
-	uint32_t crc = ~(uint32_t)0;
-	assert(!(size & 0xfff));
-	for (size_t pos = 0; pos < size; pos += 4096) {
-		printf("patched 4096-byte transfer\n");
-		for (size_t p = 0; p < 4096; ++p) {
-			crc = crc >> 8 ^ crc_table[(u8)crc ^ buf[pos + p]];
-		}
-		if (libusb_control_transfer(handle, 0x40, 0xc, 0, 0x0471, buf + pos, 4096, 100) != 4096) {
-			fprintf(stderr, "error while sending data\n");
-			return 0;
-		}
-	}
-	printf("CRC32C: %"PRIx32"\n", ~crc);
-	uint8_t crcbuf[4];
-	write_le32(crcbuf, ~crc);
-	ssize_t res = libusb_control_transfer(handle, 0x40, 0xc, 0, opcode, crcbuf, 4, 20000);
-	if (res != 4) {
-		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
-		return 0;
-	}
-	return 1;
-}
-
 _Bool transfer(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t opcode) {
 	u8 rc4state[258];
 	rc4_init(rc4state);
@@ -123,106 +97,10 @@ _Bool transfer(libusb_device_handle *handle, uint8_t *buf, size_t size, uint16_t
 	return final_transfer(handle, crc, opcode);
 }
 
-#define Rd(n) ((n) & 31)
-#define Rn(n) (((n) & 31) << 5)
-#define Rt2(n) (((n) & 31) << 10)
-#define Rm(n) (((n) & 31) << 16)
-#define PAIR(disp) (((disp) & 0x7f) << 15)
-#define ADR(imm) (1 <<28 | ((imm) & 3) << 29 | ((imm) & 0x1ffffc) << 3)
-#define B_HS(disp) (0x54000002 | ((disp) & 0x7ffff) << 5)
-#define MOVZ(hw, val) (0x92800000 | ((hw) & 3) << 21 | ((val) & 0xffff) << 5)
-#define RET(r) (0xd65f0000 | Rn(r))
-#define SUB 0x4b000000
-#define SIXTYFOUR (1 << 31)
-#define SETFLAGS (1 << 29)
-#define LOAD (1 << 22)
-#define IC 0xd5087000
-#define IC_IALLU (IC | 0x051f)
-#define MSR 0xd5100000
-#define MRS 0xd5300000
-#define SYSREG_SCTLR_EL3 0xe1000
-#define OR(width, length, rotate) ((width == 64 || width == 32 || width == 16 || width == 8) && (length) < (width) && (length) < (width) ? (0x32000000 | (width == 64) << 31 | (width == 64) << 22 | (rotate) << 16 | ((length - 1) | (~((width) - 1) & 0x3f)) << 10) : die(": wrong logic encoding"))
-
-enum {
-	ADD64IMM = 0x91000000,
-};
-
-#define ADD_IMM(n) ((n) << 10 & 0x003ffc00)
-#define ADD_IMM_SHIFTED(n) ((n) >> 2 & 0x003ffc00)
-
-enum pair_const {
-	PAIR_BASE = 5 << 27,
-	PAIR_POSTIDX = 1 << 23,
-	PAIR_PREIDX = 3 << 23,
-	PAIR_OFFSET = 2 << 23,
-};
-
-enum pair_inst {
-	STP32_POST = PAIR_BASE | PAIR_POSTIDX,
-	STP64_POST = PAIR_BASE | PAIR_POSTIDX | SIXTYFOUR,
-	LDP32_POST = PAIR_BASE | PAIR_POSTIDX | LOAD,
-	LDP64_POST = PAIR_BASE | PAIR_POSTIDX | LOAD | SIXTYFOUR,
-	STP32_PRE = PAIR_BASE | PAIR_PREIDX,
-	STP64_PRE = PAIR_BASE | PAIR_PREIDX | SIXTYFOUR,
-	LDP32_PRE = PAIR_BASE | PAIR_PREIDX | LOAD,
-	LDP64_PRE = PAIR_BASE | PAIR_PREIDX | LOAD | SIXTYFOUR,
-	STP32_OFF = PAIR_BASE | PAIR_OFFSET,
-	STP64_OFF = PAIR_BASE | PAIR_OFFSET | SIXTYFOUR,
-	LDP32_OFF = PAIR_BASE | PAIR_OFFSET | LOAD,
-	LDP64_OFF = PAIR_BASE | PAIR_OFFSET | LOAD | SIXTYFOUR,
-};
-
-enum binop {
-	ADD32 = 0x0b000000,
-	ADD64 = 0x8b000000,
-};
-
-enum branch_reg {
-	BR = 0xd61f0000,
-	BLR = 0xd63f0000,
-	RET = 0xd65f0000,
-};
-
-enum barriers {ISB = 0xd5033fdf};
-
 int _Noreturn die(const char *msg) {
 	fprintf(stderr, "%s\n", msg);
 	abort();
 }
-
-#define LDR64(imm) (0x58000000 | ((imm) << 3 & 0x00ffffe0))
-
-const uint32_t copy_program[24] = {
-	ADR(sizeof(copy_program)) | Rd(0),
-
-	MRS | SYSREG_SCTLR_EL3 | Rd(5),
-	OR(64, 1, 52) | Rn(5) | Rd(6),
-	MSR | SYSREG_SCTLR_EL3 | Rd(6),
-
-	LDP64_POST | PAIR(2) | Rn(0) | Rd(1) | Rt2(2),
-	SUB | SETFLAGS | SIXTYFOUR | Rd(31) | Rn(1) | Rm(2),
-	B_HS(7),
-
-	LDP64_POST | PAIR(2) | Rn(0) | Rd(3) | Rt2(4),
-	STP64_POST | PAIR(2) | Rn(1) | Rd(3) | Rt2(4),
-	SUB | SETFLAGS | SIXTYFOUR | Rd(31) | Rn(2) | Rm(1),
-	B_HS(-3),
-
-	MOVZ(0, 0) | Rd(0),
-	RET | Rn(30),
-
-	LDP64_OFF | PAIR(0) | Rn(0) | Rd(0) | Rt2(2),
-	ADD64IMM | Rd(3) | Rn(31) | ADD_IMM(0),
-	ADD64IMM | Rd(31) | Rn(0) | ADD_IMM(0),
-	STP64_PRE | PAIR(-2) | Rn(31) | Rd(30) | Rt2(3),
-	IC_IALLU,
-	ISB,
-	BLR | Rn(1),
-	LDP64_OFF | PAIR(0) | Rn(31) | Rd(30) | Rt2(2),
-	ADD64IMM | Rd(31) | Rn(2) | ADD_IMM(0),
-	RET(30),
-	0,
-};
 
 struct device_discovery {
 	libusb_device *device;
@@ -262,25 +140,12 @@ enum usbstage_command {
 	NUM_CMD
 };
 
-void bulk_mode(libusb_context *ctx, char **arg) {
+void bulk_mode(libusb_device_handle *handle, char **arg) {
 	const size_t buf_size = 1024 * 1024;
 	uint8_t *buf = malloc(buf_size);
 	if (!buf) {
 		fprintf(stderr, "buffer allocation failed\n");
 		abort();
-	}
-	struct device_discovery discovery;
-	for (int timeout = 100; timeout; --timeout) {
-		discovery = find_device(ctx);
-		if (discovery.handle) {
-			break;
-		}
-		usleep(100000);
-	}
-	libusb_device_handle *handle = discovery.handle;
-	if (!handle) {
-		fprintf(stderr, "usbstage did not bring up the USB controller within 10s\n");
-		exit(2);
 	}
 	int err = libusb_claim_interface(handle, 0);
 	if (err) {
@@ -367,9 +232,11 @@ void bulk_mode(libusb_context *ctx, char **arg) {
 				exit(2);
 			}
 			if (!call) {break;}
+		} else {
+			fprintf(stderr, "unknown command line argument %s", *arg);
+			exit(1);
 		}
 	}
-	libusb_close(handle);
 }
 
 int main(int argc, char **argv) {
@@ -382,16 +249,15 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "error initializing libusb\n");
 		return 2;
 	}
-	if (0 == strcmp("--bulk", argv[1])) {
-		bulk_mode(ctx, argv + 1);
-		libusb_exit(ctx);
-		return 0;
-	}
 	struct device_discovery discovery = find_device(ctx);
 	libusb_device_handle *handle = discovery.handle;
 	if (!handle) {
 		fprintf(stderr, "no device found\n");
 		return 2;
+	}
+	if (0 == strcmp("--bulk", argv[1])) {
+		bulk_mode(handle, argv + 1);
+		goto out;
 	}
 	const size_t buf_size = 180 * 1024;
 	uint8_t *buf = malloc(buf_size);
@@ -401,7 +267,7 @@ int main(int argc, char **argv) {
 	}
 	char **arg = argv;
 	while (*++arg) {
-		_Bool call = 0, unpatched, pstart = 0;
+		_Bool call = 0;
 		if ((call = !strcmp("--call", *arg)) || !strcmp("--run", *arg)) {
 			if (!*++arg) {
 				fprintf(stderr, "%s needs a parameter\n", *--arg);
@@ -425,89 +291,19 @@ int main(int argc, char **argv) {
 			}
 			if (fd) {close(fd);}
 			if (!call) {break;}
-		} else if ((unpatched =!strcmp("--load", *arg)) || (pstart = !strcmp("--pstart", *arg)) || !strcmp("--pload", *arg)) {
-			char *command = *arg;
-			char *addr_string = *++arg;
-			uint64_t addr_;
-			if (!addr_string || sscanf(addr_string, "%"PRIx64, &addr_) != 1) {
-				fprintf(stderr, "%s needs a load address\n", command);
-				return 1;
-			}
-			uint64_t load_addr = addr_;
-			char *filename = *++arg;
-			if (!filename) {
-				fprintf(stderr, "%s needs a file name\n", command);
-				return 1;
-			}
-			int fd = 0;
-			if (strcmp("-", filename)) {
-				fd = open(filename, O_RDONLY, 0);
-				if (fd < 0) {
-					fprintf(stderr, "cannot open %s\n", filename);
-					return 1;
-				}
-			}
-			const size_t copy_size = unpatched ? sizeof(copy_program) : 0;
-			const size_t header_size = copy_size + 16;
-			for (int i = 0; i < copy_size; i += 4) {
-				write_le32(buf + i, copy_program[i/4]);
-			}
-			size_t size, total_loaded = 0;
-			do {
-				size = read_file(fd, buf + header_size, buf_size - header_size);
-				size_t rem = (header_size + size) & 0xfff ? 4096 - ((header_size + size) & 0xfff) : 0;
-				memset(buf + header_size + size, 0, rem);
-				uint64_t end_addr = load_addr + size;
-				printf("offset 0x%"PRIx64", loading 0x%"PRIx64" bytes to 0x%"PRIx64", end %"PRIx64"\n", total_loaded, size, load_addr, end_addr);
-				write_le32(buf + copy_size, load_addr);
-				write_le32(buf + copy_size + 4, load_addr >> 32);
-				write_le32(buf + copy_size + 8, end_addr);
-				write_le32(buf + copy_size + 12, end_addr >> 32);
-				if (!(unpatched ? transfer : transfer_patched)(handle, buf, header_size + size + rem, pstart ? 0x0472 : 0x0471)) {return 1;}
-				load_addr = end_addr;
-			} while (size + header_size >= buf_size);
-			if (pstart) {break;}
-		} else if ((call = !strcmp("--dramcall", *arg)) || !strcmp("--jump", *arg)) {
-			uint64_t entry_addr, stack_addr;
-			char *command = *arg, *entry_str = *++arg;
-			if (!entry_str || sscanf(entry_str, "%"SCNx64, &entry_addr) != 1) {
-				fprintf(stderr, "%s needs an entry point address\n", command);
-				return 1;
-			}
-			char *stack_str = *++arg;
-			if (!stack_str || sscanf(stack_str, "%"SCNx64, &stack_addr) != 1) {
-				fprintf(stderr, "%s needs a stack address\n", command);
-				return 1;
-			}
-			const size_t jump_size = sizeof(copy_program);
-			for (int i = 0; i < jump_size; i += 4) {
-				write_le32(buf + i, copy_program[i/4]);
-			}
-			write_le32(buf + jump_size, entry_addr);
-			write_le32(buf + jump_size + 4, entry_addr >> 32);
-			write_le32(buf + jump_size + 8, entry_addr);
-			write_le32(buf + jump_size + 12, entry_addr >> 32);
-			write_le32(buf + jump_size + 16, stack_addr);
-			write_le32(buf + jump_size + 20, stack_addr >> 32);
-			memset(buf + jump_size + 24, 0, 4096 - jump_size - 24);
-			uint8_t rc4state[258];
-			rc4_init(rc4state);
-			uint16_t crc = 0xffff;
-			if (!block_transfer(handle, buf, &crc, rc4state) || !final_transfer(handle, crc, call ? 0x0471 : 0x0472)) {return 1;}
-			if (!call) {break;}
 		} else {
 			fprintf(stderr, "unknown command line argument %s", *arg);
 			return 1;
 		}
 	}
-	puts("mask ROM mode done, closing USB handle\n");
-	libusb_close(handle);
 	free(buf);
-	if (*arg) {
-		usleep(500000);	/* need to wait for usbstage to reset the USB controller */
-		puts("more commands, starting to look for usbstage");
-		bulk_mode(ctx, arg);
+	if (arg[1]) {
+		usleep(300000);	/* need to wait for usbstage to take over the USB controller */
+		puts("more commands, switching to bulk mode");
+		bulk_mode(handle, arg);
 	}
+out:
+	libusb_close(handle);
 	libusb_exit(ctx);
 	return 0;
 }
