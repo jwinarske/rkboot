@@ -198,7 +198,7 @@ static u64 unmap_one(u64 *pt, u64 first, u64 last) {
 			for_range(i, first_entry, last_entry + 1) {
 				assert(!(pt[i] & 1));
 				u64 addr = first + ((i - first_entry) << shift);
-				__asm__ volatile("tlbi vae3, %0" : : "r"(addr));
+				__asm__ volatile("tlbi vae3is, %0" : : "r"(addr >> 12));
 			}
 			return last;
 		}
