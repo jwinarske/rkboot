@@ -10,7 +10,7 @@ The levinboot bootloader
 
 levinboot (name always lowercase) is a bootloader for (currently) RK3399 platforms with LPDDR4 memory.
 
-The project is currently in a β-state. Basic features work, but formats and features are still in flux. As a non-commercial project, no warranty is given for any breakage. *Note to pre-0.7.2 users loading the payload from SD: remember to set the partition type for the payload before updating the bootloader.*
+The project is currently in a β-state. Basic features work, but formats and features are still in flux. As a non-commercial project, no warranty is given for any breakage.
 
 Important project goals include:
 
@@ -42,8 +42,6 @@ What is intended to work by 1.0, but not implemented yet:
 - Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
 
 - a new payload format, allowing uncompressed segments and moving certain memory layout decisions from pre-build or runtime to payload creation time.
-
-- booting from NVMe.
 
 General TODOs and feature ideas, post-1.0:
 
