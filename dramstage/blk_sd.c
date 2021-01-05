@@ -134,9 +134,14 @@ static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_e
 
 void boot_sd() {
 	infos("trying SD\n");
+	arch_flush_writes();
 	mmu_unmap_range((u64)desc_buf, (u64)desc_buf + 0xfff);
+	mmu_flush();
 	mmu_map_range((u64)desc_buf, (u64)desc_buf + 0xfff, (u64)desc_buf, MEM_TYPE_UNCACHED);
-	dsb_ishst();
+	mmu_flush();
+	flush_range(desc_buf, sizeof(desc_buf));
+	arch_flush_writes();
+
 	if (regmap_cru[CRU_CLKGATE_CON+12] & 1 << 13) {
 		puts("sramstage left SD disabled\n");
 		goto out;

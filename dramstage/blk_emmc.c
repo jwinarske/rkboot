@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdatomic.h>
 
+#include <arch.h>
 #include <log.h>
 #include <mmu.h>
 #include <aarch64.h>
@@ -149,10 +150,13 @@ static _Bool parse_cardinfo(struct emmc_blockdev *dev) {
 
 void boot_emmc() {
 	infos("trying eMMC\n");
+	arch_flush_writes();
 	mmu_unmap_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1);
-	dsb_ish();
+	mmu_flush();
 	mmu_map_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1, (u64)&desc_buf, MEM_TYPE_UNCACHED);
-	dsb_ishst();
+	mmu_flush();
+	flush_range(desc_buf, sizeof(desc_buf));
+	arch_flush_writes();
 	
 	if (regmap_cru[CRU_CLKGATE_CON+6] & 7 << 12) {
 		puts("sramstage left eMMC disabled\n");

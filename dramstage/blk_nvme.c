@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include <arch.h>
 #include <pci_regs.h>
 #include <rkpcie_regs.h>
 #include <nvme.h>
@@ -302,6 +303,9 @@ void boot_nvme() {
 	mmu_map_range((u64)(uintptr_t)&wt_buf, (u64)(uintptr_t)&wt_buf + sizeof(wt_buf) - 1, (u64)(uintptr_t)&wt_buf, MEM_TYPE_WRITE_THROUGH);
 	mmu_map_range((u64)(uintptr_t)&uncached_buf, (u64)(uintptr_t)&uncached_buf + sizeof(uncached_buf) - 1, (u64)(uintptr_t)&uncached_buf, MEM_TYPE_UNCACHED);
 	mmu_flush();
+	flush_range(wt_buf, sizeof(wt_buf));
+	flush_range(uncached_buf, sizeof(uncached_buf));
+	arch_flush_writes();
 
 	switch (nvme_init(&st)) {
 	case IOST_OK: break;
