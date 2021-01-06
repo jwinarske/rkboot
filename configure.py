@@ -229,7 +229,7 @@ cflags = (
     + " " + warnflags)
 
 ldflags = os.getenv('LDFLAGS', '')
-extraldflags = os.getenv('EXTRALDFLAGS', '--gc-sections -static')
+extraldflags = os.getenv('EXTRALDFLAGS', '-Wl,--gc-sections -Wl,-static')
 ldflags += " " + extraldflags
 
 src = partial(path.join, srcdir)
@@ -251,8 +251,8 @@ build.rule('cc', f'{cc} -MD -MF $out.d {cflags} $flags -c $in -o $out',
     depfile="$out.d",
     deps="gcc",
 )
-build.rule('ld', '{ld} $ldflags $flags $in -o $out'.format(
-    ld=os.getenv('LD', 'ld'),
+build.rule('ld', '{ld} $cflags $ldflags $flags $in -o $out'.format(
+    ld=cc,
 ))
 objcopy = os.getenv('OBJCOPY', 'objcopy')
 build.rule('bin', f'{objcopy} -O binary $in $out')
