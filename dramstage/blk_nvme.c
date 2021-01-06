@@ -128,7 +128,7 @@ static struct nvme_sq sqs[] = {
 	},
 };
 static struct nvme_state st = {
-	.regs = (struct nvme_regs *)0xfa100000,
+	.regs = (struct nvme_regs *)0xf8000000,
 	.num_iocq = 0,
 	.num_iosq = 0,
 	.cq = cqs,
@@ -207,8 +207,8 @@ void boot_nvme() {
 		goto out;
 	}
 	if (!finish_pcie_link()) {goto shut_down_phys;}
-	/* map MMIO regions 1 and 2 (1MiB each, creates one 2MiB block mapping) }*/
-	mmu_map_range(0xfa000000, 0xfa1fffff, 0xfa000000, MEM_TYPE_DEV_nGnRnE);
+	/* map MMIO regions 0–2 32+1+1 MiB, should create 17 2 MiB block mappings */
+	mmu_map_range(0xf8000000, 0xfa1fffff, 0xf8000000, MEM_TYPE_DEV_nGnRnE);
 	volatile struct rkpcie_addr_xlation *xlat = regmap_pcie_addr_xlation;
 	/* map configuration space for bus 0 in MMIO region 1 */
 	xlat->ob[1].addr[0] = 19;	/* forward 20 bits of address starting at 0 (ECAM mapping) */
@@ -276,11 +276,11 @@ void boot_nvme() {
 	conf[PCI_BAR+0] = 0xfffffff0;
 	conf[PCI_BAR+1] = 0xffffffff;
 	u32 a = conf[PCI_BAR+0], b = conf[PCI_BAR+1];
-	if (b != 0xffffffff || (a & 0xfff00000) != 0xfff00000) {
-		infos("Endpoint wants more than 1MiB of BAR space\n");
+	if (b != 0xffffffff || (a & 0xfe000000) != 0xfe000000) {
+		infos("Endpoint wants more than 32MiB of BAR space\n");
 		goto out;
 	}
-	conf[PCI_BAR+0] = 0xfa100000;
+	conf[PCI_BAR+0] = 0xf8000000;
 	conf[PCI_BAR+1] = 0;
 	//pcie_mgmt[RKPCIE_MGMT_RCBAR] = 0x8000001e;
 	for_range(i, 0, 3) {
@@ -288,14 +288,14 @@ void boot_nvme() {
 		xlat->rc_bar_addr[i][1] = 0;
 	}
 	conf[PCI_CMDSTS] = PCI_CMD_MEM_EN | PCI_CMD_BUS_MASTER | PCI_CMD_SERR_EN;
-	/* map first MiB of Memory space to region 2 */
-	xlat->ob[2].addr[0] = 0xfa100000 | (20 - 1);	/* forward 20 bits of address, starting at 0xfa100000 */
-	xlat->ob[2].addr[1] = 0;
-	xlat->ob[2].desc[0] = 0x00800002;
-	xlat->ob[2].desc[1] = 0;
-	xlat->ob[2].desc[2] = 0;
-	xlat->ob[2].desc[3] = 0;
-	dsb_sy();
+
+	/* map some Memory space to region 0 */
+	xlat->ob[0].addr[0] = 0xf8000000 | (25 - 1);	/* forward 25 bits of address, starting at 0xf8000000 */
+	xlat->ob[0].addr[1] = 0;
+	xlat->ob[0].desc[0] = 0x00800002;
+	xlat->ob[0].desc[1] = 0;
+	xlat->ob[0].desc[2] = 0;
+	xlat->ob[0].desc[3] = 0;
 
 	switch (nvme_init(&st)) {
 	case IOST_OK: break;
