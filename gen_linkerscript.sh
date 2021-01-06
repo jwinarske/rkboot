@@ -11,7 +11,7 @@ MEMORY {
 }
 ENTRY(entry_point)
 END
-sections=""
+sections="/DISCARD/ : {*(.note*)}"
 while test $# -gt 0; do
 	case "$1" in
 		0x*) addr="$1"
