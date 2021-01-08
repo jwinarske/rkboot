@@ -96,8 +96,9 @@ static enum compr_probe_status probe(const u8 *in, const u8 *end, size_t *size) 
 	if (end - in < 7) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
 	u8 flags = in[4], bd = in[5];
 	in += 6;
-	if ((flags >> 6) != 1) {
-		info("version %"PRIu8" not implemented\n", flags >> 6);
+	u8 version = flags >> 6;
+	if (version != 1) {
+		info("version %"PRIu8" not implemented\n", version);
 		return COMPR_PROBE_RESERVED_FEATURE;
 	}
 	if (flags & FRESERVED) {

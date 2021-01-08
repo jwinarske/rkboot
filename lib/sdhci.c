@@ -124,7 +124,7 @@ static _Bool execute_training(struct sdhci_state *st) {
 			}
 			sdhci->int_st = SDHCI_INT_BUFFER_READ_READY;
 		} while ((hostctrl2 = sdhci->host_control2) & SDHCI_HOSTCTRL2_EXECUTE_TUNING);
-		info("hostctrl2: %"PRIx8"\n", hostctrl2);
+		info("hostctrl2: %"PRIx16"\n", hostctrl2);
 		if (hostctrl2 & SDHCI_HOSTCTRL2_CLOCK_TUNED) {
 			trained = 1;
 			break;

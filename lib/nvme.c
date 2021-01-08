@@ -192,9 +192,9 @@ enum iost nvme_wait_req(struct nvme_state *st, struct nvme_req *req) {
 		usleep(100);
 	}
 	if (cmd_st & 0xfffe) {
+		u16 hex_aligned_code = (cmd_st & 0xf000) | (cmd_st >> 1 & 0x07ff);
 		info("completion error: %03"PRIx16" %08"PRIx32" %"PRIx32"\n",
-			(cmd_st & 0xf000) | (cmd_st >> 1 & 0x07ff),
-			req->data[0], req->data[1]
+			hex_aligned_code, req->data[0], req->data[1]
 		);
 		return IOST_LOCAL;
 	}
