@@ -112,9 +112,6 @@ void ddrinit_configure(struct ddrinit_state *st) {
 	/* not doing this will make the CPU hang */
 	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
 	udelay(1000);
-	/* map memory controller ranges */
-	mmu_map_mmio_identity(0xffa80000, 0xffa8ffff);
-	dsb_ishst();
 	st->chan_st[0] = st->chan_st[1] = CHAN_ST_UNINIT;
 	configure(st, &init_cfg, 50);
 }
@@ -255,7 +252,6 @@ static void both_channels_ready(struct ddrinit_state *st) {
 	/* 256B interleaving */
 	ddrinit_set_channel_stride(0xd);
 	__asm__ volatile("dsb ish");
-	mmu_unmap_range(0xffa80000, 0xffa8ffff);
 	for_range(bit, 10, 32) {
 		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
 	}
