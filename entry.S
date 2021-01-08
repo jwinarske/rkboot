@@ -186,7 +186,20 @@ prepare_main:
 		cmp x1, x2
 		b.lo 1b
 
-	adrp x29, boot_stack_end
+	mrs x2, DCZID_EL0
+	mov x3, #1
+	and x2, x2, #15
+	adrp x1, __bss_write_through__
+	lsl x3, x3, x2	/* x3 is size of DC ZVA block */
+	adrp x2, __end__
+	cmp x1, x2
+	b.hs 2f
+	1:	dc zva, x1
+		add x1, x1, x3
+		cmp x1, x2
+		b.lo 1b
+
+2:	adrp x29, boot_stack_end
 	ldr x29, [x29, #:lo12:boot_stack_end]
 #if CONFIG_FIRST_STAGE > 1
 	stp xzr, xzr, [x29, #-32]!
@@ -229,7 +242,7 @@ prepare_main:
 
 .if \el == 3
 TEXTSECTION(.text.asm.next_stage)
-next_stage:	.global next_stage
+PROC(next_stage, 2)
 	msr DAIFSet, #15
 	mov x19, x0
 	mov x20, x1
@@ -253,6 +266,7 @@ next_stage:	.global next_stage
 	ic iallu
 	isb
 	br x23
+ENDFUNC(next_stage)
 .endif
 .endm
 

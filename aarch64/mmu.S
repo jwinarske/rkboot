@@ -242,6 +242,8 @@ next_mapping:
 	ldr x5, [x7], #8
 	tbz x5, 0, done
 	ldr x6, [x7], #8
+	cmp x4, x6
+	b.eq next_mapping
 
 #if ASSERTIONS
 	/* this test should ensure that the "go deeper" path is really unreachable for the last level, if the same is also checked for the initial mapping boundaries */

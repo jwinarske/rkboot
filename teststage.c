@@ -5,6 +5,7 @@
 #include <die.h>
 #include <fdt.h>
 #include <mmu.h>
+#include <stage.h>
 
 #define DEFINE_VSTACK X(CPU0)
 #define VSTACK_DEPTH 0x1000

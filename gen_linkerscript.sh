@@ -54,6 +54,13 @@ while test $# -gt 0; do
 		$objs(.bss)
 		__${prefix}bss_noinit__ = .;
 		$objs(.bss.noinit)
+		. = ALIGN(0x1000);
+		__${prefix}bss_write_through__ = .;
+		$objs(.bss.write_through)
+		. = ALIGN(0x1000);
+		__${prefix}bss_uncached__ = .;
+		$objs(.bss.uncached)
+		. = ALIGN(0x1000);
 		__${prefix}end__ = .;
 	} >${memory}
 ";;

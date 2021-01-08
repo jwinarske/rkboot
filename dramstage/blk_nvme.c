@@ -56,8 +56,8 @@ enum {
 	NUM_UBUF
 };
 
-static UNINITIALIZED _Alignas(1 << PLAT_PAGE_SHIFT) u8 wt_buf[NUM_WTBUF][1 << PLAT_PAGE_SHIFT];
-static UNINITIALIZED _Alignas(1 << PLAT_PAGE_SHIFT) u8 uncached_buf[NUM_UBUF][1 << PLAT_PAGE_SHIFT];
+static WRITE_THROUGH _Alignas(1 << PLAT_PAGE_SHIFT) u8 wt_buf[NUM_WTBUF][1 << PLAT_PAGE_SHIFT];
+static UNCACHED _Alignas(1 << PLAT_PAGE_SHIFT) u8 uncached_buf[NUM_UBUF][1 << PLAT_PAGE_SHIFT];
 
 static _Bool finish_pcie_link() {
 	timestamp_t start = get_timestamp(), gen1_trained, retrained;
@@ -296,16 +296,6 @@ void boot_nvme() {
 	xlat->ob[2].desc[2] = 0;
 	xlat->ob[2].desc[3] = 0;
 	dsb_sy();
-	
-	mmu_unmap_range((u64)(uintptr_t)&wt_buf, (u64)(uintptr_t)&wt_buf + sizeof(wt_buf) - 1);
-	mmu_unmap_range((u64)(uintptr_t)&uncached_buf, (u64)(uintptr_t)&uncached_buf + sizeof(uncached_buf) - 1);
-	mmu_flush();
-	mmu_map_range((u64)(uintptr_t)&wt_buf, (u64)(uintptr_t)&wt_buf + sizeof(wt_buf) - 1, (u64)(uintptr_t)&wt_buf, MEM_TYPE_WRITE_THROUGH);
-	mmu_map_range((u64)(uintptr_t)&uncached_buf, (u64)(uintptr_t)&uncached_buf + sizeof(uncached_buf) - 1, (u64)(uintptr_t)&uncached_buf, MEM_TYPE_UNCACHED);
-	mmu_flush();
-	flush_range(wt_buf, sizeof(wt_buf));
-	flush_range(uncached_buf, sizeof(uncached_buf));
-	arch_flush_writes();
 
 	switch (nvme_init(&st)) {
 	case IOST_OK: break;

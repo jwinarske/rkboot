@@ -7,6 +7,14 @@
 		.addr = (u64)&__ro_end__,
 		.desc = MMU_MAPPING(NORMAL, (u64)&__ro_end__)
 	},
+	{
+		.addr = (u64)&__bss_write_through__,
+		.desc = MMU_MAPPING(WRITE_THROUGH, (u64)&__bss_write_through__)
+	},
+	{
+		.addr = (u64)&__bss_uncached__,
+		.desc = MMU_MAPPING(UNCACHED, (u64)&__bss_uncached__)
+	},
 	{.addr = (u64)&__end__, .desc = 0},
 #define X(caps, name, baseaddr, type)  {\
 	.addr = (u64)REGMAP64K_BASE(REGMAP64K_##caps),\

@@ -117,7 +117,7 @@ static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_e
 	return IOST_OK;
 }
 
-static _Alignas(4096) struct sdhci_adma2_desc8 desc_buf[4096 / sizeof(struct sdhci_adma2_desc8)];
+static UNCACHED struct sdhci_adma2_desc8 desc_buf[4096 / sizeof(struct sdhci_adma2_desc8)];
 
 static _Bool parse_cardinfo(struct emmc_blockdev *dev) {
 #ifdef DEBUG_MSG
@@ -150,14 +150,7 @@ static _Bool parse_cardinfo(struct emmc_blockdev *dev) {
 
 void boot_emmc() {
 	infos("trying eMMC\n");
-	arch_flush_writes();
-	mmu_unmap_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1);
-	mmu_flush();
-	mmu_map_range((u64)&desc_buf, (u64)&desc_buf + sizeof(desc_buf) - 1, (u64)&desc_buf, MEM_TYPE_UNCACHED);
-	mmu_flush();
-	flush_range(desc_buf, sizeof(desc_buf));
-	arch_flush_writes();
-	
+
 	if (regmap_cru[CRU_CLKGATE_CON+6] & 7 << 12) {
 		puts("sramstage left eMMC disabled\n");
 		boot_medium_exit(BOOT_MEDIUM_EMMC);

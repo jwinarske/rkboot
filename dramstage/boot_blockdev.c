@@ -10,7 +10,7 @@
 #include <dump_mem.h>
 #include <byteorder.h>
 
-static _Alignas(4096) u8 partition_table_buffer[4 * 4096];
+static _Alignas(4096) UNCACHED u8 partition_table_buffer[4 * 4096];
 
 enum iost boot_blockdev(struct async_blockdev *blk) {
 	assert(blk->block_size <= 8192 && blk->block_size >= 128);

@@ -18,6 +18,8 @@ typedef u64 ureg_t;
 #define FORCE_USED __attribute__((used))
 #define PRINTF(str_idx, start) __attribute__((format(printf, str_idx, start)))
 #define UNINITIALIZED __attribute__((section(".bss.noinit")))
+#define WRITE_THROUGH __attribute__((section(".bss.write_through")))
+#define UNCACHED __attribute__((section(".bss.uncached")))
 #define NORETURN_ATTR __attribute__((__noreturn__))
 #define HEADER_FUNC static inline UNUSED
 
