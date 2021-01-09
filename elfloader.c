@@ -122,19 +122,24 @@ struct sched_runqueue *get_runqueue() {return &runqueue;}
 _Static_assert(32 >= 3 * NUM_BOOT_MEDIUM, "not enough bits for boot medium");
 static const size_t available_boot_media = 0
 #if CONFIG_SD
-	| 1 << BOOT_MEDIUM_SD
+	| 1 << 4*BOOT_MEDIUM_SD
 #endif
 #if CONFIG_EMMC
-	| 1 << BOOT_MEDIUM_EMMC
+	| 1 << 4*BOOT_MEDIUM_EMMC
 #endif
 #if CONFIG_NVME
-	| 1 << BOOT_MEDIUM_NVME
+	| 1 << 4*BOOT_MEDIUM_NVME
 #endif
 #if CONFIG_SPI
-	| 1 << BOOT_MEDIUM_SPI
+	| 1 << 4*BOOT_MEDIUM_SPI
 #endif
 ;
-static _Atomic(u32) boot_state = available_boot_media ^ ((1 << NUM_BOOT_MEDIUM) - 1);
+static const u32 all_exit_mask = 0
+#define X(name) | 1 << 4*BOOT_MEDIUM_##name
+	DEFINE_BOOT_MEDIUM
+#undef X
+;
+static _Atomic(u32) boot_state = available_boot_media ^ all_exit_mask;
 static _Atomic(u32) current_boot_cue = BOOT_CUE_NONE;
 static struct sched_runnable_list boot_monitors;
 static struct sched_runnable_list boot_cue_waiters;
@@ -157,17 +162,17 @@ static u32 monitor_boot_state(u32 state, u32 mask, u32 expected) {
 
 void boot_medium_exit(enum boot_medium medium) {
 	printf("boot medium exit\n");
-	atomic_fetch_or_explicit(&boot_state, 1 << medium, memory_order_release);
+	atomic_fetch_or_explicit(&boot_state, 1 << 4*medium, memory_order_release);
 	sched_queue_list(CURRENT_RUNQUEUE, &boot_monitors);
 }
 
 void boot_medium_loaded(enum boot_medium medium) {
-	atomic_fetch_or_explicit(&boot_state, 1 << 2*NUM_BOOT_MEDIUM << medium, memory_order_release);
+	atomic_fetch_or_explicit(&boot_state, 4 << 4*medium, memory_order_release);
 	sched_queue_list(CURRENT_RUNQUEUE, &boot_monitors);
 }
 
 _Bool wait_for_boot_cue(enum boot_medium medium) {
-	atomic_fetch_or_explicit(&boot_state, 1 << NUM_BOOT_MEDIUM << medium, memory_order_release);
+	atomic_fetch_or_explicit(&boot_state, 2 << 4*medium, memory_order_release);
 	sched_queue_list(CURRENT_RUNQUEUE, &boot_monitors);
 	while (1) {
 		u32 curr = atomic_load_explicit(&current_boot_cue, memory_order_acquire);
@@ -227,7 +232,6 @@ _Noreturn void main() {
 
 	struct payload_desc *payload = get_payload_desc();
 
-	static const u32 all_exit_mask = (1 << NUM_BOOT_MEDIUM) - 1;
 	if (available_boot_media) {
 		fiq_handler_spx = irq_handler_spx = irq_handler;
 		gicv3_per_cpu_setup(regmap_gic500r);
@@ -296,9 +300,9 @@ _Noreturn void main() {
 		u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
 		_Bool payload_loaded = 0;
 		for_range(boot_medium, 0, NUM_BOOT_MEDIUM) {
-			u32 exit_bit = 1 << boot_medium;
+			u32 exit_bit = 1 << (4*boot_medium);
 			if (~available_boot_media & exit_bit) {continue;}
-			u32 ready_bit = 1 << NUM_BOOT_MEDIUM << boot_medium;
+			u32 ready_bit = exit_bit << 1;
 			state = monitor_boot_state(state, ready_bit | exit_bit, 0);
 			if (state & exit_bit) {
 				printf("%s failed, going on to next\n", boot_medium_names[boot_medium]);
@@ -309,7 +313,7 @@ _Noreturn void main() {
 			printf("cued %s\n", boot_medium_names[boot_medium]);
 			u64 xfer_start = get_timestamp();
 
-			u32 loaded_bit = 1 << 2*NUM_BOOT_MEDIUM << boot_medium;
+			u32 loaded_bit = exit_bit << 2;
 			state = monitor_boot_state(state, loaded_bit | exit_bit, 0);
 
 			if (state & loaded_bit) {

@@ -46,6 +46,7 @@ enum boot_medium {
 	BOOT_CUE_NONE = NUM_BOOT_MEDIUM,
 	BOOT_CUE_EXIT,
 };
+_Static_assert(4 * NUM_BOOT_MEDIUM <= 32, "boot state does not fit into 32 bits");
 _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
