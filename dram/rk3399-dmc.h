@@ -7,6 +7,18 @@
 #define for_aslice(i) for (u32 i = 0; i < 3; ++i)
 #define for_channel(i) for (u32 i = 0; i < 2; ++i)
 
+static inline void clrset32(volatile u32 *addr, u32 clear, u32 set) {
+	*addr = (*addr & ~clear) | set;
+}
+static inline void UNUSED apply32v(volatile u32 *addr, u64 op) {
+	clrset32(addr, op >> 32, (u32)op);
+}
+
+enum {
+	ASSUMPTION_16BIT_CHANNEL = 1,
+	ASSUMPTION_Po2_ROWS = 1,
+};
+
 #define ODT_DS_HI_Z	0x0
 #define ODT_DS_240	0x1
 #define ODT_DS_120	0x8

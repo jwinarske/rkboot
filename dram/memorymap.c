@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
-#include <rk3399.h>
 #include "rk3399-dmc.h"
 #include "ddrinit.h"
+#include <assert.h>
+
+#include <die.h>
+#include <log.h>
+#include <rk3399.h>
+#include <timer.h>
 
 static void set_memory_map(volatile u32 *pctl, volatile u32 *pi, const struct sdram_geometry *geo) {
 	debug("bk%u col%u\n", geo->bank, geo->col);

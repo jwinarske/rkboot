@@ -6,7 +6,6 @@
 
 #include <byteorder.h>
 #include <cache.h>
-#include <main.h>
 #include <rk3399.h>
 #include <stage.h>
 #include <mmu.h>

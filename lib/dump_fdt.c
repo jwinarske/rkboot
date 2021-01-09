@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
+#include <assert.h>
+#include <stdio.h>
+
+#include <die.h>
 #include <fdt.h>
 
 /*u32 *fdt_find_node_end(u32 *fdt) {

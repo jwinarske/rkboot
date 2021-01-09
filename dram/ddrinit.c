@@ -4,8 +4,11 @@
 #include <stdatomic.h>
 #include <inttypes.h>
 
-#include <main.h>
+#include <arch.h>
+#include <die.h>
+#include <log.h>
 #include <rk3399.h>
+#include <timer.h>
 #include <mmu.h>
 #include <rkpll.h>
 #include <runqueue.h>
@@ -107,7 +110,7 @@ void ddrinit_configure(struct ddrinit_state *st) {
 	debugs("ddrinit() reached\n");
 
 	softreset_memory_controller();
-	logs("initializing DRAM\n");
+	printf("[%"PRIuTS"] initializing DRAM\n", get_timestamp());
 
 	/* not doing this will make the CPU hang */
 	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON + 16] = SET_BITS16(2, 3) << 14;
@@ -181,7 +184,7 @@ static void fast_freq_switch(u8 freqset, u32 freq) {
 }
 
 static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_update *phy_upd) {
-	log("switching to %u MHz … ", mhz);
+	printf("[%"PRIuTS"] switching to %u MHz … ", get_timestamp(), mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch);
@@ -248,7 +251,7 @@ static void both_channels_ready(struct ddrinit_state *st) {
 	switch_and_train(st, 400, 0, 1, &phy_400mhz);
 	switch_and_train(st, 800, 1, 0, &phy_800mhz);
 	rk3399_set_init_flags(RK3399_INIT_DRAM_TRAINING);
-	logs("finished.\n");
+	printf("[%"PRIuTS"] finished.\n", get_timestamp());
 	/* 256B interleaving */
 	ddrinit_set_channel_stride(0xd);
 	__asm__ volatile("dsb ish");
@@ -343,7 +346,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		pctl[PCTL_READ_MODEREG] = mrr_cmd(5, 0);
 		st->chan_st[ch] = CHAN_ST_INIT;
 		rk3399_set_init_flags(RK3399_INIT_DDRC0_INIT << ch);
-		log("channel %u initialized\n", ch);
+		printf("[%"PRIuTS"] channel %u initialized\n", get_timestamp(), ch);
 		return;
 	case CHAN_ST_INIT:
 		if (~int_status & PCTL_INT0_MRR_DONE) {break;}

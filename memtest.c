@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <main.h>
+#include <mmu.h>
 #include <rkpll.h>
 #include <rk3399.h>
 #include <stage.h>
@@ -173,7 +173,7 @@ static _Bool memtest(u64 salt) {
 	_Bool res = 1;
 	for_range(block, 0, 31) {
 		u64 block_start = block * 0x08000000;
-		log("testing %08zx–%08zx … ", block_start, block_start + 0x07ffffff);
+		printf("[%"PRIuTS"] testing %08zx–%08zx … ", get_timestamp(), block_start, block_start + 0x07ffffff);
 		write_block(block, salt);
 		timed_flush();
 		if (test_block(block, salt)) {
@@ -187,7 +187,7 @@ static _Bool memtest(u64 salt) {
 	puts("\n");
 	for_range(block, 0, 31) {
 		u64 block_start = block * 0x08000000;
-		log("retention testing %08zx–%08zx … ", block_start, block_start + 0x07ffffff);
+		printf("[%"PRIuTS"] retention testing %08zx–%08zx … ", get_timestamp(), block_start, block_start + 0x07ffffff);
 		if (test_block(block, salt)) {
 			puts("good\n");
 		} else {

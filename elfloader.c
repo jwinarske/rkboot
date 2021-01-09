@@ -3,7 +3,7 @@
 #include <inttypes.h>
 #include <stdatomic.h>
 
-#include <main.h>
+#include <mmu.h>
 #include <rk3399.h>
 #include <rk3399/payload.h>
 #include <rkpll.h>

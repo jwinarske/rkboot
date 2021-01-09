@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <stdatomic.h>
 #include <inttypes.h>
+#include <stdatomic.h>
 
-#include <main.h>
+#include <die.h>
+#include <log.h>
 #include <rk3399.h>
 #include <runqueue.h>
 #include <sched_aarch64.h>

@@ -1,5 +1,10 @@
-#include <main.h>
+#include <stdio.h>
+
 #include <rk3399.h>
+
+static inline u32 ubfx32(u32 v, u32 shift, u32 length) {
+	return v >> shift & ((1 << length) - 1);
+}
 
 static void dump_pll(const char *name, volatile u32 *base) {
 	u32 con3 = base[3], con1 = base[1], con2 = base[2];
@@ -37,9 +42,9 @@ static void dump_pll(const char *name, volatile u32 *base) {
 	}
 }
 
-void dump_clocks() {
-	static const struct {
-		const char *name;
+void dump_clocks(volatile u32 *pmucru, volatile u32 *cru) {
+	const struct {
+		const char name[8];
 		volatile u32 *addr;
 	} plls[] = {
 		{"PPLL", pmucru + 0},
