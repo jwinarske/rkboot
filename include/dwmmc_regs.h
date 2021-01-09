@@ -94,9 +94,12 @@ enum {
 	DWMMC_INT_DATA_NO_BUSY = 0x10000,
 	/* … */
 	DWMMC_INT_FIFO_XERRUN = 0x800,
-	/* …  */
+	DWMMC_INT_WR_STARVE = 0x400,
+	DWMMC_INT_VOLT_SWITCH = 0x400,	/* note: same as above */
+	DWMMC_INT_RD_TIMEOUT = 0x200,
 	DWMMC_INT_RESP_TIMEOUT = 0x100,
-	/* … */
+	DWMMC_INT_DATA_CRC_ERR = 0x80,
+	DWMMC_INT_RESP_CRC_ERR = 0x40,
 	DWMMC_INT_RX_FIFO_DATA_REQ = 0x20,
 	DWMMC_INT_TX_FIFO_DATA_REQ = 0x10,
 	/* asserted whenever DWMMC_STATUS_DATA_SM_BUSY gets reset (transfer finished successfully, read timeout, transfer abort, …) */
