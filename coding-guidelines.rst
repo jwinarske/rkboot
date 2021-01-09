@@ -48,3 +48,126 @@ Platform code
         interrupt controllers
     `mmu`
         page tables and other MMU handling
+
+Code Style – C code
+-------------------
+
+Use good judgement – violating the rules in this section may very well be okay if the alternative is worse.
+
+Comments
+^^^^^^^^
+
+Comments use `/* */` style.
+Neither the starting (`/*`) nor ending (`*/`) marker go on their own line, regardless of if the comment is one or multiple lines long.
+Subsequent lines should be prefixed with a space and an asterisk after the indent … one of the few concessions to monospace editing/viewing you will find in this document.
+
+Comments can go on the same line as the code they are annotating, but make sure the line doesn't become overly long as a result.
+If a comment follows code within a line, they should be separated by a single tab character.
+
+DEFINE\_ pattern
+^^^^^^^^^^^^^^^
+
+Many times one wants to define an enumeration and be able to pretty-print its values, or perhaps associate some other value with the name.
+In levinboot, the way to achieve this is using the `DEFINE\_` pattern::
+
+    #define DEFINE_MY_ENUM X(A, 42) X(B, 1337)
+    enum my_enum {
+    #define X(name, value)
+        DEFINE_MY_ENUM
+    #undef X
+        NUM_MY_ENUM
+    };
+
+    const char my_enum_names[NUM_MY_ENUM][2] = {
+    #define X(name, value) #name,
+        DEFINE_MY_ENUM
+    #undef X
+    };
+    const unsigned my_enum_values[NUM_MY_ENUM] = {
+    #define X(name, value) value,
+        DEFINE_MY_ENUM
+    #undef X
+    };
+
+This pattern makes perhaps obscure use of the C preprocessor's evaluation strategy.
+
+Unless the names vary wildly in length (or are generally much longer than pointers), the "names" array should use character arrays instead of pointers to strings, for efficient lookup.
+
+The :code:`NUM\_` enumerator is an exception to the `Trailing commata`_ rule, since it is expected to be the final entry for the entire life-cycle of the enum.
+
+Includes
+^^^^^^^^
+
+Includes are grouped into 3 categories, each of which is sorted (collation: /, -, \_, letters, numbers, others – in Unicode code point order; please don't get too creative with filenames):
+
+1. This module
+
+  Includes that declare the functions that this source file implements, or tightly related code.
+
+2. Standard library
+
+3. Other levinboot headers
+
+If all three categories are present, the second should be separated from the third one by an empty line.
+
+Indentation
+^^^^^^^^^^^
+
+Indentation uses tabs, always.
+There is no space alignment within a function call.
+
+If a pair of delimiters (`()`, `[]` or `{}`) is broken onto multiple lines (regardless of whether they form a function call, a statement block, a data type definition, an initializer list or something else), the indentation is increased by one tab for all lines (strictly) between the ones with the opening delimiter and the closing delimiter on them.
+If multiple delimiter pairs are broken up that have all of their opening delimiters on the same line and all of their closing delimiters on the same line, the indent is still only one line.
+
+Line length
+^^^^^^^^^^^
+
+There is a soft limit at 79 columns and a hard limit at 120 columns.
+Tabs count for 8 columns each.
+
+In the future there should be additional guidelines accounting for proportional fonts.
+
+Local variables
+^^^^^^^^^^^^^^^
+
+Wherever reasonably possible, the definition of a variable should also be the initialization.
+
+A typical exception to this would be a variable that gets initialized depending on an `if` condition, with the result of a complicated and/or side-effectful computation::
+
+    unsigned x;
+    if (condition) {
+        /* compute something */
+        x = expression;
+    } else {
+        /* compute something else */
+        x = other_expression;
+    }
+
+Statement blocks
+^^^^^^^^^^^^^^^^
+
+`if` and loop statements always use braces around their body (including the `else` branch if applicable).
+The opening brace always goes on the same line as the previous token, the closing brace always on the same line as the next token (if applicable).
+
+If it would not make the line significantly overlength, the body does not even need to be broken onto multiple lines. The following is considered acceptible::
+
+    do {
+        if (condition) {continue;}
+        while (other_condition) {*ptr++ = value;}
+    } while (yet_other_condition);
+
+Generally, if a block is broken onto multiple lines, the last line should only contain no content of the block (only the closing brace and potentially following parts of the surrounding statement) and the opening line should contain no body of the block, except possibly a comment.
+
+An exception to this is when a block is not used as the body of a conditional/loop construct or a function definition, but to limit the scope of a single variable.
+In this case, the initialization can go on the opening line of the block and a cleanup statement related to the variable can go on the closing line::
+
+    {irq_save_t irq = irq_lock(&strct->lock);
+        /* do something with data protected by the lock */
+    irq_unlock(&strct->lock, irq);}
+
+Trailing commata
+^^^^^^^^^^^^^^^^
+
+Items in initializer lists for arrays should generally use a trailing comma, such that the list can be extended without modifying the last line, keeping the diff cleaner.
+
+The same goes for enumerators, except where no enumerator can sensibly be inserted after the currently-last one, e. g. because it is the highest bit in an enumeration of register bits, or the :code:`NUM\_` entry in `DEFINE\_ pattern`_.
