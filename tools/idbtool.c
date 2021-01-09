@@ -6,7 +6,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tools.h"
+#include "rc4.h"
 
 void write_buf(const u8 *buf, size_t size) {
 	size_t pos = 0;

@@ -8,7 +8,7 @@
 #include <string.h>
 #include <libusb.h>
 #include <assert.h>
-#include "tools.h"
+#include "rc4.h"
 
 uint16_t crc16(uint8_t *buf, size_t len, uint16_t crc) {
 	const uint16_t poly = 0x1021;
