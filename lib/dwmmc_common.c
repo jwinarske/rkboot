@@ -33,7 +33,9 @@ void dwmmc_irq(struct dwmmc_state *state) {
 		idmac_st_acc = idmac_st_val & ~DWMMC_IDMAC_FSM_MASK;
 		idmac_st_acc |= idmac_st;
 	} while (!atomic_compare_exchange_weak_explicit(&state->idmac_st, &idmac_st_val, idmac_st_acc, memory_order_release, memory_order_relaxed));
-	if ((idmac_st_acc >> 13 & 15) < 2 && (~status & DWMMC_STATUS_DATA_SM_BUSY)) {
+	_Bool transfer_done = (idmac_st_acc >> 13 & 15) < 2
+		&& (~status & DWMMC_STATUS_DATA_SM_BUSY);
+	if (transfer_done || (rintsts & DWMMC_ERROR_INT_MASK)) {
 		struct dwmmc_xfer *xfer = atomic_load_explicit(&state->active_xfer, memory_order_acquire);
 		if (xfer) {
 			spews("ending transfer\n");
