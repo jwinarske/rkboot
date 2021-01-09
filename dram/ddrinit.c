@@ -247,14 +247,24 @@ void ddrinit_set_channel_stride(u32 val) {
 }
 
 static void both_channels_ready(struct ddrinit_state *st) {
-	encode_dram_size(st->geo);
 	switch_and_train(st, 400, 0, 1, &phy_400mhz);
 	switch_and_train(st, 800, 1, 0, &phy_800mhz);
+	mmu_map_mmio_identity(0, 0xf7ffffff);
+	for_channel(ch) {
+		ddrinit_set_channel_stride(0x17+ch); /* map only this channel */
+		arch_flush_writes();
+		printf("channel %u: ", ch);
+		channel_post_init(
+			pctl_base_for(ch), pi_base_for(ch), msch_base_for(ch),
+			&init_cfg.msch, st->geo + ch
+		);
+	}
+	encode_dram_size(st->geo);
 	rk3399_set_init_flags(RK3399_INIT_DRAM_TRAINING);
 	printf("[%"PRIuTS"] finished.\n", get_timestamp());
 	/* 256B interleaving */
 	ddrinit_set_channel_stride(0xd);
-	__asm__ volatile("dsb ish");
+	arch_flush_writes();
 	for_range(bit, 10, 32) {
 		if (test_mirror(MIRROR_TEST_ADDR, bit)) {die("mirroring detected\n");}
 	}
@@ -320,7 +330,7 @@ const char ddrinit_chan_state_names[NUM_CHAN_ST][12] = {
 void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 	enum channel_state chan_st = st->chan_st[ch];
 	assert(chan_st < NUM_CHAN_ST);
-	volatile u32 *pctl = pctl_base_for(ch), *pi = pi_base_for(ch);
+	volatile u32 *pctl = pctl_base_for(ch);
 	volatile struct phy_regs *phy = phy_for(ch);
 	u32 int_status = pctl[PCTL_INT_STATUS];
 	debug("DDRC%"PRIu32" status=0x%01"PRIx32"%08"PRIx32" chan_st=%s\n", ch, pctl[PCTL_INT_STATUS+1], int_status, ddrinit_chan_state_names[chan_st]);
@@ -360,13 +370,6 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		pctl[PCTL_INT_ACK] = PCTL_INT0_MRR_DONE;
 		geo = st->geo + ch;
 		set_width(st->geo + ch, pctl[PCTL_PERIPHERAL_MRR_DATA], 1);
-		ddrinit_set_channel_stride(0x17+ch); /* map only this channel */
-		for_channel(c) {if (st->chan_st[c] >= CHAN_ST_READY) {goto already_mapped;}}
-		/* map DRAM region as MMIO; needed for geometry detection; unmapped after training */
-		mmu_map_mmio_identity(0, 0xf7ffffff);
-		already_mapped:;
-		printf("channel %u: ", ch);
-		channel_post_init(pctl, pi, msch_base_for(ch), &init_cfg.msch, geo);
 		st->chan_st[ch] = CHAN_ST_READY;
 		rk3399_set_init_flags(RK3399_INIT_DDRC0_READY << ch);
 
