@@ -181,8 +181,7 @@ decompressors = set(args.decompressors or [])
 
 if (bool(boot_media) or args.elfloader_initcpio) and not decompressors:
     print("WARNING: boot medium and initcpio support require decompression support, enabling zstd")
-    elfloader_decompression = True
-    args.elfloader_zstd = True
+    decompressors = ['zstd']
 
 if args.tf_a_headers:
     flags['dramstage/commit'].append(shesc('-DTF_A_BL_COMMON_PATH="'+cesc(path.join(args.tf_a_headers, "common/bl_common_exp.h"))+'"'))
