@@ -70,10 +70,11 @@ find_cpu:
 	cmp x2, x3
 	b.ne find_cpu
 
-	ldr x1, [x0]
+	ldr x29, [x0]
 	msr SPSel, 1
-	add sp, x1, #0
-	stp xzr, xzr, [sp, -16]!
+	stp xzr, xzr, [x29, -16]!
+	add sp, x29, #0
+	mov x30, #0
 	b secondary_cpu_main
 ENDFUNC(reset_entry)
 
