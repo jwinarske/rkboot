@@ -134,6 +134,7 @@ static enum iost start(struct async_blockdev *dev_, u64 addr, u8 *buf, u8 *buf_e
 
 void boot_sd() {
 	infos("trying SD\n");
+	arch_flush_writes();
 
 	if (regmap_cru[CRU_CLKGATE_CON+12] & 1 << 13) {
 		puts("sramstage left SD disabled\n");
