@@ -25,6 +25,8 @@ build idbtool: cc $src/idbtool.c
     flags =
 build regtool: cc $src/regtool.c $src/regtool_rpn.c
     flags =
+build lbpayload: cc $src/lbpayload/main.c $src/lbpayload/elf.c
+    flags =
 END
 for f in $compression_src; do
 	echo build $f.o: cc "$src/../compression/$f.c" >>build.ninja
@@ -49,4 +51,4 @@ for f in $compression_src; do
 done
 echo >>build.ninja
 
-echo default idbtool regtool unpacktool >>build.ninja
+echo default idbtool regtool unpacktool lbpayload >>build.ninja
