@@ -125,6 +125,9 @@ Primary build targets are:
 - :output:`levinboot-sd.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
   This target is only available if a boot medium is configured.
 
+- :output:`levinboot-spi.img`: this is an image that can be written to the start of SPI flash.
+  This target is only available if a boot medium is configured.
+
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
 - :output:`elfloader.bin`: this is the payload loading stage for multi-stage _`Booting via USB`.
