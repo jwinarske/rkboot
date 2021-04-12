@@ -23,8 +23,8 @@
 		.error "update errata info for new revision"
 	.endif
 	/* enter intra-cluster coherency */
-	mrs x19, CORTEX_A53_CPUECTLR_EL1
-	orr x19, x19, #CORTEX_A53_CPUECTLR_EL1_SMPEN
-	msr CORTEX_A53_CPUECTLR_EL1, x19
+	mrs \clobber_reg, CORTEX_A53_CPUECTLR_EL1
+	orr \clobber_reg, \clobber_reg, #CORTEX_A53_CPUECTLR_EL1_SMPEN
+	msr CORTEX_A53_CPUECTLR_EL1, \clobber_reg
 .endm
 #endif
