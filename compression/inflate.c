@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#define _POSIX_C_SOURCE 200809L
 #include "compression.h"
 #include "../include/log.h"
 #include <assert.h>

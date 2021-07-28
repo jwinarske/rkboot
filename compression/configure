@@ -3,7 +3,7 @@
 
 if [ "$CC" = "" ]; then CC=gcc; fi
 if [ "$LD" = "" ]; then LD="$CC"; fi
-if [ "$CFLAGS" = "" ]; then CFLAGS=-O3; fi
+if [ "$CFLAGS" = "" ]; then CFLAGS="-O3 --std=c11"; fi
 src=`realpath $0`
 src=`dirname $src`
 src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
@@ -12,7 +12,7 @@ files="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_probe_literals zstd
 
 cat >build.ninja <<END
 ninja_required_version = 1.3
-cflags = -Wall -Werror -Wno-error=unused-parameter -Wextra -Wno-sign-compare $CFLAGS
+cflags = -Wall -Werror -Wno-error=unused-parameter -Wno-error=cpp -Wextra -Wno-sign-compare $CFLAGS
 rule cc
     depfile = \$out.d
     deps = gcc
