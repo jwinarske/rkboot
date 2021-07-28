@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
 			assert(out);
 			state->out = out;
 			state->window_start = out;
-			state->out_end = out + size;
+			state->out_end = out + size + LZCOMMON_BLOCK;
 			_Bool unlimit = 0;
 			while (state->decode) {
 				const u8 *end = buf + buf_size;

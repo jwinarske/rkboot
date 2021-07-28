@@ -207,7 +207,7 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 			u64 sequence = sequence_buffer[i];
 			u32 copy = sequence & 0x1ffff, length = (u32)(sequence >> 17 & 0x1ffff) + 3;
 			u32 dist = (sequence >> 34) + 1;
-			spew("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32" %.*s\n", copy, length, dist, (int)copy, literal_ptr);
+			spew("seq copy%"PRIu32" length%"PRIu32" dist%"PRIu32" space%zu %.*s\n", copy, length, dist, (size_t)(out_end - out), (int)copy, literal_ptr);
 
 			check(copy <= probe.size, "sequence specifies to copy more literals than available\n");
 			if (unlikely(out_end - out < length + probe.size)) {return DECODE_NEED_MORE_SPACE;}
