@@ -103,8 +103,8 @@ if [ -z "$skip" -o "$skip" == "9" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == 10 ]; then
-	echo "Configuration 10: levinboot + usbstage + eMMC elfloader, configured for initcpio use (LZ4+gzip decompression)"
-	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{emmc,lz4,gzip,initcpio}
+	echo "Configuration 10: levinboot + usbstage + eMMC elfloader, configured for initcpio use (gzip+zstd decompression)"
+	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{emmc,gzip,zstd,initcpio}
 	until ninja sramstage.bin usbstage.bin elfloader.bin; do read -p "press enter to rebuild";done
 	until prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 elfloader.bin --start 4000000 1000;do true; done
 fi
