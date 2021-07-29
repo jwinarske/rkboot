@@ -402,12 +402,12 @@ static void xxh64_update(struct xxh64_state *state, const u8 *buf, size_t size) 
 	state->len += size;
 	u8 xxh_offset = state->offset;
 	if (size <= 32 && xxh_offset + size < 32) {
-		lzcommon_literal_copy(state->buf + xxh_offset, buf, size);
+		memcpy((u8 *)state->buf + xxh_offset, buf, size);
 		state->offset = xxh_offset + size;
 	} else {
 		u8 fillup = 32 - xxh_offset;
 		assert(size >= fillup);
-		lzcommon_literal_copy(state->buf + xxh_offset, buf, 32 - xxh_offset);
+		memcpy((u8 *)state->buf + xxh_offset, buf, fillup);
 		size -= fillup;
 		buf += fillup;
 		state->state[0] = xxh64_round(state->state[0], ldle64a((u64 *)state->buf));
@@ -436,11 +436,8 @@ static void xxh64_update(struct xxh64_state *state, const u8 *buf, size_t size) 
 			state->state[2] = xxh64_round(state->state[2], c);
 			state->state[3] = xxh64_round(state->state[3], d);
 		}
-		u8 offset = 0;
-		while (size--) {
-			state->buf[offset++] = *buf++;
-		}
-		state->offset = offset;
+		memcpy(state->buf, buf, size);
+		state->offset = size;
 	}
 }
 
