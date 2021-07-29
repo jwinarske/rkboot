@@ -43,14 +43,14 @@ ENDFUNC(memset)
 
 .section .text.asm.memcpy
 PROC(memcpy, 2)
+	subs x2, x2, #1
+	b.lo memcpy_out
 	mov x3, x0
-	cbz x2, memcpy_out
-	sub x2, x2, #1
 memcpy_loop:
 	ldrb w4, [x1], #1
 	strb w4, [x3], #1
 	subs x2, x2, #1
-	b.hi memcpy_loop
+	b.hs memcpy_loop
 memcpy_out:
 	ret
 ENDFUNC(memcpy)
