@@ -42,8 +42,8 @@
 					chmod +w bl31.elf
 					strip bl31.elf
 					mkdir $out
-					gzip -c bl31.elf >$out/bl31.gz
-					gzip -ck ${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} >$out/Image.gz
+					${pkgs.zstd}/bin/zstd -c bl31.elf >$out/bl31.zst
+					${pkgs.zstd}/bin/zstd -c ${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} >$out/Image.zst
 				'';
 			in pkgs.writeScript "install-levinboot.sh" ''
 				#!${pkgs.runtimeShell}
@@ -55,7 +55,7 @@
 				if test "$NIXOS_INSTALL_BOOTLOADER" = 1; then
 					dd if=${(import ./. {inherit pkgs;}).levinboot}/levinboot-sd.img of="${cfg.bootloader-device}"
 				fi
-				${pkgs.dtc}/bin/fdtput -pt s - <$1/dtbs/${cfg.dtb} /chosen bootargs "systemConfig=$1 init=$1/init `cat $1/kernel-params`" | gzip | cat ${payload}/bl31.gz - ${payload}/Image.gz $1/initrd | dd of=${cfg.payload-device}
+				${pkgs.dtc}/bin/fdtput -pt s - <$1/dtbs/${cfg.dtb} /chosen bootargs "systemConfig=$1 init=$1/init `cat $1/kernel-params`" | zstd | cat ${payload}/bl31.zst - ${payload}/Image.zst $1/initrd | dd of=${cfg.payload-device}
 				sync
 			'';
 		};
