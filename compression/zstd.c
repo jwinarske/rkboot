@@ -477,6 +477,7 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 		size_t res = decompress_block(in, in + block_size, out, st->st.out_end - LZCOMMON_BLOCK, &st->tables, st->st.window_start);
 		if (res < NUM_DECODE_STATUS) {return res;}
 		decomp_size = res - NUM_DECODE_STATUS;
+		debug("%zu bytes decompressed\n", decomp_size);
 		break;
 	default:
 		info("reserved block type used\n");
