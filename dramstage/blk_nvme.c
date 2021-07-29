@@ -168,6 +168,9 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
 		_Bool success = nvme_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
 		assert(success);
+		/* we will invalidate later, but this prevents any previous
+		 * cache contents from overwriting DMA'd-in data */
+		flush_range(dev->end_ptr, end - dev->end_ptr);
 		if (!nvme_emit_read(dev->st, dev->st->sq + 1, &dev->xfer, dev->nsid, dev->next_lba)) {return (struct async_buf) {iost_u8 + IOST_INVALID, iost_u8};}
 		if (!nvme_submit_single_command(dev->st, 1, &dev->xfer.req)) {return (struct async_buf) {iost_u8 + IOST_TRANSIENT, iost_u8};}
 		dev->next_lba += xfer_size / dev->blk.block_size;
