@@ -2,6 +2,7 @@
 #include <defs.h>
 #include <string.h>
 
+#undef strnlen
 size_t strnlen(const char *s, size_t maxlen) {
 	const char *start = s, *end = s + maxlen;
 	while (s < end && *s) {s += 1;}

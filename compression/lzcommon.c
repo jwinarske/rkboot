@@ -128,8 +128,7 @@ static void copy(u8 *dest, const u8 *src, u32 length) {
 /* this function does not assume that dest and src can be subtracted, but it must behave safely (correctly copy `length` bytes, while possibly writing garbage until the next LZCOMMON_BLOCK boundary) as long as `dest` is not within `src` and `src+length` (used in zstd decompression) */
 void lzcommon_literal_copy(u8 *dest, const u8 *src, u32 length) {
 	if (length < LZCOMMON_BLOCK) {
-		length = LZCOMMON_BLOCK;
-		while (length--) {*dest++ = *src++;}
+		memcpy(dest, src, LZCOMMON_BLOCK);
 	} else {
 		copy(dest, src, length);
 	}

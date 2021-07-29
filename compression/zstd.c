@@ -233,7 +233,7 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 		num_seq -= seq_this_round;
 	}
 	check(finish_sequences(&seqstate, in, tables), "finishing sequence decoding failed");
-	lzcommon_literal_copy(out, literal_ptr, probe.size);
+	memcpy(out, literal_ptr, probe.size);
 	out += probe.size;
 	return NUM_DECODE_STATUS + (out - out_start);
 }
