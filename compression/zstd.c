@@ -286,7 +286,7 @@ static enum compr_probe_status probe(const u8 *in, const u8 *end, u64 *size) {
 }
 
 struct xxh64_state {
-	_Alignas(8) u8 buf[32];
+	u64 buf[4];
 	u64 state[4];
 	u64 len;
 	u8 offset;
@@ -350,16 +350,16 @@ static u64 xxh64_finalize(const struct xxh64_state *state) {
 	xxh64 += state->len;
 	u8 single_rounds = state->offset >> 3;
 	assert(single_rounds < 4);
-	const u8 *ptr = state->buf;
-	while (single_rounds--) {
-		u64 dw = ldle64a((const u64 *)ptr);
+	const u8 *ptr = (const u8 *)state->buf;
+	for (int i = 0; i < single_rounds; ++i) {
+		u64 dw = ldle64a(state->buf + i);
 		debug("xxh64 8byte: 0x%"PRIx64"\n", dw);
 		xxh64 ^= xxh64_shuffle(dw);
 		ptr += 8;
 		xxh64 = xxh64_mergestep(xxh64 << 27 | xxh64 >> 37);
 	}
 	if (state->offset & 4) {
-		u32 w = ldle32a((const u32 *)ptr);
+		u32 w = (u32)ptr[0] | (u32)ptr[1] << 8 | (u32)ptr[2] << 16 | (u32)ptr[3] << 24;
 		debug("xxh64 4byte: 0x%"PRIx32"\n", w);
 		xxh64 ^= w * xxh64_primes[0];
 		ptr += 4;
@@ -410,10 +410,10 @@ static void xxh64_update(struct xxh64_state *state, const u8 *buf, size_t size) 
 		memcpy((u8 *)state->buf + xxh_offset, buf, fillup);
 		size -= fillup;
 		buf += fillup;
-		state->state[0] = xxh64_round(state->state[0], ldle64a((u64 *)state->buf));
-		state->state[1] = xxh64_round(state->state[1], ldle64a((u64 *)(state->buf + 8)));
-		state->state[2] = xxh64_round(state->state[2], ldle64a((u64 *)(state->buf + 16)));
-		state->state[3] = xxh64_round(state->state[3], ldle64a((u64 *)(state->buf + 24)));
+		state->state[0] = xxh64_round(state->state[0], ldle64a(state->buf));
+		state->state[1] = xxh64_round(state->state[1], ldle64a(state->buf + 1));
+		state->state[2] = xxh64_round(state->state[2], ldle64a(state->buf + 2));
+		state->state[3] = xxh64_round(state->state[3], ldle64a(state->buf + 3));
 		state->long_hash = 1;
 		while (size >= 32) {
 			u64 a, b, c, d;
@@ -425,10 +425,10 @@ static void xxh64_update(struct xxh64_state *state, const u8 *buf, size_t size) 
 #else
 			memcpy(state->buf, buf, 32);
 			buf += 32;
-			a = ldle64a((const u64 *)state->buf);
-			b = ldle64a((const u64 *)(state->buf+8));
-			c = ldle64a((const u64 *)(state->buf+16));
-			d = ldle64a((const u64 *)(state->buf+24));
+			a = ldle64a(state->buf);
+			b = ldle64a(state->buf + 1);
+			c = ldle64a(state->buf + 2);
+			d = ldle64a(state->buf + 3);
 #endif
 			size -= 32;
 			state->state[0] = xxh64_round(state->state[0], a);
