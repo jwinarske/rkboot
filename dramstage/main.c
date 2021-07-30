@@ -108,7 +108,7 @@ struct payload_desc *get_payload_desc() {
 	payload->kernel_start = (u8 *)payload_addr;
 	payload->kernel_end = __start__;
 
-#if CONFIG_ELFLOADER_INITCPIO
+#if CONFIG_DRAMSTAGE_INITCPIO
 	payload->initcpio_start = (u8 *)initcpio_addr;
 	payload->initcpio_end = (u8 *)(DRAM_START + dram_size());
 #endif
@@ -191,7 +191,7 @@ const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 _Noreturn void main() {
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	puts("elfloader\n");
+	puts("dramstage\n");
 
 	/* set DRAM as Non-Secure; needed for DMA */
 	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
@@ -347,7 +347,7 @@ _Noreturn void main() {
 		gicv2_wait_disabled(regmap_gic500d);
 		gicv3_per_cpu_teardown(regmap_gic500r);
 	} else {
-#if CONFIG_ELFLOADER_DECOMPRESSION
+#if CONFIG_DRAMSTAGE_DECOMPRESSION
 		struct async_dummy async = {
 			.async = {async_pump_dummy},
 			.buf = blob_buffer,

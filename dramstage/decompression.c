@@ -116,7 +116,7 @@ enum iost decompress_payload(struct async_transfer *async) {
 	if (IOST_OK != (res = decompress(async, (u8 *)fdt_addr, &payload->fdt_end))) {return res;}
 	payload->kernel_end -= LZCOMMON_BLOCK;
 	if (IOST_OK != (res = decompress(async, (u8 *)payload_addr, &payload->kernel_end))) {return res;}
-#ifdef CONFIG_ELFLOADER_INITCPIO
+#ifdef CONFIG_DRAMSTAGE_INITCPIO
 	payload->initcpio_end -= LZCOMMON_BLOCK;
 	if (IOST_OK != (res = decompress(async, (u8 *)initcpio_addr, &payload->initcpio_end))) {return res;}
 #endif

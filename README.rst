@@ -62,14 +62,13 @@ License
 
 levinboot is licensed under CC0, meaning that the author and contributors give up their copyright by placing the work in the public domain, in jurisdictions where that is possible, or if not, provide a non-exclusive license to do just about anything to the work to anyone who gets a copy, and waives all other legal interests of the author/contributor in the work.
 
-See `<https://creativecommons.org/publicdomain/zero/1.0/legalcode>`__ for the legal text.
+See `<https://creativecommons.org/publicdomain/zero/1.0/legalcode>`_ for the legal text.
 
 Source structure
 ================
 
 Still in flux, but slowly converging towards what it should be.
-
-Historical note: a lot of places still refer to 'elfloader'. Its current name is 'dramstage'. The transition will be completed in a future release.
+See `<./coding-guidelines.rst>`_ for the planned structure.
 
 Board support
 =============
@@ -103,22 +102,22 @@ levinboot uses a Ninja-based build system. The build is configured by running :s
 
 Important command-line arguments for :src:`configure.py` are:
 
---with-tf-a-headers PATH  tells :src:`configure.py` where the TF-A export headers are. Without this, the :output:`elfloader.bin` stage cannot be built, and will not be configured in the `build.ninja`.
+--with-tf-a-headers PATH  tells :src:`configure.py` where the TF-A export headers are. Without this, the :output:`dramstage.bin` stage cannot be built, and will not be configured in the `build.ninja`.
 
---payload-lz4, --payload-gzip, --payload-zstd  enables decompression in :output:`elfloader.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
+--payload-lz4, --payload-gzip, --payload-zstd  enables decompression in :output:`dramstage.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
 
---payload-spi, --payload-sd, --payload-emmc, --payload-nvme  configures :output:`elfloader.bin` to load payload images from SPI flash, SD cards, eMMC storage or NVMe drives (respectively) instead of expecting them preloaded in RAM at specific addresses.
+--payload-spi, --payload-sd, --payload-emmc, --payload-nvme  configures :output:`dramstage.bin` to load payload images from SPI flash, SD cards, eMMC storage or NVMe drives (respectively) instead of expecting them preloaded in RAM at specific addresses.
   This process requires decompression support to be enabled.
   See _`Booting from SPI` and _`Booting from SD/eMMC` for more information.
 
   These options can be combined. See _`Boot Order` for a description for which payload is loaded in which case.
 
---payload-initcpio  configures :output:`elfloader.bin` to load an initcpio image and pass it to the kernel.
+--payload-initcpio  configures :output:`dramstage.bin` to load an initcpio image and pass it to the kernel.
   This process requires decompression support to be enabled.
 
 Primary build targets are:
 
-- :output:`sramstage.bin`: this is the first stage of levinboot, used to initialize DRAM (and potentially other hardware) for use by :output:`usbstage`, :output:`memtest.bin` and/or :output:`elfloader.bin`.
+- :output:`sramstage.bin`: this is the first stage of levinboot, used to initialize DRAM (and potentially other hardware) for use by :output:`usbstage`, :output:`memtest.bin` and/or :output:`dramstage.bin`.
 
 - :output:`levinboot-usb.bin`: this is used for single-stage _`Booting via USB`
 
@@ -130,7 +129,7 @@ Primary build targets are:
 
 - :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
-- :output:`elfloader.bin`: this is the payload loading stage for multi-stage _`Booting via USB`.
+- :output:`dramstage.bin`: this is the payload loading stage for multi-stage _`Booting via USB`.
   Depending on the configuration it can behave in different ways:
 
   - if no compression format is configured: starting a kernel (or similar EL2 payload like :output:`teststage.bin`) pre-loaded at 0x00280000 with a BL31 ELF pre-loaded at 0x04200000 and a DTB pre-loaded at 0x00100000.
@@ -148,7 +147,7 @@ The Payload Blob
 
 *Note: the payload format will change in a future release. The old format may not be supported after that change.*
 
-The current payload format used by levinboot consists of 3 or 4 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image. If configured with :cmdargs:`--elfloader-initcpio`, a compressed initcpio must be appended.
+The current payload format used by levinboot consists of 3 or 4 concatenated compression frames, in the following order: BL31 ELF file, flattened device tree, kernel image. If configured with :cmdargs:`--payload-initcpio`, a compressed initcpio must be appended.
 Depending on your configuration, arbitrary combinations of LZ4, gzip and zstd frames are supported.
 
 If you want to use levinboot to boot actual systems, keep in mind that it will only insert a `/memory` node (FIXME: which is currently hardcoded to 4GB) and `/chosen/linux,initrd-{start,end}` properties into the device tree.
@@ -203,25 +202,25 @@ There are several possible boot processes via USB:
 
   The primary purpose of this boot process is testing self-boot configurations in a situation as close as possible to self-boot, but without having to write to boot media.
 
-- two-stage USB boot using boot media: :command:`usbtool --call sramstage.bin --load 4000000 elfloader.bin --jump 4000000 1000`
+- two-stage USB boot using boot media: :command:`usbtool --call sramstage.bin --load 4000000 dramstage.bin --jump 4000000 1000`
 
-  This is functionally equivalent to the first, with the difference that sramstage does not unpack an embedded copy of dramstage (elfloader), which means that the build-process is slightly simpler and faster.
+  This is functionally equivalent to the first, with the difference that sramstage does not unpack an embedded copy of dramstage, which means that the build-process is slightly simpler and faster.
 
   This is useful for quickly testing dramstage changes related to boot medium handling. It is mutually exclusive with the next option:
 
-- two-stage USB boot with mask-ROM transfer: :command:`usbtool --call sramstage.bin --load 4000000 elfloader.bin --load 4200000 path/to/bl31.elf --load 100000 path/to/fdt-blob.dtb --load 280000 teststage.bin --jump 4000000 1000` (with the paths substituted for your system)
+- two-stage USB boot with mask-ROM transfer: :command:`usbtool --call sramstage.bin --load 4000000 dramstage.bin --load 4200000 path/to/bl31.elf --load 100000 path/to/fdt-blob.dtb --load 280000 teststage.bin --jump 4000000 1000` (with the paths substituted for your system)
 
-  This should run sramstage to initialize DRAM, load all payload files into DRAM, and finally jump to :output:`elfloader.bin` which will start BL31, which will give control to :output:`teststage.bin`, which should dump the FDT header as well as its contents in DTS syntax.
+  This should run sramstage to initialize DRAM, load all payload files into DRAM, and finally jump to :output:`dramstage.bin` which will start BL31, which will give control to :output:`teststage.bin`, which should dump the FDT header as well as its contents in DTS syntax.
 
   The primary use case for this boot process is testing any changes related to payload handoff, especially for small payloads.
 
   You can use an (uncompressed) kernel image instead of teststage, though beware that mask-ROM-based transfers are rather slow. Instead it is recommended to use the following:
 
-- three-stage USB boot without compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --load 4000000 elfloader.bin --start 4000000 4102000`
+- three-stage USB boot without compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --load 4000000 dramstage.bin --start 4000000 4102000`
 
   This will use faster bulk transfers to copy the payload into memory. Note that neither this nor the previous boot process can use an initcpio, since compression is needed for framing.
 
-- three-stage USB boot with compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 4400000 path/to/payload-blob --load 4000000 elfloader.bin --start 4000000 4102000`
+- three-stage USB boot with compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 4400000 path/to/payload-blob --load 4000000 dramstage.bin --start 4000000 4102000`
 
   Note that usbstage can use stdin instead of a file by specifying '-'.
 
@@ -234,7 +233,7 @@ Booting from SPI
 
 levinboot can load its payload images from SPI flash. This way it can be used as the first stage in a kexec-based boot flow.
 
-Configure the build with :cmdargs:`--elfloader-spi` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
+Configure the build with :cmdargs:`--payload-spi` in addition to your choice of preferred compression formats (you need at least one). This will produce :output:`levinboot-sd.img` and :output:`levinboot-usb.bin` that are self-contained in the sense that they don't require another stage to be loaded after them by the mask ROM.
 
 Like all other boot media, you can test the bootloader over USB (see _`Booting via USB` for instructions) with :command:`usbtool --run levinboot-usb.bin` or write :output:`levinboot-sd.img` to sector 64 on the SD card or eMMC, or flashing :output:`levinboot-spi.img` to the start of SPI flash (see below for a way to do that without a working OS).
 

@@ -137,7 +137,7 @@ _Noreturn void commit(struct payload_desc *payload) {
 		.dram_size = dram_size() - TZRAM_SIZE,
 		.entropy = entropy_buffer,
 		.entropy_words = entropy_words,
-#ifdef CONFIG_ELFLOADER_INITCPIO
+#ifdef CONFIG_DRAMSTAGE_INITCPIO
 		.initcpio_start = (u64)payload->initcpio_start,
 		.initcpio_end = (u64)payload->initcpio_end,
 #else

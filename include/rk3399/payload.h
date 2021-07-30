@@ -6,7 +6,7 @@ struct payload_desc {
 	u8 *elf_start, *elf_end;
 	u8 *fdt_start, *fdt_end;
 	u8 *kernel_start, *kernel_end;
-#if CONFIG_ELFLOADER_INITCPIO
+#if CONFIG_DRAMSTAGE_INITCPIO
 	u8 *initcpio_start, *initcpio_end;
 #endif
 };

@@ -139,7 +139,7 @@ parser.add_argument(
 parser.add_argument(
     '--payload-initcpio',
     action='store_true',
-    dest='elfloader_initcpio',
+    dest='dramstage_initcpio',
     help='configure dramstage to load an initcpio'
 )
 parser.add_argument(
@@ -167,9 +167,9 @@ args = parser.parse_args()
 flags['memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
     flags['memtest'].append('-DUNCACHED_MEMTEST')
-if args.elfloader_initcpio:
-    for f in ('elfloader', 'dramstage/commit', 'dramstage/decompression'):
-        flags[f].append('-DCONFIG_ELFLOADER_INITCPIO')
+if args.dramstage_initcpio:
+    for f in ('dramstage/main', 'dramstage/commit', 'dramstage/decompression'):
+        flags[f].append('-DCONFIG_DRAMSTAGE_INITCPIO')
 
 for f in (args.debug or '').split(','):
     flags[f].append('-DDEBUG_MSG')
@@ -179,7 +179,7 @@ for f in (args.spew or '').split(','):
 boot_media = set(args.boot_media or [])
 decompressors = set(args.decompressors or [])
 
-if (bool(boot_media) or args.elfloader_initcpio) and not decompressors:
+if (bool(boot_media) or args.dramstage_initcpio) and not decompressors:
     print("WARNING: boot medium and initcpio support require decompression support, enabling zstd")
     decompressors = ['zstd']
 
@@ -193,10 +193,8 @@ elif boot_media or decompressors:
     )
     sys.exit(1)
 
-flags['dramstage/blk_sd'].append("-DCONFIG_ELFLOADER_DMA=1")
-
 if bool(decompressors) and not boot_media:
-    flags['dramstage/decompression'].append('-DCONFIG_ELFLOADER_MEMORY=1')
+    flags['dramstage/decompression'].append('-DCONFIG_DRAMSTAGE_MEMORY=1')
 
 # ===== ninja skeleton =====
 srcdir = path.dirname(sys.argv[0])
@@ -267,44 +265,44 @@ build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')]
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 levinboot = {'main', 'pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
-elfloader = {'elfloader', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
-boot_media_handlers = ('main', 'elfloader')
+dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
+boot_media_handlers = ('main', 'dramstage/main')
 if decompressors:
-    flags['elfloader'].append('-DCONFIG_ELFLOADER_DECOMPRESSION')
-    elfloader |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
+    flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
+    dramstage |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
 if 'lz4' in decompressors:
     flags['dramstage/decompression'].append('-DHAVE_LZ4')
-    elfloader |= {'compression/lz4'}
+    dramstage |= {'compression/lz4'}
 if 'gzip' in decompressors:
     flags['dramstage/decompression'].append('-DHAVE_GZIP')
-    elfloader |= {'compression/inflate'}
+    dramstage |= {'compression/inflate'}
 if 'zstd' in decompressors:
     flags['dramstage/decompression'].append('-DHAVE_ZSTD')
-    elfloader |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
+    dramstage |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
 if 'spi' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SPI=1')
-    elfloader |= {'lib/rkspi', 'rk3399_spi'}
+    dramstage |= {'lib/rkspi', 'rk3399_spi'}
 if 'emmc' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_EMMC=1')
     emmc_modules = {'lib/sdhci_common', 'rk3399_emmcphy'}
     levinboot |= emmc_modules | {'sramstage/emmc_init'}
-    elfloader |= emmc_modules | {'dramstage/blk_emmc', 'lib/sdhci', 'dramstage/boot_blockdev'}
+    dramstage |= emmc_modules | {'dramstage/blk_emmc', 'lib/sdhci', 'dramstage/boot_blockdev'}
 if 'sd' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SD=1')
     sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
     levinboot |= sdmmc_modules | {'sramstage/sd_init', 'lib/dwmmc_early'}
-    elfloader |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc', 'lib/dwmmc_xfer', 'dramstage/boot_blockdev'}
+    dramstage |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc', 'lib/dwmmc_xfer', 'dramstage/boot_blockdev'}
 if 'nvme' in boot_media:
     flags['main'].append('-DCONFIG_PCIE=1')
-    flags['elfloader'].append('-DCONFIG_NVME=1')
+    flags['dramstage/main'].append('-DCONFIG_NVME=1')
     levinboot |= {'sramstage/pcie_init'}
-    elfloader |= {'dramstage/blk_nvme', 'lib/nvme', 'lib/nvme_xfer', 'dramstage/boot_blockdev'}
+    dramstage |= {'dramstage/blk_nvme', 'lib/nvme', 'lib/nvme_xfer', 'dramstage/boot_blockdev'}
 usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
 dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
-modules = lib | levinboot | elfloader | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}
+modules = lib | levinboot | dramstage | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}
 if boot_media:
     modules |= dramstage_embedder
 build.comment(f'modules: {" ".join(modules)}')
@@ -373,7 +371,7 @@ levinboot |= {'dramcfg'}
 
 # ===== linking and image post processing =====
 levinboot = (levinboot | lib) - {'entry'}
-build('dramstage.lz4', 'lz4', 'elfloader.bin', flags='--content-size')
+build('dramstage.lz4', 'lz4', 'dramstage.bin', flags='--content-size')
 build('dramstage.lz4.o', 'incbin', 'dramstage.lz4')
 dramstage_embedder |= {'dramstage.lz4', 'entry-first'}
 
@@ -395,8 +393,8 @@ binary('usbstage', usbstage | lib, 'ff8c2000')
 binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
 build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
 if args.tf_a_headers:
-    binary('elfloader', elfloader | lib, '04000000')
-    build.default('elfloader.bin')
+    binary('dramstage', dramstage | lib, '04000000')
+    build.default('dramstage.bin')
 if boot_media:
     binary('levinboot-img', levinboot | dramstage_embedder, 'ff8c2000')
     binary('levinboot-usb', levinboot | dramstage_embedder, 'ff8c2000')

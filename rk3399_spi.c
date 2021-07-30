@@ -99,9 +99,7 @@ void boot_spi() {
 		boot_medium_loaded(BOOT_MEDIUM_SPI);
 	}
 
-#if CONFIG_ELFLOADER_IRQ
 	rkspi_end_irq_flash_read();
-#endif
 	cru[CRU_CLKGATE_CON+9] = SET_BITS16(1, 1) << 13;
 
 	printf("had read %zu bytes\n", async.buf.end - start);
