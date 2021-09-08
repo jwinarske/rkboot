@@ -92,6 +92,7 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 		}
 		u8 *end = dev->stop_ptr - dev->end_ptr > REQUEST_SIZE ? dev->end_ptr + REQUEST_SIZE: dev->stop_ptr;
 		debug("starting new xfer LBA 0x%08"PRIx32" buf 0x%"PRIx64"–0x%"PRIx64"\n", dev->next_lba, (u64)dev->end_ptr, (u64)end);
+		flush_range(dev->end_ptr, end - dev->end_ptr);
 		if (!sdhci_reset_xfer(&dev->xfer)) {return (struct async_buf) {iost_u8 + IOST_INVALID, iost_u8};}
 		_Bool success = sdhci_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
 		assert(success);
