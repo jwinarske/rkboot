@@ -17,4 +17,11 @@
 	add x29, sp, #0
 	.cfi_def_cfa x29, \size
 .endm
+.macro do19thru28 inst:req reg:req offset:req
+	\inst x19, x20, [\reg, #(\offset)]
+	\inst x21, x22, [\reg, #(\offset + 16)]
+	\inst x23, x24, [\reg, #(\offset + 32)]
+	\inst x25, x26, [\reg, #(\offset + 48)]
+	\inst x27, x28, [\reg, #(\offset + 64)]
+.endm
 #endif

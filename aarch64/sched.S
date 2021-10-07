@@ -8,6 +8,7 @@ call_cc_ptr2_int2: .global call_cc_ptr2_int2
 call_cc_ptr2_int1: .global call_cc_ptr2_int1
 	create_stackframe 112
 
+	msr SPSel, #1
 	adr x10, sched_resume
 	stp xzr, x10, [x29, #16]
 
@@ -30,6 +31,8 @@ call_cc_ptr2_int1: .global call_cc_ptr2_int1
 
 	mov x10, x0
 	add x0, x29, #16
+	do19thru28 ldp, sp, 16
+	ldp x29, x30, [sp], #96
 	br x10
 ENDFUNC(call_cc)
 PROC(sched_resume, 2)
@@ -47,6 +50,7 @@ PROC(sched_resume, 2)
 	.cfi_offset x29, -112
 	.cfi_offset x30, -104
 	// restore the stack
+	msr SPSel, #0
 	add sp, x0, #-16
 	add x29, x0, #-16
 	.cfi_def_cfa x29, 112
@@ -80,6 +84,7 @@ PROC(sched_start_thread, 2)
 	.cfi_def_cfa x0, 80
 	.cfi_undefined x30	// a newly-started thread has no return address
 	// set up the stack
+	msr SPSel, #0
 	add sp, x0, #80
 	.cfi_def_cfa sp, 0
 
@@ -92,5 +97,17 @@ PROC(sched_start_thread, 2)
 	stp xzr, xzr, [sp]	// bottom of the frame chain
 	add x29, sp, #0
 	blr x20
-	b sched_next
+	// thread function returned: abandon the thread
+	msr SPSel, #1
+	do19thru28 ldp, sp, 16
+	ldp x29, x30, [sp], #96
+	ret
 ENDFUNC(sched_start_thread)
+
+TEXTSECTION(.text.asm.sched_run)
+PROC(arch_sched_run, 2)
+	create_stackframe 96
+	do19thru28 stp, sp, 16
+	ldr x1, [x0, #8]
+	br x1
+ENDFUNC(arch_sched_run)

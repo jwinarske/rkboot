@@ -36,62 +36,36 @@ void sched_queue_list(struct sched_runnable_list *dest, struct sched_runnable_li
 	sched_queue_many(dest, head, last);
 }
 
-/* this function is entered in an atomic context */
-static void cpuidle() {
-#ifdef __aarch64__
-	debugs("idling\n");
-	/* according to the ARMv8-A ARM, WFI works for physical interrupts regardless of DAIF state (which we need to prevent deadlocking races) */
-	__asm__("wfi");
-#else
-	/* do some dummy IO */
-	puts("");
-#endif
+struct sched_runnable *sched_unqueue(struct sched_runqueue *rq) {
+	struct sched_runnable *fresh = atomic_exchange_explicit(&rq->fresh.head, 0, memory_order_acquire);
+	if (fresh) {	/* add fresh entries in reverse order */
+		struct sched_runnable **old_tail = rq->tail;
+		if (!rq->tail) {old_tail = &rq->head;}
+		rq->tail = &fresh->next;
+		struct sched_runnable *next = 0;
+		do {
+			struct sched_runnable *tmp = fresh->next;
+			fresh->next = next;
+			next = fresh;
+			fresh = tmp;
+		} while (fresh);
+		*old_tail = next;
+	}
+	struct sched_runnable *res = rq->head;
+	if (!res) {return 0;}
+	if (!(rq->head = res->next)){rq->tail = &rq->head;}
+	return res;
 }
 
-_Noreturn void sched_next() {
-	struct sched_runnable *runnable;
-	debugs("%");
-	do {
-		{irq_mask();
-			struct sched_runqueue *rq = get_runqueue();
-			struct sched_runnable *fresh = atomic_exchange_explicit(&rq->fresh.head, 0, memory_order_acquire);
-			if (fresh) {	/* add fresh entries in reverse order */
-				struct sched_runnable **old_tail = rq->tail;
-				if (!rq->tail) {old_tail = &rq->head;}
-				rq->tail = &fresh->next;
-				struct sched_runnable *next = 0;
-				do {
-					struct sched_runnable *tmp = fresh->next;
-					fresh->next = next;
-					next = fresh;
-					fresh = tmp;
-				} while (fresh);
-				*old_tail = next;
-			}
-			runnable = rq->head;
-			if (runnable) {
-				if (!(rq->head = runnable->next)) {
-					rq->tail = &rq->head;
-				}
-			} else {
-				cpuidle();
-			}
-		irq_unmask();}
-	} while (!runnable);
-	spew("running0x%"PRIx64"\n", (u64)runnable);
-	runnable->run(runnable);
-}
-
-static _Noreturn NORETURN_ATTR void yield_finish(struct sched_runnable *continuation) {
+static void yield_finish(struct sched_runnable *continuation) {
 	sched_queue_single(CURRENT_RUNQUEUE, continuation);
-	sched_next();
 }
 
 void sched_yield() {
 	call_cc(yield_finish);
 }
 
-_Noreturn NORETURN_ATTR void sched_finish_u32(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
+void sched_finish_u32(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
 	struct sched_runnable_list *list = (struct sched_runnable_list *)list_;
 	sched_queue_single(list, continuation);
 	/* in the critical case where the notifier just dequeued before we enqueued, we are already synchronized by the dequeue-enqueue, so relaxed is OK */
@@ -99,10 +73,9 @@ _Noreturn NORETURN_ATTR void sched_finish_u32(struct sched_runnable *continuatio
 	if ((val & mask) != expected) {
 		sched_queue_list(CURRENT_RUNQUEUE, list);
 	}
-	sched_next();
 }
 
-_Noreturn NORETURN_ATTR void sched_finish_u8(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
+void sched_finish_u8(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
 	struct sched_runnable_list *list = (struct sched_runnable_list *)list_;
 	sched_queue_single(list, continuation);
 	/* in the critical case where the notifier just dequeued before we enqueued, we are already synchronized by the dequeue-enqueue, so relaxed is OK */
@@ -110,10 +83,9 @@ _Noreturn NORETURN_ATTR void sched_finish_u8(struct sched_runnable *continuation
 	if ((val & mask) != expected) {
 		sched_queue_list(CURRENT_RUNQUEUE, list);
 	}
-	sched_next();
 }
 
-_Noreturn NORETURN_ATTR void sched_finish_u8ptr(struct sched_runnable *continuation, volatile void *ptr, volatile void *list_, ureg_t expected) {
+void sched_finish_u8ptr(struct sched_runnable *continuation, volatile void *ptr, volatile void *list_, ureg_t expected) {
 	struct sched_runnable_list *list = (struct sched_runnable_list *)list_;
 	sched_queue_single(list, continuation);
 	/* in the critical case where the notifier just dequeued before we enqueued, we are already synchronized by the dequeue-enqueue, so relaxed is OK */
@@ -121,23 +93,6 @@ _Noreturn NORETURN_ATTR void sched_finish_u8ptr(struct sched_runnable *continuat
 	if (val != (u8 *)expected) {
 		printf("requeue\n");
 		sched_queue_list(CURRENT_RUNQUEUE, list);
-	}
-	sched_next();
-}
-
-static _Noreturn NORETURN_ATTR void lock_finish(struct sched_runnable *continuation, atomic_flag *flag, struct sched_runnable_list *list) {
-	sched_queue_single(list, continuation);
-	if (!atomic_flag_test_and_set_explicit(flag, memory_order_acquire)) {
-		sched_queue_list(CURRENT_RUNQUEUE, list);
-	}
-	sched_next();
-}
-
-void call_cc_flag_runnablelist(void NORETURN_ATTR (*callback)(struct sched_runnable *, atomic_flag *, struct sched_runnable_list *), atomic_flag *, struct sched_runnable_list *);
-
-void sched_lock(struct sched_runnable_list *list, atomic_flag *flag) {
-	while (atomic_flag_test_and_set_explicit(flag, memory_order_acquire)) {
-		call_cc_flag_runnablelist(lock_finish, flag, list);
 	}
 }
 

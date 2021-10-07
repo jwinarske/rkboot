@@ -186,10 +186,9 @@ void main() {
 	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
 
-	size_t flags, reported = 0, last = start_flags;
+	size_t reported = 0, last = start_flags;
 	while (1) {
-		flags = atomic_load_explicit(&rk3399_init_flags, memory_order_acquire);
-		if ((flags & root_flags) == root_flags) {break;}
+		size_t flags = atomic_load_explicit(&rk3399_init_flags, memory_order_acquire);
 		timestamp_t now = get_timestamp();
 
 		static const struct {
@@ -212,7 +211,19 @@ void main() {
 				printf("%s ready after %"PRIu64"μs\n", flags_data[i].name, now / TICKS_PER_MICROSECOND);
 			}
 		}
-		sched_yield(CURRENT_RUNQUEUE);
+		irq_mask();
+		struct sched_runnable *r = sched_unqueue(get_runqueue());
+		if (r) {
+			irq_unmask();
+			arch_sched_run(r);
+		} else {
+			if ((flags & root_flags) == root_flags) {
+				irq_unmask();
+				break;
+			}
+			aarch64_wfi();
+			irq_unmask();
+		}
 	}
 
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}

@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <stdatomic.h>
 
+#include <irq.h>
 #include <mmu.h>
 #include <rk3399.h>
 #include <rk3399/payload.h>
@@ -189,6 +190,49 @@ static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[20][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
+void boot_monitor() {
+	u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
+	_Bool payload_loaded = 0;
+	for_range(boot_medium, 0, NUM_BOOT_MEDIUM) {
+		u32 exit_bit = 1 << (4*boot_medium);
+		if (~available_boot_media & exit_bit) {continue;}
+		u32 ready_bit = exit_bit << 1;
+		state = monitor_boot_state(state, ready_bit | exit_bit, 0);
+		if (state & exit_bit) {
+			printf("%s failed, going on to next\n", boot_medium_names[boot_medium]);
+			continue;
+		}
+		atomic_store_explicit(&current_boot_cue, boot_medium, memory_order_release);
+		sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
+		printf("cued %s\n", boot_medium_names[boot_medium]);
+		u64 xfer_start = get_timestamp();
+
+		u32 loaded_bit = exit_bit << 2;
+		state = monitor_boot_state(state, loaded_bit | exit_bit, 0);
+
+		if (state & loaded_bit) {
+			u64 xfer_end = get_timestamp();
+			printf("[%"PRIuTS"] payload loaded in %"PRIuTS" μs\n", xfer_end, (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
+			/* leave the user at least 500 ms to let go for each payload  */
+			while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
+			u32 gpio_bits = regmap_gpio0->read;
+			debug("GPIO0: %"PRIx32"\n", gpio_bits);
+			if ((~gpio_bits & 32) && available_boot_media >> 1 >> boot_medium != 0) {
+				printf("boot overridden\n");
+				continue;
+			}
+			payload_loaded = 1;
+			break;
+		}
+		printf("boot medium failed, going on to next\n");
+	}
+	if (!payload_loaded) {
+		die("no payload available\n");
+	}
+	atomic_store_explicit(&current_boot_cue, BOOT_CUE_EXIT, memory_order_release);
+	sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
+}
+
 _Noreturn void main() {
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	puts("dramstage");
@@ -296,49 +340,31 @@ _Noreturn void main() {
 		*runnable = thread_start;
 		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 #endif
+		{struct sched_thread_start thread_start = {
+			.runnable = {.next = 0, .run = sched_start_thread},
+			.pc = (u64)boot_monitor,
+			.pad = 0,
+			.args = {},
+		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_MONITOR) - sizeof(struct sched_thread_start));
+		*runnable = thread_start;
+		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
 
-		u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
-		_Bool payload_loaded = 0;
-		for_range(boot_medium, 0, NUM_BOOT_MEDIUM) {
-			u32 exit_bit = 1 << (4*boot_medium);
-			if (~available_boot_media & exit_bit) {continue;}
-			u32 ready_bit = exit_bit << 1;
-			state = monitor_boot_state(state, ready_bit | exit_bit, 0);
-			if (state & exit_bit) {
-				printf("%s failed, going on to next\n", boot_medium_names[boot_medium]);
-				continue;
-			}
-			atomic_store_explicit(&current_boot_cue, boot_medium, memory_order_release);
-			sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
-			printf("cued %s\n", boot_medium_names[boot_medium]);
-			u64 xfer_start = get_timestamp();
+		while (1) {
+			u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
 
-			u32 loaded_bit = exit_bit << 2;
-			state = monitor_boot_state(state, loaded_bit | exit_bit, 0);
-
-			if (state & loaded_bit) {
-				u64 xfer_end = get_timestamp();
-				printf("[%"PRIuTS"] payload loaded in %"PRIuTS" μs\n", xfer_end, (xfer_end - xfer_start) / CYCLES_PER_MICROSECOND);
-				/* leave the user at least 500 ms to let go for each payload  */
-				while (get_timestamp() - xfer_start < USECS(500000)) {usleep(100);}
-				u32 gpio_bits = regmap_gpio0->read;
-				debug("GPIO0: %"PRIx32"\n", gpio_bits);
-				if ((~gpio_bits & 32) && available_boot_media >> 1 >> boot_medium != 0) {
-					printf("boot overridden\n");
-					continue;
+			irq_mask();
+			struct sched_runnable *r = sched_unqueue(get_runqueue());
+			if (r) {
+				irq_unmask();
+				arch_sched_run(r);
+			} else  {
+				if ((state & all_exit_mask) == all_exit_mask) {
+					irq_unmask();
+					break;
 				}
-				payload_loaded = 1;
-				break;
+				aarch64_wfi();
+				irq_unmask();
 			}
-			printf("boot medium failed, going on to next\n");
-		}
-		if (!payload_loaded) {
-			die("no payload available\n");
-		}
-		atomic_store_explicit(&current_boot_cue, BOOT_CUE_EXIT, memory_order_release);
-		sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
-		while ((state & all_exit_mask) != all_exit_mask) {
-			state = monitor_boot_state(state, all_exit_mask, state & all_exit_mask);
 		}
 
 		for_array(i, intids) {
