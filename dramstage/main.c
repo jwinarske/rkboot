@@ -233,7 +233,7 @@ _Noreturn void main() {
 	struct payload_desc *payload = get_payload_desc();
 
 	if (available_boot_media) {
-		fiq_handler_spx = irq_handler_spx = irq_handler;
+		fiq_handler_same = irq_handler_same = irq_handler;
 		gicv3_per_cpu_setup(regmap_gic500r);
 		static const struct {
 			u16 intid;
@@ -355,7 +355,7 @@ _Noreturn void main() {
 		decompress_payload(&async.async);
 #endif
 	}
-	fiq_handler_spx = irq_handler_spx = 0;
+	fiq_handler_same = irq_handler_same = 0;
 
 	commit(payload);
 }

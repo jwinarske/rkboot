@@ -1,9 +1,8 @@
 #include <asm.h>
 .section .text.exc, "ax", %progbits
 
-.macro exc_handler name spsel
+.macro exc_handler name:req
 .align 7
-	msr SPSel, #\spsel
 	cmp SP, 0
 	b.eq 0f
 	stp X29, X30, [SP, #-192]!
@@ -25,37 +24,37 @@
 .global __exc_base__
 .align 12
 __exc_base__:
-exc_handler name=sync_exc_handler_sp0, spsel=1
+exc_handler name=sync_exc_handler_sp0
 .asciz "sync SP_EL0"
-exc_handler name=irq_handler_sp0, spsel=1
+exc_handler name=irq_handler_same
 .asciz "IRQ SP_EL0"
-exc_handler name=fiq_handler_sp0, spsel=1
+exc_handler name=fiq_handler_same
 .asciz "FIQ SP_EL0"
-exc_handler name=serror_handler_sp0, spsel=1
+exc_handler name=serror_handler_sp0
 .asciz "SError SP_EL0"
-exc_handler sync_exc_handler_spx, spsel=1
+exc_handler sync_exc_handler_spx
 .asciz "sync SP_ELx"
-exc_handler irq_handler_spx, spsel=1
+exc_handler irq_handler_same
 .asciz "IRQ SP_ELx"
-exc_handler fiq_handler_spx, spsel=1
+exc_handler fiq_handler_same
 .asciz "FIQ SP_ELx"
-exc_handler serror_handler_spx, spsel=1
+exc_handler serror_handler_spx
 .asciz "SError SP_ELx"
-exc_handler sync_exc_handler_aarch64, spsel=1
+exc_handler sync_exc_handler_aarch64
 .asciz "sync aarch64"
-exc_handler irq_handler_aarch64, spsel=1
+exc_handler irq_handler_lower
 .asciz "IRQ aarch64"
-exc_handler fiq_handler_aarch64, spsel=1
+exc_handler fiq_handler_lower
 .asciz "FIQ aarch64"
-exc_handler serror_handler_aarch64, spsel=1
+exc_handler serror_handler_aarch64
 .asciz "SError aarch64"
-exc_handler sync_exc_handler_aarch32, spsel=1
+exc_handler sync_exc_handler_aarch32
 .asciz "sync aarch32"
-exc_handler irq_handler_aarch32, spsel=1
+exc_handler irq_handler_lower
 .asciz "IRQ aarch32"
-exc_handler fiq_handler_aarch32, spsel=1
+exc_handler fiq_handler_same
 .asciz "FIQ aarch32"
-exc_handler serror_handler_aarch32, spsel=1
+exc_handler serror_handler_aarch32
 .asciz "SError aarch32"
 
 
@@ -117,11 +116,14 @@ unh_exc el=CONFIG_EL
 .endm
 .macro vectors suffix
 	vector sync_exc_handler_\suffix
-	vector irq_handler_\suffix
-	vector fiq_handler_\suffix
 	vector serror_handler_\suffix
 .endm
 vectors sp0
 vectors spx
 vectors aarch64
 vectors aarch32
+
+vector irq_handler_same
+vector fiq_handler_same
+vector irq_handler_lower
+vector fiq_handler_lower

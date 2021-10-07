@@ -125,7 +125,7 @@ void main() {
 	static volatile struct gic_distributor *const gic500d = regmap_gic500d;
 	static volatile struct gic_redistributor *const gic500r = regmap_gic500r;
 	gicv2_global_setup(gic500d);
-	fiq_handler_spx = irq_handler_spx = irq_handler;
+	fiq_handler_same = irq_handler_same = irq_handler;
 	gicv3_per_cpu_setup(gic500r);
 	static const struct {
 		u16 intid;
@@ -218,7 +218,7 @@ void main() {
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
 	gicv2_wait_disabled(gic500d);
 	gicv3_per_cpu_teardown(gic500r);
-	fiq_handler_spx = irq_handler_spx = 0;
+	fiq_handler_same = irq_handler_same = 0;
 	info("[%"PRIuTS"] sramstage finish\n", get_timestamp());
 	end_sramstage();
 }
