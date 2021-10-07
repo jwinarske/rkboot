@@ -4,8 +4,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include <plat.h>
 #include <die.h>
+#include <format.h>
+
+#include <plat.h>
 
 int puts(const char *str) {
 	return printf("%s", str);
