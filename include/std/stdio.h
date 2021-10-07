@@ -3,6 +3,7 @@
 #include <defs.h>
 #define FREESTANDING_STDIO
 
+int putchar(int);
 int puts(const char *);
 int PRINTF(1, 2) printf(const char *fmt, ...);
 typedef void FILE;

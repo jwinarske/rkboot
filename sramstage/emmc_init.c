@@ -20,7 +20,7 @@
 
 _Bool sdhci_init_early(struct sdhci_state *st) {
 	volatile struct sdhci_regs *sdhci = st->regs;
-	puts("SDHCI init\n");
+	puts("SDHCI init");
 	st->version = sdhci->sdhci_version;
 	st->caps = (u64)sdhci->capabilities[1] << 32 | sdhci->capabilities[0];
 	assert(st->version >= 2);
@@ -42,7 +42,7 @@ _Bool sdhci_init_early(struct sdhci_state *st) {
 	sdhci->timeout = 14;
 	sdhci->int_st_enable = sdhci->int_signal_enable = 0xfffff0ff;
 	sdhci->arg = 0;
-	puts("submitting CMD0\n");
+	puts("submitting CMD0");
 	sdhci->cmd = 0;
 	/* dramstage will poll the card for init complete, just kick off init here */
 	if (IOST_OK != sdhci_submit_cmd(st, SDHCI_CMD(1) | SDHCI_R3, 0x40000080)) {return 0;}

@@ -20,16 +20,16 @@
 #else
 	#ifdef SPEW_MSG
 	#define spew(...) printf(__VA_ARGS__)
-	#define spews(...) puts(__VA_ARGS__)
+	#define spews(...) printf("%s", __VA_ARGS__)
 	#endif
 	#ifdef DEBUG_MSG
 	#define debug(...) printf(__VA_ARGS__)
-	#define debugs(...) puts(__VA_ARGS__)
+	#define debugs(...) printf("%s", __VA_ARGS__)
 	#endif
 
 	#ifndef NO_INFO_MSG
 	#define info(...) printf(__VA_ARGS__)
-	#define infos(...) puts(__VA_ARGS__)
+	#define infos(...) printf("%s", __VA_ARGS__)
 	#endif
 #endif
 

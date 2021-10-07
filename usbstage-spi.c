@@ -28,7 +28,6 @@ static void tx_cmd(const u8 *buf, const u8 *end) {
 	while (buf < end) {
 		if (!fifo_left) {
 			fifo_left = 32 - spi1->tx_fifo_level;
-			//printf("<%"PRIu32">", fifo_left);
 		}
 		spi1->tx = *buf++;
 		fifo_left -= 1;
@@ -49,7 +48,7 @@ static void wait_until_ready() {
 	while (spi1->rx & 1) {
 		spi1->tx = 0xff;
 		while (!spi1->rx_fifo_level) {__asm__("yield");}
-		puts(".");
+		putchar('.');
 	}
 	spi1->enable = 0;
 	spi1->slave_enable = 0;
@@ -81,7 +80,7 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 			printf("JEDEC parameter table %"PRIu8".%"PRIu8": address 0x%"PRIx32"–0x%"PRIx32"\n", rev_major, rev_minor, ptp, ptp + (u32)length * 4);
 			dump_mem(sfdp, length * 4);
 			if (rev_major != 0 || rev_minor == 0 || length < 9) {
-				puts("\tnot compatible, skipping …\n");
+				puts("\tnot compatible, skipping …");
 				continue;
 			}
 			for_range(j, 0, 4) {
@@ -89,7 +88,7 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 				if (shift) {
 					printf("2^%"PRIu8"-byte erase: %02"PRIx8"\n", shift, op);
 					if (num_erase_ops < ARRAY_SIZE(erase_ops) && shift <= 16) {
-						puts("\tusable\n");
+						puts("\tusable");
 						erase_ops[num_erase_ops].shift = shift;
 						erase_ops[num_erase_ops++].opcode = op;
 					}
@@ -134,7 +133,7 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 		u8 cmd_buf[4] = {erase_cmd >> 24, erase_cmd >> 16, erase_cmd >> 8, erase_cmd};
 		tx_cmd(cmd_buf, cmd_buf + 4);
 		wait_until_ready();
-		puts(" erased.\n");
+		puts(" erased.");
 	}
 	const u8 *read_ptr = buf;
 	u8 _Alignas(16) cmd_buf[260];
@@ -152,8 +151,7 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 		printf("%"PRIu32, len);
 		tx_cmd(cmd_buf, cmd_buf + len);
 		wait_until_ready();
-		//dump_mem(cmd_buf, len);
-		puts(" ");
+		putchar(' ');
 	}
 	if (write_ptr != end) {
 		cmd_buf[1] = write_ptr >> 16;
@@ -163,7 +161,6 @@ void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
 		do {
 			cmd_buf[len++] = *read_ptr++;
 		} while (++write_ptr < end);
-		//dump_mem(cmd_buf, len);
 		tx_cmd(&wren, &wren + 1);
 		printf("trailing %"PRIu32, len);
 		tx_cmd(cmd_buf, cmd_buf + len);

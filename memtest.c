@@ -177,21 +177,21 @@ static _Bool memtest(u64 salt) {
 		write_block(block, salt);
 		timed_flush();
 		if (test_block(block, salt)) {
-			puts("good\n");
+			puts("good");
 		} else {
-			puts("FAILED\n");
+			puts("FAILED");
 			res = 0;
 		}
 	}
 	timed_flush();
-	puts("\n");
+	puts("starting retention test");
 	for_range(block, 0, 31) {
 		u64 block_start = block * 0x08000000;
 		printf("[%"PRIuTS"] retention testing %08zx–%08zx … ", get_timestamp(), block_start, block_start + 0x07ffffff);
 		if (test_block(block, salt)) {
-			puts("good\n");
+			puts("good");
 		} else {
-			puts("FAILED\n");
+			puts("FAILED");
 			res = 0;
 		}
 	}
@@ -260,7 +260,7 @@ _Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
 
 _Noreturn void main() {
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	puts("memtest\n");
+	puts("memtest");
 
 	regmap_pmusgrf[PMUSGRF_SOC_CON0] = 0x80008000;
 	regmap_pmusgrf[0xc180/4] = (u32)(u64)reset_entry;
@@ -268,6 +268,6 @@ _Noreturn void main() {
 	//secondary_cpu_main(0);
 	regmap_pmu[PMU_PWRDN_CON] &= ~(u32)2;
 	//cortex_a53_exit(1);
-	//while (1) {puts(".");}
+	//while (1) {putchar('.');}
 	die("reached end of main\n");
 }

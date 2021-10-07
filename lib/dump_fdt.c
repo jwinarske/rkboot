@@ -43,7 +43,7 @@ void dump_fdt(const struct fdt_header *fdt) {
 			struct_size = read_be32(&fdt->struct_size);
 			printf(": %u (0x%x)\n", struct_size, struct_size);
 		} else {
-			puts(" unknown\n");
+			puts(" unknown");
 		}
 		printf("\tstring offset: %u (0x%x), size: %u (0x%x)\n\tboot cpu: %u\n", string_offset, string_offset, string_size, string_size, boot_cpu);
 		assert_msg(reserved_offset % 8 == 0, "offset for reserved memory map (0x%x) is not 64-bit aligned\n", reserved_offset);
@@ -55,7 +55,7 @@ void dump_fdt(const struct fdt_header *fdt) {
 				assert_msg(reserved_offset + i*16 < totalsize - 16, "reserved memory map does not fit into totalsize\n");
 			}
 		} else {
-			puts("no reserved memory regions.\n");
+			puts("no reserved memory regions.");
 		}
 		assert_msg(struct_offset + struct_size >= struct_offset && struct_offset + struct_size <= totalsize, "struct segment does not fit into totalsize\n");
 		assert_msg(string_offset + string_size >= string_offset && string_offset + string_size <= totalsize, "string segment does not fit into totalsize (end offset = 0x%x)\n", string_offset + string_size);
@@ -67,7 +67,7 @@ void dump_fdt(const struct fdt_header *fdt) {
 		assert_msg(read_be32(struct_seg) == 1 && read_be32(struct_seg + 1) == 0, "struct segment does not begin with an empty-name node\n");
 		struct_seg += 2;
 		const char *indent = "\t\t\t\t\t\t\t\t";
-		puts("/ {\n");
+		puts("/ {");
 		_Bool seen_node = 0;
 		while (1) {
 			assert_msg(struct_seg < struct_end, "unexpected end of struct segment between commands\n");
@@ -79,8 +79,8 @@ void dump_fdt(const struct fdt_header *fdt) {
 				assert_msg(cmd == 1 || cmd == 3, "unexpected command word %08x", cmd);
 			}
 			u32 d = depth;
-			while (d > 8) {puts(indent);d -= 8;}
-			puts(indent + (8 - d));
+			while (d > 8) {printf("%s", indent);d -= 8;}
+			printf("%s", indent + (8 - d));
 			if (cmd == 1) {
 				u32 words = 0;
 				while (!has_zero_byte(read_be32(struct_seg + words++))) {
@@ -96,13 +96,13 @@ void dump_fdt(const struct fdt_header *fdt) {
 				u32 size = read_be32(struct_seg++);
 				u32 name_offset = read_be32(struct_seg++);
 				assert_msg(name_offset < string_size, "property name offset beyond string segment size");
-				puts(string_seg + name_offset);
 				assert_msg(struct_seg + (size + 3)/4 < struct_end, "unexpected end of struct segment in property value\n");
 				const char *value_str = (const char *)struct_seg;
+				const char *name = string_seg + name_offset;
 				if (size == 0) {
-					puts(";\n");
-				} else if (value_str[size -1] == 0 && (size % 4 != 0 || !strcmp(string_seg + name_offset, "compatible"))) {
-					puts(" = \"");
+					printf("%s;\n", name);
+				} else if (value_str[size -1] == 0 && (size % 4 != 0 || !strcmp(name, "compatible"))) {
+					printf("%s = \"", name);
 					const u32 bufsize = 16;
 					char buf[bufsize];
 					u32 pos = 0;
@@ -113,44 +113,43 @@ void dump_fdt(const struct fdt_header *fdt) {
 							buf[pos++] = c;
 							if (pos == bufsize - 1) {
 								buf[bufsize - 1] = 0;
-								puts(buf);
+								printf("%s", buf);
 								pos = 0;
 							}
 						} else {
 							buf[pos++] = 0;
-							puts(buf);
+							printf("%s", buf);
 							pos = 0;
 							if (c == 0) {
-								puts("\", \"");
+								printf("\", \"");
 							} else {
 								printf("\\x%02x", (unsigned)c & 0xff);
 							}
 						}
 					}
 					buf[pos] = 0;
-					puts(buf);
-					puts("\";\n");
+					printf("%s\";\n", buf);
 				} else if (size % 4 == 0) {
-					puts(" = < ");
+					printf("%s = < ", name);
 					for_range(i, 0, size/4) {
 						u32 v = read_be32(struct_seg + i);
 						printf(v <= 32 ? "%u " : "0x%08x ", v);
 					}
-					puts(">;\n");
+					puts(">;");
 				} else {
-					puts(" = [ ");
+					printf("%s = [ ", name);
 					for_range(i, 0, size) {
 						printf("0x%02x ", (unsigned)value_str[i] & 0xff);
 					}
-					puts("];\n");
+					puts("];");
 				}
 				struct_seg += (size + 3) / 4;
 			} else {
 				assert(cmd == 2);
-				puts("};\n");
+				puts("};");
 			}
 		}
-		puts("}\n");
+		puts("}");
 	} else {
 		printf("no FDT found at %zx: magic=%x != d00dfeed\n", (u64)fdt, read_be32(&fdt->magic));
 	}

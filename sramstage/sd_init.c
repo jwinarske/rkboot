@@ -43,9 +43,9 @@ void rk3399_init_sdmmc() {
 	usleep(2000);
 
 	dsb_ishst();
-	info("starting SDMMC\n");
+	info("starting SDMMC");
 	if (!dwmmc_init_early(&sdmmc_state)) {
-		puts("SD init failed\n");
+		puts("SD init failed");
 		atomic_thread_fence(memory_order_release);
 		/* gate hclk_sd, this is checked by dramstage to see if SDMMC was initialized */
 		cru[CRU_CLKGATE_CON+12] = SET_BITS16(1, 1) << 13;

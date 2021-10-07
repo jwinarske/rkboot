@@ -99,7 +99,10 @@ static void load_elf(const struct elf_header *header) {
 	assert((header->prog_h_off & 7) == 0);
 	for_range(i, 0, header->num_prog_h) {
 		const struct program_header *ph = (const struct program_header*)((u64)header + header->prog_h_off + header->prog_h_entry_size * i);
-		if (ph->type == 0x6474e551) {puts("ignoring GNU_STACK segment\n"); continue;}
+		if (ph->type == 0x6474e551) {
+			puts("ignoring GNU_STACK segment");
+			continue;
+		}
 		assert_msg(ph->type == 1, "found unexpected segment type %08x\n", ph->type);
 		printf("LOAD %08zx…%08zx → %08zx\n", ph->offset, ph->offset + ph->file_size, ph->vaddr);
 		assert(ph->vaddr == ph->paddr);

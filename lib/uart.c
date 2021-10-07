@@ -9,8 +9,13 @@
 
 #include <plat.h>
 
+int putchar(int c) {
+	unsigned char x = c;
+	plat_write_console((char *)&x, 1);
+	return 1;
+}
 int puts(const char *str) {
-	return printf("%s", str);
+	return printf("%s\n", str);
 }
 
 char *fmt_hex(u64 val, char pad, size_t width, char *out, char *end) {
@@ -171,13 +176,7 @@ int die(const char *fmt, ...) {
 
 #ifdef CONFIG_ASAN
 static void NO_ASAN asan_report(uintptr_t addr, size_t size, const char *type) {
-	puts("ASAN REPORT: ");
-	puts(type);
-	fmt_dec((u64)size, 0, 0, 0);
-	puts(" at 0x");
-	fmt_hex((u64)addr, '0', 0, 0);
-	puts("\n");
-	halt_and_catch_fire();
+	die("ASAN REPORT: %s %zu at 0x%08"PRIxPTR"\n", type, size, (uintptr_t)addr);
 }
 #define asan(type, size) void NO_ASAN __asan_report_##type##size##_noabort(uintptr_t addr) {asan_report(addr, size, #type);} void NO_ASAN __asan_##type##_noabort(uintptr_t addr) {if (addr >= 0xff8c0000 && addr < 0xff8f0000) {if }}
 asan(load, 1)
@@ -190,7 +189,7 @@ asan(load, 8)
 asan(store, 8)
 
 void __asan_handle_no_return() {
-	puts("ASAN no_return\n");
+	puts("ASAN no_return");
 	halt_and_catch_fire();
 }
 #endif /* CONFIG_ASAN */
@@ -225,12 +224,12 @@ struct overflow_data {
 };
 
 _Noreturn void __ubsan_handle_divrem_overflow(struct overflow_data UNUSED *data, void UNUSED *lhs, void UNUSED *rhs) {
-	puts("UBSAN: % overflow\n");
+	puts("UBSAN: % overflow");
 	halt_and_catch_fire();
 }
 
 _Noreturn void __ubsan_handle_pointer_overflow(struct overflow_data UNUSED *data, void UNUSED *lhs, void UNUSED *rhs) {
-	puts("UBSAN: pointer overflow\n");
+	puts("UBSAN: pointer overflow");
 	halt_and_catch_fire();
 }
 
@@ -249,7 +248,7 @@ struct type_mismatch_data_v1 {
 };
 
 _Noreturn void __ubsan_handle_type_mismatch_v1(struct type_mismatch_data_v1 UNUSED *data, void UNUSED *ptr) {
-	puts("UBSAN: type mismatch\n");
+	puts("UBSAN: type mismatch");
 	halt_and_catch_fire();
 }
 
@@ -273,7 +272,7 @@ struct out_of_bounds_data {
 };
 
 _Noreturn void __ubsan_handle_out_of_bounds(struct out_of_bounds_data UNUSED *data, void UNUSED *index) {
-	puts("UBSAN: index out of bounds\n");
+	puts("UBSAN: index out of bounds");
 	halt_and_catch_fire();
 }
 
@@ -284,7 +283,7 @@ struct shift_out_of_bounds_data {
 };
 
 _Noreturn void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data UNUSED *data, void UNUSED *lhs, void UNUSED *rhs) {
-	puts("UBSAN: shift out of bounds\n");
+	puts("UBSAN: shift out of bounds");
 	halt_and_catch_fire();
 }
 
@@ -293,7 +292,7 @@ struct unreachable_data {
 };
 
 _Noreturn void __ubsan_handle_builtin_unreachable(struct unreachable_data UNUSED *data) {
-	puts("UBSAN: shift out of bounds\n");
+	puts("UBSAN: shift out of bounds");
 	halt_and_catch_fire();
 }
 
@@ -303,7 +302,7 @@ struct invalid_value_data {
 };
 
 _Noreturn void __ubsan_handle_load_invalid_value(struct invalid_value_data UNUSED *data, void UNUSED *value) {
-	puts("UBSAN: shift out of bounds\n");
+	puts("UBSAN: shift out of bounds");
 	halt_and_catch_fire();
 }
 #endif

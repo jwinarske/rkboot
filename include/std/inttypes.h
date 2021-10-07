@@ -3,6 +3,8 @@
 
 #define PRIu64 "zu"
 #define PRIx64 "zx"
+#define PRIuPTR "zu"
+#define PRIxPTR "zx"
 #define PRIu32 "u"
 #define PRIx32 "x"
 #define PRIu16 "hu"

@@ -167,11 +167,9 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 		const char *name = src_string + read_be32(src_struct + 2);
 		debug("prop %s\n", name);
 		if (!strcmp("#address-cells", name)) {
-			puts("addr\n");
 			assert(addr_cells == 0 && size == 4);
 			addr_cells = read_be32(src_struct + 3);
 		} else if (!strcmp("#size-cells", name)) {
-			puts("size\n");
 			assert(size_cells == 0 && size == 4);
 			size_cells = read_be32(src_struct + 3);
 		}

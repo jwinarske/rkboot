@@ -53,7 +53,7 @@ struct dwc3_gadget_ops {
 enum {LAST_TRB = DWC3_TRB_ISP_IMI | DWC3_TRB_IOC | DWC3_TRB_LAST};
 
 static void dwc3_ep0_restart(const struct dwc3_setup *setup, struct dwc3_state *st) {
-	puts("restarting ep0\n");
+	puts("restarting ep0");
 	volatile struct dwc3_regs *dwc3 = setup->dwc3;
 	dwc3_post_depcmd(dwc3, 0, DWC3_DEPCMD_SET_STALL, 0, 0, 0);
 	dwc3_wait_depcmd(dwc3, 0);
@@ -110,7 +110,7 @@ static void process_ep0_event(const struct dwc3_setup *setup, struct dwc3_state 
 	const enum dwc3_ep0phase phase = st->ep0phase;
 	if (type == DWC3_DEPEVT_XFER_COMPLETE) {
 		if (phase == DWC3_EP0_SETUP) {
-			puts(" setup complete\n");
+			puts(" setup complete");
 			atomic_thread_fence(memory_order_acquire);
 			struct usb_setup *req = &bufs->setup_packet;
 			dwc3_dispatch_control_request(setup, st, req);
@@ -443,7 +443,7 @@ static void reinit_dwc3(volatile struct dwc3_regs *const dwc3, struct usbstage_s
 }
 
 _Noreturn void main() {
-	puts("usbstage\n");
+	puts("usbstage");
 
 	volatile struct dwc3_regs *const dwc3 = (struct dwc3_regs*)((char *)regmap_otg0 + 0xc100);
 	struct usbstage_bufs *bufs = (struct usbstage_bufs *)0xff8c0210;
@@ -555,6 +555,6 @@ _Noreturn void main() {
 		atomic_thread_fence(memory_order_release);
 		dwc3->event_count = evtcount * 4;
 		dwc3->event_buffer_size = 256;
-		puts("\n");
+		puts("");
 	}
 }

@@ -191,7 +191,7 @@ const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 _Noreturn void main() {
 	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-	puts("dramstage\n");
+	puts("dramstage");
 
 	/* set DRAM as Non-Secure; needed for DMA */
 	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;

@@ -27,8 +27,8 @@ static _Bool UNUSED ca_training(u32 idx, volatile u32 *pi, volatile struct phy_r
 		u32 obs0 = phy->aslice[0][20];
 		u32 obs1 = phy->aslice[1][20];
 		u32 obs2 = phy->aslice[2][20];
-		if (((obs0 | obs1 | obs2) >> 30) != 0) {puts("obs error\n");return 0;}
-		if (status & (1 << 13)) {puts("flag error\n");return 0;}
+		if (((obs0 | obs1 | obs2) >> 30) != 0) {puts("obs error");return 0;}
+		if (status & (1 << 13)) {puts("flag error");return 0;}
 		if ((status & (1 << 19)) && (status & (1 << 21))) {break;}
 		sched_yield(CURRENT_RUNQUEUE);
 	}
@@ -42,7 +42,7 @@ static _Bool write_leveling(u32 idx, volatile u32 *pi, volatile struct phy_regs 
 	while (1) {
 		u32 status = pi[174];
 		for_dslice(i) {if (phy->dslice[i][40] & (1 << 12)) {puts("obs error");return 0;}}
-		if (status & (1 << 12)) {puts("flag error\n");return 0;}
+		if (status & (1 << 12)) {puts("flag error");return 0;}
 		if ((status & (1 << 18)) && (status & (1 << 21))) {break;}
 		sched_yield(CURRENT_RUNQUEUE);
 	}
@@ -55,8 +55,8 @@ static _Bool read_gate_training(u32 idx, volatile u32 *pi, volatile struct phy_r
 	apply32v(pi + 74, (SET_BITS32(1, 1) << 16) | (SET_BITS32(2, idx) << 24));
 	while (1) {
 		u32 status = pi[174];
-		for_dslice(i) {if (phy->dslice[i][43] & (3 << 22)) {puts("obs error\n"); return 0;}}
-		if (status & (1 << 11)) {puts("flag error\n");return 0;}
+		for_dslice(i) {if (phy->dslice[i][43] & (3 << 22)) {puts("obs error"); return 0;}}
+		if (status & (1 << 11)) {puts("flag error");return 0;}
 		if ((status & (1 << 17)) && (status & (1 << 21))) {break;}
 		sched_yield(CURRENT_RUNQUEUE);
 	}
@@ -69,7 +69,7 @@ static _Bool read_leveling(u32 idx, volatile u32 *pi) {
 	apply32v(pi + 74, (SET_BITS32(1, 1) << 8) | (SET_BITS32(2, idx) << 24));
 	while (1) {
 		u32 status = pi[174];
-		if (status & (1 << 10)) {puts("flag error\n");return 0;}
+		if (status & (1 << 10)) {puts("flag error");return 0;}
 		if ((status & (1 << 16)) && (status & (1 << 21))) {break;}
 		sched_yield(CURRENT_RUNQUEUE);
 	}
@@ -83,7 +83,7 @@ static _Bool wdq_leveling(u32 idx, volatile u32 *pi) {
 	apply32v(pi + 121, (SET_BITS32(1, 1) << 8) | (SET_BITS32(2, idx) << 16));
 	while (1) {
 		u32 status = pi[174];
-		if (status & (1 << 14)) {puts("flag error\n");return 0;}
+		if (status & (1 << 14)) {puts("flag error");return 0;}
 		if ((status & (1 << 20)) && (status & (1 << 21))) {break;}
 		sched_yield(CURRENT_RUNQUEUE);
 	}

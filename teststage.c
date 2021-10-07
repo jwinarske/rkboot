@@ -47,7 +47,6 @@ const struct mmu_multimap initial_mappings[] = {
 void dump_fdt(const struct fdt_header *);
 
 _Noreturn void main(u64 x0) {
-	puts("test stage\n");
 	printf("FDT pointer: %"PRIx64"\n", x0);
 	const struct fdt_header *fdt = (const struct fdt_header*)x0;
 	dump_fdt(fdt);

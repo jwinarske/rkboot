@@ -184,7 +184,7 @@ static void fast_freq_switch(u8 freqset, u32 freq) {
 }
 
 static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_update *phy_upd) {
-	printf("[%"PRIuTS"] switching to %u MHz … ", get_timestamp(), mhz);
+	printf("[%"PRIuTS"] switching to %u MHz …", get_timestamp(), mhz);
 	for_channel(ch) {
 		volatile struct phy_regs *phy = phy_for(ch);
 		volatile u32 *pctl = pctl_base_for(ch);
@@ -203,7 +203,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_u
 			}
 		}
 	}
-	puts("ready … ");
+	putchar(' ');
 	timestamp_t start = get_timestamp();
 	fast_freq_switch(ctl_freqset, mhz);
 	if (mhz > 125) {	/* not DLL bypass mode, enable slice power reduction */
@@ -212,7 +212,7 @@ static void freq_step(u32 mhz, u32 ctl_freqset, u32 phy_bank, const struct phy_u
 			for_dslice(i) {phy->dslice[i][10] &= ~(1 << 16);}
 		}
 	}
-	printf("switched (%"PRIuTS" ticks)\n", get_timestamp() - start);
+	printf("done in %"PRIuTS" ticks\n", get_timestamp() - start);
 }
 
 static void switch_and_train(struct ddrinit_state *st, u32 mhz, u32 ctl_f, u32 phy_f, const struct phy_update *phy_upd) {
