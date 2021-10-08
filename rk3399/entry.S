@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include "config.h"
+#include <config.h>
 #include <asm.h>
 #include <aarch64.h>
 #include <mmu.h>

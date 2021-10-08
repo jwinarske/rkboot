@@ -220,7 +220,7 @@ if not extracflags:
 cflags = (
     extracflags
     + " -isystem . " + " ".join("-isystem " + path.join(srcdir, p) for p in (
-        'include', 'compression', 'include/std'
+        'include', 'compression', 'include/std', 'aarch64/include', 'rk3399/include', '.'
     ))
     + " " + cflags
     + " " + warnflags)
@@ -324,13 +324,13 @@ build('aarch64/dcache-el2.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=
 build('exc_handlers-el3.o', 'cc', src('aarch64/exc_handlers.S'), flags='-DCONFIG_EL=3')
 build('exc_handlers-el2.o', 'cc', src('aarch64/exc_handlers.S'), flags='-DCONFIG_EL=2')
 build('aarch64/mmu.S.o', 'cc', src('aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S']))
-build('entry-ret2brom.o', 'cc', src('entry.S'), flags='-DCONFIG_FIRST_STAGE=2')
-build('entry-first.o', 'cc', src('entry.S'), flags='-DCONFIG_FIRST_STAGE=1')
-build('entry.o', 'cc', src('entry.S'), flags='-DCONFIG_EL=3 -DCONFIG_FIRST_STAGE=0')
-build('entry-el2.o', 'cc', src('entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_FIRST_STAGE=0')
+build('entry-ret2brom.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=2')
+build('entry-first.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=1')
+build('entry.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_EL=3 -DCONFIG_FIRST_STAGE=0')
+build('entry-el2.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_FIRST_STAGE=0')
 build('rk3399/debug-el3.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=3')
 build('rk3399/debug-el2.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=2')
-build('cpu_onoff.o', 'cc', src('cpu_onoff.S'))
+build('cpu_onoff.o', 'cc', src('rk3399/cpu_onoff.S'))
 lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'aarch64/mmu.S'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
