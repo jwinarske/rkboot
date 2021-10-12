@@ -96,7 +96,7 @@ The :code:`NUM\_` enumerator is an exception to the `Trailing commata`_ rule, si
 Includes
 ^^^^^^^^
 
-Includes are grouped into 3 categories, each of which is sorted (collation: /, -, \_, letters, numbers, others – in Unicode code point order; please don't get too creative with filenames):
+Includes are grouped into 8 categories, each of which is sorted (collation: /, -, \_, letters, numbers, others – in Unicode code point order; please don't get too creative with filenames):
 
 1. This module
 
@@ -104,9 +104,19 @@ Includes are grouped into 3 categories, each of which is sorted (collation: /, -
 
 2. Standard library
 
-3. Other levinboot headers
+3. levinboot generic headers
+     Headers for code that doesn't depend on architecture, e. g. decompression functions, IO status codes, scheduler, …
 
-If all three categories are present, the second should be separated from the third one by an empty line.
+4. Common architectural feature access:
+    These are headers defined in the architecture include hierarchy, but implementing an interface that is shared between architectures, e. g. IRQ masking, MMU, …
+
+5. Generic drivers
+
+6. Architecture headers
+
+7. SoC vendor drivers
+
+8. Platform code
 
 Indentation
 ^^^^^^^^^^^
