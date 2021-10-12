@@ -57,6 +57,10 @@ struct sched_runnable *sched_unqueue(struct sched_runqueue *rq) {
 	return res;
 }
 
+void sched_thread_preempted(struct sched_runnable *thread) {
+	sched_queue_single(CURRENT_RUNQUEUE, thread);
+}
+
 static void yield_finish(struct sched_runnable *continuation) {
 	sched_queue_single(CURRENT_RUNQUEUE, continuation);
 }

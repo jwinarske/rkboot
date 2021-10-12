@@ -76,6 +76,11 @@ void plat_handler_fiq() {
 #if CONFIG_SD
 		dwmmc_wake_waiters(&sdmmc_state);
 #endif
+		struct thread *th;
+		asm volatile("mrs %0, TPIDR_EL3" : "=r"(th));
+		if (th) {
+			atomic_fetch_or_explicit(&th->status, 1 << CTX_STATUS_PREEMPT_REQ_BIT, memory_order_relaxed);
+		}
 		break;	/* do nothing, just want to wake the main loop */
 	default:
 		die("unexpected intid%"PRIu64"\n", grp0_intid);

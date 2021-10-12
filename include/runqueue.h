@@ -30,6 +30,10 @@ void sched_queue_list(struct sched_runnable_list *dest, struct sched_runnable_li
 /// Caller must own the non-atomic parts of the runqueue
 struct sched_runnable *sched_unqueue(struct sched_runqueue *rq);
 
+/// handler for thread preemption
+/// called by architecture code when thread state has been saved
+void sched_thread_preempted(struct sched_runnable *);
+
 /// takes the current thread off-CPU, while keeping it runnable
 void sched_yield();
 

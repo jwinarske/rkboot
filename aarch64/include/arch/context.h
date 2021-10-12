@@ -2,6 +2,7 @@
 #pragma once
 
 #define CTX_STATUS_OFF 0x8
+#define CTX_STATUS_PREEMPT_REQ_BIT 4
 #define CTX_SPSR_OFF 0xc
 #define CTX_PC_OFF 0x10
 #define CTX_VOLATILES_OFF 0x18

@@ -62,6 +62,8 @@ vector_thread plat_handler_serror_lower
 
 return_to_thread:
 	// x29 contains pointer to thread struct
+	ldr w1, [x29, #CTX_STATUS_OFF]
+	tbnz x1, CTX_STATUS_PREEMPT_REQ_BIT, preempt
 	ldr x0, [x29, CTX_PC_OFF]
 	ldr w1, [x29, CTX_SPSR_OFF]
 	do2thru17 ldp, x29, CTX_VOLATILES_OFF + 16
@@ -71,6 +73,24 @@ return_to_thread:
 	ldp x0, x1, [x29, #CTX_VOLATILES_OFF]
 	ldp x29, x30, [sp], #16
 	eret
+
+preempt:
+	ldp x0, x1, [sp], 16
+	mrs x2, SP_EL0
+	do19thru28 stp, x29, CTX_NONVOLATILES_OFF
+	stp x0, x1, [x29, #(CTX_NONVOLATILES_OFF + 8*(29-19))]
+	str x2, [x29, #(CTX_NONVOLATILES_OFF + 8*(31-19))]
+	mov x0, x29
+	msr_per_el TPIDR, CONFIG_EL, xzr
+	msr DAIFClr, #15
+	do19thru28 ldp, sp, 16
+	ldp x29, x30, [sp], #96
+	add x3, x0, CTX_STATUS_OFF
+	1:	ldaxr w1, [x3]
+		orr w2, w1, #THREAD_PREEMPTED
+		stxr w4, w2, [x3]
+		cbnz x4, 1b
+	b sched_thread_preempted
 
 TEXTSECTION(.text.asm.context)
 PROC(call_cc, 2)
