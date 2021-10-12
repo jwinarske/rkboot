@@ -38,7 +38,7 @@ static void start_irq_flash_read(u32 addr, u8 *buf, u8 *end) {
 	rkspi_start_rx_xfer(&spi1_state, spi, total_bytes);
 }
 
-void rkspi_end_irq_flash_read() {
+static void rkspi_end_irq_flash_read() {
 	volatile struct rkspi_regs *spi = regmap_spi1;
 	printf("end rxlvl=%"PRIu32", rxthreshold=%"PRIu32" intr_status=0x%"PRIx32"\n", spi->rx_fifo_level, spi->rx_fifo_threshold, spi->intr_raw_status);
 	spi->enable = 0;

@@ -14,3 +14,6 @@ static inline u32 compute_crc32c(u64 *start, u64 *end, u32 seed) {
     }
     return seed;
 }
+
+void main();
+_Noreturn void secondary_cpu_main();
