@@ -164,9 +164,9 @@ parser.add_argument(
     help='configure dramstage to decompress its payload using zstd'
 )
 args = parser.parse_args()
-flags['memtest'].append(memtest_prngs[args.memtest_prng])
+flags['rk3399/memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
-    flags['memtest'].append('-DUNCACHED_MEMTEST')
+    flags['rk3399/memtest'].append('-DUNCACHED_MEMTEST')
 if args.dramstage_initcpio:
     for f in ('dramstage/main', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_DRAMSTAGE_INITCPIO')
@@ -264,9 +264,9 @@ build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')]
 
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
-levinboot = {'main', 'pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
+sramstage = {'sramstage/main', 'rk3399/pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
 dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
-boot_media_handlers = ('main', 'dramstage/main')
+boot_media_handlers = ('sramstage/main', 'dramstage/main')
 if decompressors:
     flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
     dramstage |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
@@ -282,27 +282,27 @@ if 'zstd' in decompressors:
 if 'spi' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SPI=1')
-    dramstage |= {'lib/rkspi', 'rk3399_spi'}
+    dramstage |= {'lib/rkspi', 'rk3399/spi'}
 if 'emmc' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_EMMC=1')
-    emmc_modules = {'lib/sdhci_common', 'rk3399_emmcphy'}
-    levinboot |= emmc_modules | {'sramstage/emmc_init'}
+    emmc_modules = {'lib/sdhci_common', 'rk3399/emmcphy'}
+    sramstage |= emmc_modules | {'sramstage/emmc_init'}
     dramstage |= emmc_modules | {'dramstage/blk_emmc', 'lib/sdhci', 'dramstage/boot_blockdev'}
 if 'sd' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SD=1')
     sdmmc_modules = {'lib/dwmmc_common', 'lib/sd'}
-    levinboot |= sdmmc_modules | {'sramstage/sd_init', 'lib/dwmmc_early'}
+    sramstage |= sdmmc_modules | {'sramstage/sd_init', 'lib/dwmmc_early'}
     dramstage |= sdmmc_modules | {'dramstage/blk_sd', 'lib/dwmmc', 'lib/dwmmc_xfer', 'dramstage/boot_blockdev'}
 if 'nvme' in boot_media:
-    flags['main'].append('-DCONFIG_PCIE=1')
+    flags['sramstage/main'].append('-DCONFIG_PCIE=1')
     flags['dramstage/main'].append('-DCONFIG_NVME=1')
-    levinboot |= {'sramstage/pcie_init'}
+    sramstage |= {'sramstage/pcie_init'}
     dramstage |= {'dramstage/blk_nvme', 'lib/nvme', 'lib/nvme_xfer', 'dramstage/boot_blockdev'}
-usbstage = {'usbstage', 'lib/dwc3', 'usbstage-spi', 'lib/rkspi'}
+usbstage = {'rk3399/usbstage', 'lib/dwc3', 'rk3399/usbstage-spi', 'lib/rkspi'}
 dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
-modules = lib | levinboot | dramstage | usbstage | {'sramstage/return_to_brom', 'teststage', 'lib/dump_fdt', 'memtest'}
+modules = lib | sramstage | dramstage | usbstage | {'sramstage/return_to_brom', 'rk3399/teststage', 'lib/dump_fdt', 'rk3399/memtest'}
 if boot_media:
     modules |= dramstage_embedder
 build.comment(f'modules: {" ".join(modules)}')
@@ -368,10 +368,10 @@ for name, job in regtool_targets.items():
 	flags=job.flags
     )
 build('dramcfg.o', 'cc', src('dram/dramcfg.c'), (name + ".gen.c" for name in regtool_targets))
-levinboot |= {'dramcfg'}
+sramstage |= {'dramcfg'}
 
 # ===== linking and image post processing =====
-levinboot = (levinboot | lib) - {'entry'}
+sramstage = (sramstage | lib) - {'entry'}
 build('dramstage.lz4', 'lz4', 'dramstage.bin', flags='--content-size')
 build('dramstage.lz4.o', 'incbin', 'dramstage.lz4')
 dramstage_embedder |= {'dramstage.lz4', 'entry-first'}
@@ -388,17 +388,17 @@ def binary(name, modules, base_address):
     )
     build(name + '.bin', 'bin', name + '.elf')
 
-binary('sramstage', levinboot | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
-binary('memtest', {'memtest', 'cpu_onoff'} | lib, 'ff8c2000')
+binary('sramstage', sramstage | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
+binary('memtest', {'rk3399/memtest', 'cpu_onoff'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched'), '00280000')
+binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched'), '00280000')
 build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
 if args.tf_a_headers:
     binary('dramstage', dramstage | lib, '04000000')
     build.default('dramstage.bin')
 if boot_media:
-    binary('levinboot-img', levinboot | dramstage_embedder, 'ff8c2000')
-    binary('levinboot-usb', levinboot | dramstage_embedder, 'ff8c2000')
+    binary('levinboot-img', sramstage | dramstage_embedder, 'ff8c2000')
+    binary('levinboot-usb', sramstage | dramstage_embedder, 'ff8c2000')
     build('levinboot-spi.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool', flags='spi')
     build('levinboot-sd.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool')
     build.default('levinboot-sd.img', 'levinboot-spi.img', 'levinboot-usb.bin')
