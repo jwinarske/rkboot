@@ -31,11 +31,12 @@ wait_up:
 	mov x1, #1
 	msr ICC_SRE_EL3, x1
 	mov x2, #0xff
-	mov x3, #0
+	mov x3, 0xf
+	mov x4, #0
 	msr ICC_PMR_EL1, x2
 	msr ICC_CTLR_EL3, x3
-	msr ICC_BPR0_EL1, x3
-	msr ICC_BPR1_EL1, x3
+	msr ICC_BPR0_EL1, x4
+	msr ICC_BPR1_EL1, x4
 
 	mov w2, #3
 	msr ICC_IGRPEN0_EL1, x1

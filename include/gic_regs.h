@@ -55,6 +55,17 @@ struct gic_redistributor {
 	u32 wake;
 };
 
+struct gic_cpuinterface {
+	u32 control;
+	u32 priority_mask;
+	u32 binary_point;
+	u32 acknowledge;
+	u32 end;
+	u32 running_priority;
+	u32 highest_priority_pending;
+};
+
 #define ICC_IAR0_EL1 "S3_0_C12_C8_0"
 #define ICC_IAR1_EL1 "S3_0_C12_C12_0"
 #define ICC_EOIR0_EL1 "S3_0_C12_C8_1"
+#define ICC_DIR_EL1 "S3_0_C12_C11_1"

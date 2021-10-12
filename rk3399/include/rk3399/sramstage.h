@@ -20,6 +20,7 @@ void end_sramstage();
 	MMIO(SDMMC, sdmmc, 0xfe320000, struct dwmmc_regs)\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
 	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
+	MMIO(GIC500C, gic500c, 0xfff00000, struct gic_cpuinterface)\
 	MMIO(CIC, cic, 0xff620000, u32)\
 	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
 	MMIO(CRYPTO1, crypto1, 0xff8b8000, struct rkcrypto_v1_regs)\

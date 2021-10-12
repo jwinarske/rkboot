@@ -9,12 +9,11 @@ void gicv2_wait_disabled(volatile struct gic_distributor *dist) {
 
 void gicv2_global_setup(volatile struct gic_distributor *dist) {
 	u32 ctlr = dist->control;
-	assert((ctlr & (GICD_CTLR_ARE_NS | GICD_CTLR_ARE_S)) == 0);
-	dist->control = GICD_CTLR_EnableGrp0 | GICD_CTLR_EnableGrp1NS;
+	assert((ctlr & (GICD_CTLR_ARE_NS | GICD_CTLR_ARE_S | GICD_CTLR_EnableGrp0 | GICD_CTLR_EnableGrp1NS | GICD_CTLR_EnableGrp1S)) == 0);
+	dist->control = GICD_CTLR_EnableGrp0 | GICD_CTLR_EnableGrp1NS | GICD_CTLR_EnableGrp1S;
 	for_range(i, 1, 32) {
 		dist->disable[i] = ~(u32)0;
 		dist->clear_pending[i] = ~(u32)0;
-		dist->deactivate[i] = ~(u32)0;
 	}
 }
 

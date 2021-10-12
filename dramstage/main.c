@@ -99,7 +99,11 @@ static void irq_handler() {
 		die("unexpected intid%"PRIu64"\n", grp0_intid);
 	}
 	atomic_signal_fence(memory_order_release);
-	__asm__ volatile("msr DAIFSet, #0xf;msr "ICC_EOIR0_EL1", %0" : : "r"(grp0_intid));
+	__asm__ volatile(
+		"msr DAIFSet, #0xf;"
+		"msr "ICC_EOIR0_EL1", %0;"
+		"msr "ICC_DIR_EL1", %0"
+	: : "r"(grp0_intid));
 }
 
 static struct payload_desc payload_descriptor;
