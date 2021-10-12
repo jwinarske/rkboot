@@ -4,9 +4,11 @@
 
 #include <die.h>
 #include <log.h>
-#include <rk3399.h>
 #include <runqueue.h>
-#include <sched_aarch64.h>
+
+#include <arch/context.h>
+
+#include <rk3399.h>
 #include <rk3399/sramstage.h>
 #include "rk3399-dmc.h"
 #include "ddrinit.h"
@@ -172,27 +174,41 @@ _Bool train_channel(u32 ch, u32 csmask, volatile u32 *pctl, volatile u32 *pi, vo
 static void training_task(struct ddrinit_state *st, u32 ch) {
 	debug("training started\n");
 	assert_msg(train_channel(ch, st->geo[ch].csmask, pctl_base_for(ch), pi_base_for(ch), phy_for(ch)), "training failed\n");
-	size_t bit = 1 << ch;
-	size_t UNUSED res = atomic_fetch_or_explicit(&st->sync, bit, memory_order_seq_cst) | bit;
-	debug("sync%zu\n", res);
+}
+
+u8 ddrinit_wait(struct ddrinit_state *st, u8 val) {
+	while (1) {
+		u8 v = atomic_load_explicit(&st->sync, memory_order_acquire);
+		if (val != v) {
+			debug("woke up on sync=0x%02"PRIx8"\n", v);
+			return v;
+		}
+		debug("sleeping on sync=0x%02"PRIx8"\n", val);
+		call_cc_ptr2_int2(sched_finish_u8, &st->sync, &st->waiters, 0xff, val);
+	}
+}
+void ddrinit_notify(struct ddrinit_state *st, u8 val) {
+	debug("sync=0x%"PRIx8"\n", val);
+	atomic_store_explicit(&st->sync, val, memory_order_release);
 	sched_queue_list(CURRENT_RUNQUEUE, &st->waiters);
 }
 
-void ddrinit_train(struct ddrinit_state *st) {
-	struct sched_thread_start thread_start = {
-		.runnable = {.next = 0, .run = sched_start_thread},
-		.pc = (u64)training_task,
-		.pad = 0,
-		.args = {(u64)st, 1},
-	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_DDRC1) - sizeof(struct sched_thread_start));
-	*runnable = thread_start;
-	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);
-	training_task(st, 0);
-
+void ddrinit_secondary(struct ddrinit_state *st) {
+	u8 sync = 0;
+	puts("ddrinit_secondary started");
 	while (1) {
-		u8 val = atomic_load_explicit(&st->sync, memory_order_relaxed);
-		if (val == 3) {break;}
-		debug("sleeping on sync=0x%08"PRIx32"\n", val);
-		call_cc_ptr2_int2(sched_finish_u8, &st->sync, &st->waiters, 3, val);
+		sync = ddrinit_wait(st, sync);
+		if (sync == 3) {return;}
+		if (sync != 2) {continue;}
+		puts("ddrinit_secondary training");
+		training_task(st, 1);
+		ddrinit_notify(st, 1);
+		sync = 1;
 	}
+}
+
+void ddrinit_train(struct ddrinit_state *st) {
+	ddrinit_notify(st, 2);
+	training_task(st, 0);
+	if (ddrinit_wait(st, 2) != 1){die("sync error\n");}
 }

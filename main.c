@@ -1,26 +1,31 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <inttypes.h>
 
-#include <mmu.h>
-#include <rk3399.h>
-#include <rk3399/sramstage.h>
-#include <stage.h>
 #include <compression.h>
-#include <exc_handler.h>
+
+#include <arch/context.h>
+#include <irq.h>
+#include <mmu.h>
+
+#include <sdhci.h>
+#include <dwmmc.h>
+
+#include <aarch64.h>
+#include <gic.h>
+#include <gic_regs.h>
+
 #include <rkpll.h>
 #include <rksaradc_regs.h>
 #include <rkgpio_regs.h>
-#include <gic.h>
-#include <gic_regs.h>
 #include <rktimer_regs.h>
-#include <irq.h>
-#include "dram/ddrinit.h"
-#include <aarch64.h>
-#include <sched_aarch64.h>
-#include <sdhci.h>
-#include <dwmmc.h>
 #include <uart.h>
+
+#include <rk3399.h>
+#include <rk3399/sramstage.h>
+#include <stage.h>
+#include "dram/ddrinit.h"
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
 void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
@@ -35,7 +40,7 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-static void sync_exc_handler(struct exc_state_save UNUSED *save) {
+static void sync_exc_handler() {
 	u64 elr, esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
@@ -48,7 +53,7 @@ extern struct sdhci_state emmc_state;
 #endif
 extern struct dwmmc_state sdmmc_state;
 
-static void irq_handler(struct exc_state_save UNUSED *save) {
+static void irq_handler() {
 	u64 grp0_intid;
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
 	atomic_signal_fence(memory_order_acquire);
@@ -97,8 +102,6 @@ static const size_t start_flags = 0
 #endif
 ;
 
-static const size_t root_flags = RK3399_INIT_DRAM_READY | RK3399_INIT_SD_INIT | RK3399_INIT_EMMC_INIT | RK3399_INIT_PCIE;
-
 _Atomic(size_t) rk3399_init_flags = start_flags;
 
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[6][512];
@@ -108,6 +111,20 @@ const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 static struct sched_runqueue runqueue = {};
 
 struct sched_runqueue *get_runqueue() {return &runqueue;}
+
+struct thread threads[] = {
+	THREAD_START_STATE(VSTACK_BASE(VSTACK_DDRC0), ddrinit_primary, (u64)&ddrinit_st),
+	THREAD_START_STATE(VSTACK_BASE(VSTACK_DDRC1), ddrinit_secondary, (u64)&ddrinit_st),
+#if CONFIG_SD
+	THREAD_START_STATE(VSTACK_BASE(VSTACK_SDMMC), rk3399_init_sdmmc, ),
+#endif
+#if CONFIG_EMMC
+	THREAD_START_STATE(VSTACK_BASE(VSTACK_EMMC), emmc_init, (u64)&emmc_state),
+#endif
+#if CONFIG_PCIE
+	THREAD_START_STATE(VSTACK_BASE(VSTACK_PCIE), pcie_init, ),
+#endif
+};
 
 void rk3399_set_init_flags(size_t flags) {
 	atomic_fetch_or_explicit(&rk3399_init_flags, flags, memory_order_release);
@@ -153,38 +170,9 @@ void main() {
 	}
 	mmu_flush();
 
-#if CONFIG_SD
-	{struct sched_thread_start thread_start = {
-		.runnable = {.next = 0, .run = sched_start_thread},
-		.pc = (u64)rk3399_init_sdmmc,
-		.pad = 0,
-		.args = {},
-	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_SDMMC) - sizeof(struct sched_thread_start));
-	*runnable = thread_start;
-	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
-#endif
-
-#if CONFIG_EMMC
-	{struct sched_thread_start thread_start = {
-		.runnable = {.next = 0, .run = sched_start_thread},
-		.pc = (u64)emmc_init,
-		.pad = 0,
-		.args = {(u64)&emmc_state},
-	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_EMMC) - sizeof(struct sched_thread_start));
-	*runnable = thread_start;
-	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
-#endif
-
-#if CONFIG_PCIE
-	{struct sched_thread_start thread_start = {
-		.runnable = {.next = 0, .run = sched_start_thread},
-		.pc = (u64)pcie_init,
-		.pad = 0,
-		.args = {},
-	}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_PCIE) - sizeof(struct sched_thread_start));
-	*runnable = thread_start;
-	sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);}
-#endif
+	for_array(i, threads) {
+		sched_queue_single(CURRENT_RUNQUEUE, (struct sched_runnable *)(threads + i));
+	}
 
 	size_t reported = 0, last = start_flags;
 	while (1) {
@@ -217,7 +205,14 @@ void main() {
 			irq_unmask();
 			arch_sched_run(r);
 		} else {
-			if ((flags & root_flags) == root_flags) {
+			bool quit = true;
+			for_array(i, threads) {
+				if ((atomic_load_explicit(&threads[i].status, memory_order_acquire) & 0xf) != THREAD_DEAD) {
+					quit = false;
+					break;
+				}
+			}
+			if (quit) {
 				irq_unmask();
 				break;
 			}

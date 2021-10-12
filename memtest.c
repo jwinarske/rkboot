@@ -1,10 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <runqueue.h>
+
+#include <arch/context.h>
 #include <mmu.h>
+
 #include <rkpll.h>
+
 #include <rk3399.h>
 #include <stage.h>
-#include <runqueue.h>
-#include <exc_handler.h>
 
 #define DEFINE_VSTACK X(CPU0) X(CPU1)
 #define VSTACK_DEPTH 0x1000
@@ -221,7 +224,7 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-static void sync_exc_handler(struct exc_state_save UNUSED *save) {
+static void sync_exc_handler() {
 	u64 elr, esr, far;
 	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
 	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);

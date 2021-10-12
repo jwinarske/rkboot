@@ -11,7 +11,6 @@
 #include <rkspi_regs.h>
 #include <gic.h>
 #include <gic_regs.h>
-#include <exc_handler.h>
 #include <die.h>
 #include <log.h>
 #include <async.h>

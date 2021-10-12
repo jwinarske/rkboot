@@ -35,10 +35,20 @@ struct ddrinit_state {
 	struct sdram_geometry geo[2];
 	u8 training_idx[2];
 	u32 training_flags;
+	/// Values:
+	/// 0: both threads block
+	/// 1: primary runs, secondary blocks
+	/// 2: both run training
+	/// 3: secondary exit
 	_Atomic(u8) sync;
 	struct sched_runnable_list waiters;
 };
 
 void ddrinit_configure(struct ddrinit_state *st);
 void ddrinit_irq(struct ddrinit_state *st, u32 ch);
+void ddrinit_primary(struct ddrinit_state *st);
+void ddrinit_secondary(struct ddrinit_state *st);
+
 void ddrinit_train(struct ddrinit_state *st);
+u8 ddrinit_wait(struct ddrinit_state *st, u8 val);
+void ddrinit_notify(struct ddrinit_state *st, u8 val);

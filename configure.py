@@ -316,13 +316,14 @@ for f in modules:
     build(f+'.o', 'cc', src(f+'.c'), **build_flags)
 
 # ===== special compile jobs =====
-for x in ('gicv3', 'save_restore', 'sched', 'string'):
+for x in ('gicv3', 'save_restore', 'string'):
     build(f'aarch64/{x}.o', 'cc', src(f'aarch64/{x}.S'))
     lib.add(f'aarch64/{x}')
 build('aarch64/dcache-el3.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=3')
 build('aarch64/dcache-el2.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=2')
 build('exc_handlers-el3.o', 'cc', src('aarch64/exc_handlers.S'), flags='-DCONFIG_EL=3')
 build('exc_handlers-el2.o', 'cc', src('aarch64/exc_handlers.S'), flags='-DCONFIG_EL=2')
+build('aarch64/context-el3.o', 'cc', src('aarch64/context.S'), flags='-DCONFIG_EL=3')
 build('aarch64/mmu.S.o', 'cc', src('aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S']))
 build('entry-ret2brom.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=2')
 build('entry-first.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=1')
@@ -331,7 +332,7 @@ build('entry-el2.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_
 build('rk3399/debug-el3.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=3')
 build('rk3399/debug-el2.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=2')
 build('cpu_onoff.o', 'cc', src('rk3399/cpu_onoff.S'))
-lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'aarch64/mmu.S'}
+lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'aarch64/mmu.S', 'aarch64/context-el3'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
 phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))

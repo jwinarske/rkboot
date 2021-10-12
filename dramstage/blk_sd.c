@@ -1,25 +1,27 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <rk3399/dramstage.h>
-#include <rk3399/payload.h>
 #include <assert.h>
 #include <stdatomic.h>
 
-#include <mmu.h>
-#include <cache.h>
-#include <log.h>
-#include <arch.h>
+#include <async.h>
 #include <die.h>
-#include <exc_handler.h>
-#include <gic.h>
-#include <gic_regs.h>
+#include <iost.h>
+#include <log.h>
+#include <runqueue.h>
+#include <sd.h>
+
+#include <arch.h>
+#include <cache.h>
+#include <mmu.h>
+
 #include <dwmmc.h>
 #include <dwmmc_helpers.h>
-#include <runqueue.h>
+
+#include <gic.h>
+#include <gic_regs.h>
+
 #include <rk3399.h>
-#include <async.h>
-#include <iost.h>
-#include <sd.h>
-#include <dump_mem.h>
+#include <rk3399/dramstage.h>
+#include <rk3399/payload.h>
 
 static _Bool set_clock(struct dwmmc_signal_services UNUSED *svc, enum dwmmc_clock clk) {
 	static volatile u32 *const cru = regmap_cru;

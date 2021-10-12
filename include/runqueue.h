@@ -2,10 +2,8 @@
 #pragma once
 #include <defs.h>
 
-struct sched_runqueue;
 struct sched_runnable {
 	struct sched_runnable *next;
-	void (*run)(struct sched_runnable*);
 };
 
 /* the entries in a runnable_list are usually stored in reverse, because adding at the beginning is simple to do atomically */

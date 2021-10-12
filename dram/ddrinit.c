@@ -12,7 +12,6 @@
 #include <mmu.h>
 #include <rkpll.h>
 #include <runqueue.h>
-#include <sched_aarch64.h>
 #include <gic.h>
 #include <irq.h>
 
@@ -246,9 +245,11 @@ void ddrinit_set_channel_stride(u32 val) {
 	regmap_pmusgrf[PMUSGRF_SOC_CON4] = SET_BITS16(5, val) << 10;
 }
 
-static void both_channels_ready(struct ddrinit_state *st) {
+void ddrinit_primary(struct ddrinit_state *st) {
+	if (ddrinit_wait(st, 0) != 1) {die("sync error");}
 	switch_and_train(st, 400, 0, 1, &phy_400mhz);
 	switch_and_train(st, 800, 1, 0, &phy_800mhz);
+	ddrinit_notify(st, 3);
 	mmu_map_mmio_identity(0, 0xf7ffffff);
 	for_channel(ch) {
 		ddrinit_set_channel_stride(0x17+ch); /* map only this channel */
@@ -374,14 +375,7 @@ void ddrinit_irq(struct ddrinit_state *st, u32 ch) {
 		rk3399_set_init_flags(RK3399_INIT_DDRC0_READY << ch);
 
 		for_channel(c) {if (st->chan_st[c] < CHAN_ST_READY) {return;}}
-		struct sched_thread_start thread_start = {
-			.runnable = {.next = 0, .run = sched_start_thread},
-			.pc = (u64)both_channels_ready,
-			.pad = 0,
-			.args = {(u64)st, },
-		}, *runnable = (struct sched_thread_start *)(VSTACK_BASE(VSTACK_DDRC0) - sizeof(struct sched_thread_start));
-		*runnable = thread_start;
-		sched_queue_single(CURRENT_RUNQUEUE, &runnable->runnable);
+		ddrinit_notify(st, 1);
 		return;
 	default: break;
 	}
