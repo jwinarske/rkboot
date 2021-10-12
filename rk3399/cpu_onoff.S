@@ -33,7 +33,7 @@ a53_init:
 any_core_init:
 	/* exception setup */
 	mov x20, #(SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ)
-	adrp x21, __exc_base__
+	adrp x21, asm_exc_vectors
 	msr SCR_EL3, x20
 	msr VBAR_EL3, x21
 	isb

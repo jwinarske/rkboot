@@ -321,9 +321,8 @@ for x in ('gicv3', 'save_restore', 'string'):
     lib.add(f'aarch64/{x}')
 build('aarch64/dcache-el3.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=3')
 build('aarch64/dcache-el2.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=2')
-build('exc_handlers-el3.o', 'cc', src('aarch64/exc_handlers.S'), flags='-DCONFIG_EL=3')
-build('exc_handlers-el2.o', 'cc', src('aarch64/exc_handlers.S'), flags='-DCONFIG_EL=2')
 build('aarch64/context-el3.o', 'cc', src('aarch64/context.S'), flags='-DCONFIG_EL=3')
+build('aarch64/context-el2.o', 'cc', src('aarch64/context.S'), flags='-DCONFIG_EL=2')
 build('aarch64/mmu.S.o', 'cc', src('aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S']))
 build('entry-ret2brom.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=2')
 build('entry-first.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=1')
@@ -332,7 +331,9 @@ build('entry-el2.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_
 build('rk3399/debug-el3.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=3')
 build('rk3399/debug-el2.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=2')
 build('cpu_onoff.o', 'cc', src('rk3399/cpu_onoff.S'))
-lib |= {'aarch64/dcache-el3', 'entry', 'exc_handlers-el3', 'rk3399/debug-el3', 'aarch64/mmu.S', 'aarch64/context-el3'}
+build('rk3399/handlers-el3.o', 'cc', src('rk3399/handlers.c'), flags='-DCONFIG_EL=3')
+build('rk3399/handlers-el2.o', 'cc', src('rk3399/handlers.c'), flags='-DCONFIG_EL=2')
+lib |= {'aarch64/dcache-el3', 'entry', 'rk3399/handlers-el3', 'rk3399/debug-el3', 'aarch64/mmu.S', 'aarch64/context-el3'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
 phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))
@@ -390,7 +391,7 @@ def binary(name, modules, base_address):
 binary('sramstage', levinboot | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'memtest', 'cpu_onoff'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'exc_handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt'), '00280000')
+binary('teststage', ('teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched'), '00280000')
 build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
 if args.tf_a_headers:
     binary('dramstage', dramstage | lib, '04000000')

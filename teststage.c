@@ -4,7 +4,10 @@
 
 #include <die.h>
 #include <fdt.h>
+
+#include <arch/context.h>
 #include <mmu.h>
+
 #include <stage.h>
 
 #define DEFINE_VSTACK X(CPU0)
@@ -43,6 +46,16 @@ const struct mmu_multimap initial_mappings[] = {
 	VSTACK_MULTIMAP(CPU0),
 	{}
 };
+
+void plat_handler_fiq() {
+	die("unexpected FIQ");
+}
+void plat_handler_irq() {
+	die("unexpected IRQ");
+}
+
+static struct sched_runqueue runqueue = {};
+struct sched_runqueue *get_runqueue() {return &runqueue;}
 
 void dump_fdt(const struct fdt_header *);
 

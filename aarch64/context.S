@@ -1,6 +1,76 @@
-/* SPDX-License-Identifier: CC0-1.0 */
+// SPDX-License-Identifier: CC0-1.0
 #include <asm.h>
 #include <arch/context.h>
+
+TEXTSECTION(.text.exc)
+.macro vector_thread handler:req
+.align 7
+	stp x29, x30, [sp, #-16]!
+	mrs_per_el x29, TPIDR, CONFIG_EL
+	stp x0, x1, [x29, #CTX_VOLATILES_OFF]
+	mrs_per_el x0, ELR, CONFIG_EL
+	mrs_per_el x1, SPSR, CONFIG_EL
+	do2thru17 stp, x29, CTX_VOLATILES_OFF + 16
+	str x18, [x29, #(CTX_VOLATILES_OFF + 8*18)]
+	str x0, [x29, CTX_PC_OFF]
+	str w1, [x29, CTX_SPSR_OFF]
+	bl \handler
+	b return_to_thread
+.endm
+#define FRAME_SIZE 0xc0
+.macro vector_cpu handler:req
+.align 7
+	stp x29, x30, [sp, #-FRAME_SIZE]!
+	stp x0, x1, [sp, #0x20]
+	mrs_per_el x0, ELR, CONFIG_EL
+	mrs_per_el x1, SPSR, CONFIG_EL
+	do2thru17 stp, sp, 0x30
+	str x18, [sp, #0xb0]
+	stp x0, x1, [sp, #0x10]
+	bl \handler
+	ldp x0, x1, [sp, #0x10]
+	ldr x18, [sp, #0xb0]
+	do2thru17 ldp, sp, 0x30
+	msr_per_el ELR, CONFIG_EL, x0
+	msr_per_el SPSR, CONFIG_EL, x1
+	ldp x0, x1, [sp, #0x20]
+	ldp x29, x30, [sp], #FRAME_SIZE
+	eret
+.endm
+
+asm_exc_vectors: .global asm_exc_vectors
+.align 11
+vector_thread plat_handler_sync_thread
+vector_thread plat_handler_irq
+vector_thread plat_handler_fiq
+vector_thread plat_handler_serror_same
+
+vector_cpu plat_handler_sync_cpu
+vector_cpu plat_handler_irq
+vector_cpu plat_handler_fiq
+vector_cpu plat_handler_serror_same
+
+vector_thread plat_handler_sync_aarch64
+vector_thread plat_handler_irq
+vector_thread plat_handler_fiq
+vector_thread plat_handler_serror_lower
+
+vector_thread plat_handler_sync_aarch32
+vector_thread plat_handler_irq
+vector_thread plat_handler_fiq
+vector_thread plat_handler_serror_lower
+
+return_to_thread:
+	// x29 contains pointer to thread struct
+	ldr x0, [x29, CTX_PC_OFF]
+	ldr w1, [x29, CTX_SPSR_OFF]
+	do2thru17 ldp, x29, CTX_VOLATILES_OFF + 16
+	ldr x18, [x29, #(CTX_VOLATILES_OFF + 8*18)]
+	msr_per_el ELR, CONFIG_EL, x0
+	msr_per_el SPSR, CONFIG_EL, x1
+	ldp x0, x1, [x29, #CTX_VOLATILES_OFF]
+	ldp x29, x30, [sp], #16
+	eret
 
 TEXTSECTION(.text.asm.context)
 PROC(call_cc, 2)

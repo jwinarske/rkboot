@@ -5,16 +5,20 @@
 #include <stdatomic.h>
 
 #include <byteorder.h>
+#include <runqueue.h>
+#include <usb.h>
+
+#include <arch/context.h>
 #include <cache.h>
-#include <rk3399.h>
-#include <stage.h>
 #include <mmu.h>
+
 #include <dwc3_regs.h>
 #include <dwc3.h>
 #include <xhci_regs.h>
-#include <usb.h>
+
+#include <rk3399.h>
+#include <stage.h>
 #include <dump_mem.h>
-#include <runqueue.h>
 
 static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
 void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
@@ -30,6 +34,13 @@ const struct mmu_multimap initial_mappings[] = {
 	VSTACK_MULTIMAP(CPU0),
 	{}
 };
+
+void plat_handler_fiq() {
+	die("unexpected FIQ");
+}
+void plat_handler_irq() {
+	die("unexpected IRQ");
+}
 
 static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
 struct sched_runqueue *get_runqueue() {return &runqueue;}

@@ -48,18 +48,12 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-static void sync_exc_handler() {
-	u64 elr, esr, far;
-	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
-	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
-}
-
 extern struct sdhci_state emmc_state;
 extern struct async_transfer spi1_async, sdmmc_async;
 extern struct rkspi_xfer_state spi1_state;
 extern struct dwmmc_state sdmmc_state;
 
-static void irq_handler() {
+void plat_handler_fiq() {
 	u64 grp0_intid;
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
 	atomic_signal_fence(memory_order_acquire);
@@ -104,6 +98,9 @@ static void irq_handler() {
 		"msr "ICC_EOIR0_EL1", %0;"
 		"msr "ICC_DIR_EL1", %0"
 	: : "r"(grp0_intid));
+}
+void plat_handler_irq() {
+	die("unexpected IRQ on EL3");
 }
 
 static struct payload_desc payload_descriptor;
@@ -258,7 +255,6 @@ struct thread threads[] = {
 };
 
 _Noreturn void main() {
-	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	puts("dramstage");
 
 	/* set DRAM as Non-Secure; needed for DMA */
@@ -301,7 +297,6 @@ _Noreturn void main() {
 	struct payload_desc *payload = get_payload_desc();
 
 	if (available_boot_media) {
-		fiq_handler_same = irq_handler_same = irq_handler;
 		gicv3_per_cpu_setup(regmap_gic500r);
 		static const struct {
 			u16 intid;
@@ -364,7 +359,6 @@ _Noreturn void main() {
 		decompress_payload(&async.async);
 #endif
 	}
-	fiq_handler_same = irq_handler_same = 0;
 
 	commit(payload);
 }

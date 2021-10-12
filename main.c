@@ -40,12 +40,6 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-static void sync_exc_handler() {
-	u64 elr, esr, far;
-	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
-	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
-}
-
 static struct ddrinit_state ddrinit_st;
 
 #if CONFIG_EMMC
@@ -53,7 +47,7 @@ extern struct sdhci_state emmc_state;
 #endif
 extern struct dwmmc_state sdmmc_state;
 
-static void irq_handler() {
+void plat_handler_fiq() {
 	u64 grp0_intid;
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
 	atomic_signal_fence(memory_order_acquire);
@@ -92,6 +86,9 @@ static void irq_handler() {
 		"msr "ICC_EOIR0_EL1", %0;"
 		"msr "ICC_DIR_EL1", %0"
 	: : "r"(grp0_intid));
+}
+void plat_handler_irq() {
+	die("unexpected IRQ on EL3");
 }
 
 static const size_t start_flags = 0
@@ -135,8 +132,6 @@ void rk3399_set_init_flags(size_t flags) {
 }
 
 void main() {
-	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
-
 	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
 	regmap_gpio0->port |= 1 << 2;
 	regmap_gpio0->direction |= 1 << 2;
@@ -146,7 +141,6 @@ void main() {
 	static volatile struct gic_distributor *const gic500d = regmap_gic500d;
 	static volatile struct gic_redistributor *const gic500r = regmap_gic500r;
 	gicv2_global_setup(gic500d);
-	fiq_handler_same = irq_handler_same = irq_handler;
 	gicv3_per_cpu_setup(gic500r);
 	static const struct {
 		u16 intid;
@@ -229,7 +223,6 @@ void main() {
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
 	gicv2_wait_disabled(gic500d);
 	gicv3_per_cpu_teardown(gic500r);
-	fiq_handler_same = irq_handler_same = 0;
 	info("[%"PRIuTS"] sramstage finish\n", get_timestamp());
 	end_sramstage();
 }

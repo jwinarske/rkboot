@@ -139,7 +139,8 @@ br x2
 #endif
 
 prepare_main:
-	adrp x1, __exc_base__
+	adrp x1, asm_exc_vectors
+	add x1, x1, :lo12:asm_exc_vectors
 	msr VBAR_EL\el, x1
 
 	.if \el == 3

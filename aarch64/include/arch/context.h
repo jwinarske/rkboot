@@ -42,15 +42,15 @@ CHECK_OFFSET(thread, gpr19, CTX_NONVOLATILES_OFF);
 	.pc = (u64)(fn)\
 }
 
-#define X(a, b) extern void (*volatile a##_handler_##b)();
-#define Y(a) X(sync_exc, a) X(serror, a)
-Y(sp0) Y(spx) Y(aarch64) Y(aarch32)
-#undef X
-#undef Y
-extern void (*volatile irq_handler_same)();
-extern void (*volatile fiq_handler_same)();
-extern void (*volatile irq_handler_lower)();
-extern void (*volatile fiq_handler_lower)();
+// === prototypes for platform handlers ===
+void plat_handler_sync_thread(u64 elr);
+void plat_handler_sync_cpu(u64 elr);
+void plat_handler_sync_aarch64(u64 elr);
+void plat_handler_sync_aarch32(u64 elr);
+void plat_handler_irq();
+void plat_handler_fiq();
+void plat_handler_serror_same();
+void plat_handler_serror_lower();
 
 _Noreturn void aarch64_abandon_thread();
 

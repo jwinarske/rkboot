@@ -224,10 +224,11 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-static void sync_exc_handler() {
-	u64 elr, esr, far;
-	__asm__("mrs %0, esr_el3; mrs %1, far_el3; mrs %2, elr_el3" : "=r"(esr), "=r"(far), "=r"(elr));
-	die("sync exc@0x%"PRIx64": ESR_EL3=0x%"PRIx64", FAR_EL3=0x%"PRIx64"\n", elr, esr, far);
+void plat_handler_fiq() {
+	die("unexpected FIQ");
+}
+void plat_handler_irq() {
+	die("unexpected IRQ");
 }
 
 struct percpu_data {
@@ -262,7 +263,6 @@ _Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
 }
 
 _Noreturn void main() {
-	sync_exc_handler_spx = sync_exc_handler_sp0 = sync_exc_handler;
 	puts("memtest");
 
 	regmap_pmusgrf[PMUSGRF_SOC_CON0] = 0x80008000;
