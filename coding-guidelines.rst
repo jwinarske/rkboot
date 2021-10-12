@@ -57,12 +57,10 @@ Use good judgement – violating the rules in this section may very well be okay
 Comments
 ^^^^^^^^
 
-Comments use `/* */` style.
-Neither the starting (`/*`) nor ending (`*/`) marker go on their own line, regardless of if the comment is one or multiple lines long.
-Subsequent lines should be prefixed with a space and an asterisk after the indent … one of the few concessions to monospace editing/viewing you will find in this document.
+Comments use C++/C99 style (`//`), also for multi-line comments. This avoids gnarly questions about how to begin subsequent lines.
 
-Comments can go on the same line as the code they are annotating, but make sure the line doesn't become overly long as a result.
-If a comment follows code within a line, they should be separated by a single tab character.
+Comments can go on the same line as the code they are annotating (in which case the two are separated with a single tab character), as long the line can fit the entire comment without becoming overly long.
+Otherwise move the comment to the preceding or following line, as appropriate.
 
 DEFINE\_ pattern
 ^^^^^^^^^^^^^^^
