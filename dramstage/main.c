@@ -201,6 +201,16 @@ u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 static void boot_monitor() {
+	if (!available_boot_media) {
+#if CONFIG_DRAMSTAGE_DECOMPRESSION
+		struct async_dummy async = {
+			.async = {async_pump_dummy},
+			.buf = blob_buffer,
+		};
+		decompress_payload(&async.async);
+#endif
+		return;
+	}
 	u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
 	_Bool payload_loaded = 0;
 	for_range(boot_medium, 0, NUM_BOOT_MEDIUM) {
@@ -301,69 +311,59 @@ _Noreturn void main() {
 
 	struct payload_desc *payload = get_payload_desc();
 
-	if (available_boot_media) {
-		gicv3_per_cpu_setup(regmap_gic500r);
-		static const struct {
-			u16 intid;
-			u8 priority;
-			u8 targets;
-			u32 flags;
-		} intids[] = {
-			{43, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* emmc */
-			//{85, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* spi */
-			{97, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* sd */
-			{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
-		};
-		for_array(i, intids) {
-			gicv2_setup_spi(regmap_gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
-		}
+	gicv3_per_cpu_setup(regmap_gic500r);
+	static const struct {
+		u16 intid;
+		u8 priority;
+		u8 targets;
+		u32 flags;
+	} intids[] = {
+		{43, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* emmc */
+		//{85, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* spi */
+		{97, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* sd */
+		{101, 0x80, 1, IGROUP_0 | INTR_LEVEL},	/* stimer0 */
+	};
+	for_array(i, intids) {
+		gicv2_setup_spi(regmap_gic500d, intids[i].intid, intids[i].priority, intids[i].targets, intids[i].flags);
+	}
 
-		for_range(i, VSTACK_CPU0+1, NUM_VSTACK) {
-			u64 limit = VSTACK_BASE(i) - VSTACK_DEPTH;
-			mmu_map_range(limit, limit + (VSTACK_DEPTH - 1), (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
-		}
-		dsb_ishst();
-		for_array(i, threads) {
-			sched_queue_single(CURRENT_RUNQUEUE, (struct sched_runnable *)(threads + i));
-		}
+	for_range(i, VSTACK_CPU0+1, NUM_VSTACK) {
+		u64 limit = VSTACK_BASE(i) - VSTACK_DEPTH;
+		mmu_map_range(limit, limit + (VSTACK_DEPTH - 1), (u64)&vstack_frames[i][0], MEM_TYPE_NORMAL);
+	}
+	dsb_ishst();
+	for_array(i, threads) {
+		sched_queue_single(CURRENT_RUNQUEUE, (struct sched_runnable *)(threads + i));
+	}
 
-		while (1) {
-			irq_mask();
-			struct sched_runnable *r = sched_unqueue(get_runqueue());
-			if (r) {
-				irq_unmask();
-				arch_sched_run(r);
-			} else  {
-				bool quit = true;
-				for_array(i, threads) {
-					if ((atomic_load_explicit(&threads[i].status, memory_order_acquire) & 0xf) != THREAD_DEAD) {
-						quit = false;
-						break;
-					}
-				}
-				if (quit) {
-					irq_unmask();
+	while (1) {
+		irq_mask();
+		struct sched_runnable *r = sched_unqueue(get_runqueue());
+		if (r) {
+			irq_unmask();
+			arch_sched_run(r);
+		} else  {
+			bool quit = true;
+			for_array(i, threads) {
+				if ((atomic_load_explicit(&threads[i].status, memory_order_acquire) & 0xf) != THREAD_DEAD) {
+					quit = false;
 					break;
 				}
-				aarch64_wfi();
-				irq_unmask();
 			}
+			if (quit) {
+				irq_unmask();
+				break;
+			}
+			aarch64_wfi();
+			irq_unmask();
 		}
-
-		for_array(i, intids) {
-			gicv2_disable_spi(regmap_gic500d, intids[i].intid);
-		}
-		gicv2_wait_disabled(regmap_gic500d);
-		gicv3_per_cpu_teardown(regmap_gic500r);
-	} else {
-#if CONFIG_DRAMSTAGE_DECOMPRESSION
-		struct async_dummy async = {
-			.async = {async_pump_dummy},
-			.buf = blob_buffer,
-		};
-		decompress_payload(&async.async);
-#endif
 	}
+
+	for_array(i, intids) {
+		gicv2_disable_spi(regmap_gic500d, intids[i].intid);
+	}
+	gicv2_wait_disabled(regmap_gic500d);
+	gicv3_per_cpu_teardown(regmap_gic500r);
 
 	commit(payload);
 }

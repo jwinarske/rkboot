@@ -99,6 +99,7 @@ call_cc_ptr2_int2: .global call_cc_ptr2_int2
 call_cc_ptr2_int1: .global call_cc_ptr2_int1
 	msr SPSel, #1
 	mrs_per_el x9, TPIDR, CONFIG_EL
+	cbz x9, 2f
 	str x30, [x9, CTX_PC_OFF]
 
 	do19thru28 stp, x9, CTX_NONVOLATILES_OFF
@@ -119,6 +120,10 @@ call_cc_ptr2_int1: .global call_cc_ptr2_int1
 	do19thru28 ldp, sp, 16
 	ldp x29, x30, [sp], #96
 	br x10
+
+2:	adr x0, 1f
+	b plat_asm_fail
+1:	.asciz "call_cc outside thread"
 ENDFUNC(call_cc)
 
 PROC(arch_sched_run, 2)

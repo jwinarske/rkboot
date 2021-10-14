@@ -213,6 +213,7 @@ prepare_main:
 	msr SPSel, 1
 	add sp, x29, #0
 	msr DAIFClr, #15
+	msr_per_el TPIDR, CONFIG_EL, xzr
 #if CONFIG_FIRST_STAGE > 1
 	bl main
 	msr DAIFSet, #15
