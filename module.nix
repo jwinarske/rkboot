@@ -34,9 +34,7 @@
 		};
 	};
 	config = let cfg = config.boot.loader.levinboot; in lib.mkIf cfg.enable {
-		system = {
-			boot.loader.id = "levinboot";
-			build.installBootLoader = let
+		system = let
 				payload = pkgs.runCommandCC "levinboot-payload" {} ''
 					cp ${pkgs.armTrustedFirmwareRK3399}/bl31.elf .
 					chmod +w bl31.elf
@@ -45,7 +43,9 @@
 					${pkgs.zstd}/bin/zstd -c bl31.elf >$out/bl31.zst
 					${pkgs.zstd}/bin/zstd -c ${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} >$out/Image.zst
 				'';
-			in pkgs.writeScript "install-levinboot.sh" ''
+		in {
+			boot.loader.id = "levinboot";
+			build.installBootLoader = pkgs.writeScript "install-levinboot.sh" ''
 				#!${pkgs.runtimeShell}
 				set -ex
 				if ! test "$1"; then
@@ -55,8 +55,11 @@
 				if test "$NIXOS_INSTALL_BOOTLOADER" = 1; then
 					dd if=${(import ./. {inherit pkgs;}).levinboot}/levinboot-sd.img of="${cfg.bootloader-device}"
 				fi
-				${pkgs.dtc}/bin/fdtput -pt s - <$1/dtbs/${cfg.dtb} /chosen bootargs "systemConfig=$1 init=$1/init `cat $1/kernel-params`" | zstd | cat ${payload}/bl31.zst - ${payload}/Image.zst $1/initrd | dd of=${cfg.payload-device}
+				dd if=$1/levinboot-payload of=${cfg.payload-device} status=progress oflag=direct conv=fsync bs=1M
 				sync
+			'';
+			extraSystemBuilderCmds = ''
+				${pkgs.dtc}/bin/fdtput -pt s - <$out/dtbs/${cfg.dtb} /chosen bootargs "systemConfig=$out init=$out/init `cat $out/kernel-params`" | ${pkgs.zstd}/bin/zstd | cat ${payload}/bl31.zst - ${payload}/Image.zst $out/initrd >$out/levinboot-payload
 			'';
 		};
 		assertions = [
