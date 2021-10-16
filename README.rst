@@ -23,6 +23,9 @@ Important project goals include:
 What works and what doesn't?
 ============================
 
+Already implemented
+-------------------
+
 What should work at this point:
 
 - Starting the system using the USB mask ROM mode.
@@ -37,19 +40,37 @@ What should work at this point:
 
 - providing entropy to the kernel (KASLR and RNG seeds) via the DTB
 
-What is intended to work by 1.0, but not implemented yet:
+Roadmap
+-------
+
+Goals for 0.9:
+
+- USB keyboard support for selecting boot media and possibly payload partitions,
+  at least for directly-attached keyboards (like on the PBP).
+
+- Exploring the possibility of chainloading U-Boot SPL.
 
 - Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
 
-- a new payload format, allowing uncompressed segments and moving certain memory layout decisions from pre-build or runtime to payload creation time.
+Other goals for before 1.0:
+
+- a new block payload format, allowing uncompressed segments and moving
+  certain memory layout decisions from pre-build or runtime to payload creation
+  time.
+
+- boot count support, to try and automatically detect and avoid bad payload
+  updates.
+
+- Exploring bringing more cores up for faster decompression and possibly enter
+  the kernel on a A72.
+
+- A boot flow for the PinePhone Pro
 
 General TODOs and feature ideas, post-1.0:
 
-- USB keyboard support (for selecting the boot medium)
+- more image format options: filesystems, boot configurations, FIT containers, …
 
 - more boot medium options: USB mass storage?
-
-- more image format options: filesystems, boot configurations, FIT containers, …
 
 - cryptographic verification of payloads
 
@@ -216,7 +237,7 @@ There are several possible boot processes via USB:
 
   You can use an (uncompressed) kernel image instead of teststage, though beware that mask-ROM-based transfers are rather slow. Instead it is recommended to use the following:
 
-- three-stage USB boot without compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --pload 280000 path/to/kernel/Image --pload 4200000 path/to/bl31.elf --load 4000000 dramstage.bin --start 4000000 4102000`
+- three-stage USB boot without compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --load 280000 path/to/kernel/Image --load 4200000 path/to/bl31.elf --load 4000000 dramstage.bin --start 4000000 4102000`
 
   This will use faster bulk transfers to copy the payload into memory. Note that neither this nor the previous boot process can use an initcpio, since compression is needed for framing.
 
@@ -271,7 +292,7 @@ The drive has to be partitioned using GPT. levinboot will then load a compressed
 
 Partition type GUIDs can be set in :cmd:`fdisk` by just pasting them instead of a partition type number from the list when setting partition type. The type will then be displayed as 'unknown' in normal mode (or as the raw type GUID in expert mode).
 
-For each type, it will ignore all but the first one present in partition table order. If only one of these is present, it will load from that, if all three are present, it will take A, If 2 are present, it uses these rules:
+For each type, it will ignore all but the first one present in partition table order. If only one of these is present, it will load from that, if all three are present, it will take A, If 2 are present, it uses these rules (similar to rock-paper-scissors):
 
 - if A and B are present, it uses A.
 - if B and C are present, it uses B.
