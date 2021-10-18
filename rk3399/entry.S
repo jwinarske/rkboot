@@ -139,6 +139,16 @@ br x2
 #endif
 
 prepare_main:
+#if CONFIG_FIRST_STAGE
+	// Test if we come out of some form of soft reset:
+	// This usually leaves the SoC in a weird state that
+	// we can't even enter C code correctly in.
+	// Force hard reset (GPIO1A6, also used for thermal
+	// shutdown) in this case.
+	mov w1, #0xff760000
+	ldr w1, [x1, #0x514]	// CRU_GLB_RST_ST
+	cbnz x1, force_hard_reset
+#endif
 	adrp x1, asm_exc_vectors
 	add x1, x1, :lo12:asm_exc_vectors
 	msr VBAR_EL\el, x1
@@ -240,6 +250,30 @@ prepare_main:
 	.endif
 	mov x30, #0
 	b main
+#endif
+
+#if CONFIG_FIRST_STAGE
+force_hard_reset:
+	adr x1, 1f
+	adr x2, 2f
+	b print
+1:	.asciz "soft reset detected, forcing hard reset\r\n"
+	.align 2
+	2:	ldr x1, [x8, #0x80]
+		cbnz x1, 2b
+	mov w1, #0xff730000
+	ldr w2, [x1]
+	ldr w3, [x1, #4]
+	orr w2, w2, #0x40	// level: high
+	orr w3, w3, #0x40	// direction: output
+	str w2, [x1]
+	str w3, [x1, #4]
+	dsb ishst
+	mov w1, #0xff320000
+	mov w2, #0x30000000
+	str w2, [x1, #0x10]	// mux out GPIO1A6
+	3:	wfi
+		b 3b
 #endif
 
 .if \el == 3
