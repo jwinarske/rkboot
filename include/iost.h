@@ -14,3 +14,5 @@ enum iost {
 #undef X
 	NUM_IOST
 };
+
+extern const char iost_names[NUM_IOST][16];

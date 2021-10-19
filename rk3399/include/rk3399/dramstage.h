@@ -7,6 +7,17 @@
 
 HEADER_FUNC u32 dram_size() {return 0xf8000000;}
 
+struct sched_runnable_list;
+enum rk3399_board {
+	BOARD_UNKNOWN,
+	BOARD_ROCKPRO64,
+	BOARD_PINEBOOK_PRO,
+};
+extern _Atomic(u32) rk3399_detected_board;
+extern struct sched_runnable_list rk3399_board_detection_waiters;
+
+void rk3399_probe_board();
+
 void boot_sd();
 void boot_emmc();
 void boot_spi();
@@ -51,7 +62,7 @@ _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
 
-#define DEFINE_VSTACK(X) X(CPU0) X(MONITOR) DEFINE_BOOT_MEDIUM(X)
+#define DEFINE_VSTACK(X) X(CPU0) X(MONITOR) X(BOARD_PROBE) DEFINE_BOOT_MEDIUM(X)
 #define VSTACK_DEPTH UINT64_C(0x3000)
 
 #define DEFINE_REGMAP(MMIO)\

@@ -265,7 +265,7 @@ build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')]
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 sramstage = {'sramstage/main', 'rk3399/pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
-dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
+dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy', 'dramstage/board_probe'}
 boot_media_handlers = ('sramstage/main', 'dramstage/main')
 if decompressors:
     flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
