@@ -11,11 +11,11 @@ void pcie_init();
 
 void end_sramstage();
 
-#define DEFINE_VSTACK\
+#define DEFINE_VSTACK(X)\
 	X(CPU0) X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)
 #define VSTACK_DEPTH UINT64_C(0x1000)
 
-#define DEFINE_REGMAP\
+#define DEFINE_REGMAP(MMIO)\
 	MMIO(EMMC, emmc, 0xfe330000, struct sdhci_regs)\
 	MMIO(SDMMC, sdmmc, 0xfe320000, struct dwmmc_regs)\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
@@ -42,7 +42,7 @@ void end_sramstage();
 	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
 	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
 	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
-#define DEFINE_REGMAP64K\
+#define DEFINE_REGMAP64K(X)\
 	X(DMC, dmc, 0xffa80000, u32)\
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\

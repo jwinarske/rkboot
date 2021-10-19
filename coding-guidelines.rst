@@ -68,22 +68,22 @@ DEFINE\_ pattern
 Many times one wants to define an enumeration and be able to pretty-print its values, or perhaps associate some other value with the name.
 In levinboot, the way to achieve this is using the `DEFINE\_` pattern::
 
-    #define DEFINE_MY_ENUM X(A, 42) X(B, 1337)
+    #define DEFINE_MY_ENUM(X) X(A, 42) X(B, 1337)
     enum my_enum {
-    #define X(name, value)
-        DEFINE_MY_ENUM
+    #define Y(name, value)
+        DEFINE_MY_ENUM(Y)
     #undef X
         NUM_MY_ENUM
     };
 
     const char my_enum_names[NUM_MY_ENUM][2] = {
-    #define X(name, value) #name,
-        DEFINE_MY_ENUM
+    #define Z(name, value) #name,
+        DEFINE_MY_ENUM(Z)
     #undef X
     };
     const unsigned my_enum_values[NUM_MY_ENUM] = {
-    #define X(name, value) value,
-        DEFINE_MY_ENUM
+    #define W(name, value) value,
+        DEFINE_MY_ENUM(W)
     #undef X
     };
 

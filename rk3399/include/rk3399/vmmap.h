@@ -4,7 +4,7 @@
 
 enum vstack {
 #define X(name) VSTACK_##name,
-	DEFINE_VSTACK
+	DEFINE_VSTACK(X)
 #undef X
 	NUM_VSTACK
 };
@@ -15,7 +15,7 @@ enum {vstacks_end = VSTACK_BASE(NUM_VSTACK - 1)};
 
 enum regmap_id {
 #define MMIO(name, snake, addr, type) REGMAP_##name,
-	DEFINE_REGMAP
+	DEFINE_REGMAP(MMIO)
 #undef MMIO
 	NUM_REGMAP
 };
@@ -26,7 +26,7 @@ enum regmap_id {
 
 enum regmap64k_id {
 #define X(caps, snake, addr, type) REGMAP64K_##caps,
-	DEFINE_REGMAP64K
+	DEFINE_REGMAP64K(X)
 #undef X
 	NUM_REGMAP64K
 };
@@ -44,10 +44,10 @@ enum {
 _Static_assert((u64)REGMAP64K_BASE(NUM_REGMAP64K) == regmap4k_base, "");
 
 #define MMIO(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = (type *)REGMAP_BASE(REGMAP_##name);
-	DEFINE_REGMAP
+	DEFINE_REGMAP(MMIO)
 #undef MMIO
 #define X(name, snake, addr, type) static volatile type UNUSED *const regmap_##snake = (type *)REGMAP64K_BASE(REGMAP64K_##name);
-	DEFINE_REGMAP64K
+	DEFINE_REGMAP64K(X)
 #undef X
 
 _Static_assert(vstacks_end <= regmap64k_base, "VStacks and regmaps don't fit into 2 MiB");

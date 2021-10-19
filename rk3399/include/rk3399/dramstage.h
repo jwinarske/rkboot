@@ -37,10 +37,10 @@ void transform_fdt(const struct fdt_header *header, void *input_end, void *dest,
 _Noreturn void commit(struct payload_desc *payload);
 
 /* this enumeration defines the boot order */
-#define DEFINE_BOOT_MEDIUM X(SD) X(EMMC) X(NVME) X(SPI)
+#define DEFINE_BOOT_MEDIUM(X) X(SD) X(EMMC) X(NVME) X(SPI)
 enum boot_medium {
 #define X(name) BOOT_MEDIUM_##name,
-	DEFINE_BOOT_MEDIUM
+	DEFINE_BOOT_MEDIUM(X)
 #undef X
 	NUM_BOOT_MEDIUM,
 	BOOT_CUE_NONE = NUM_BOOT_MEDIUM,
@@ -51,10 +51,10 @@ _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
 
-#define DEFINE_VSTACK X(CPU0) X(MONITOR) X(SD) X(EMMC) X(NVME) X(SPI)
+#define DEFINE_VSTACK(X) X(CPU0) X(MONITOR) DEFINE_BOOT_MEDIUM(X)
 #define VSTACK_DEPTH UINT64_C(0x3000)
 
-#define DEFINE_REGMAP\
+#define DEFINE_REGMAP(MMIO)\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
 	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
 	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
@@ -79,7 +79,7 @@ void boot_medium_exit(enum boot_medium);
 	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
 	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
 	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
-#define DEFINE_REGMAP64K\
+#define DEFINE_REGMAP64K(X)\
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\
 

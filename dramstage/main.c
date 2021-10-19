@@ -147,7 +147,7 @@ static const size_t available_boot_media = 0
 ;
 static const u32 all_exit_mask = 0
 #define X(name) | 1 << 4*BOOT_MEDIUM_##name
-	DEFINE_BOOT_MEDIUM
+	DEFINE_BOOT_MEDIUM(X)
 #undef X
 ;
 static _Atomic(u32) boot_state = available_boot_media ^ all_exit_mask;
@@ -157,7 +157,7 @@ static struct sched_runnable_list boot_cue_waiters;
 
 static const char boot_medium_names[NUM_BOOT_MEDIUM][8] = {
 #define X(name) #name,
-	DEFINE_BOOT_MEDIUM
+	DEFINE_BOOT_MEDIUM(X)
 #undef X
 };
 
