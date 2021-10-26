@@ -100,6 +100,22 @@ void sched_finish_u8ptr(struct sched_runnable *continuation, volatile void *ptr,
 	}
 }
 
+static void finish_u16(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t mask, ureg_t expected) {
+	struct sched_runnable_list *list = (struct sched_runnable_list *)list_;
+	sched_queue_single(list, continuation);
+	/* in the critical case where the notifier just dequeued before we enqueued, we are already synchronized by the dequeue-enqueue, so relaxed is OK */
+	u8 val = atomic_load_explicit((volatile _Atomic(u16) *)reg, memory_order_relaxed);
+	if ((val & mask) != expected) {
+		sched_queue_list(CURRENT_RUNQUEUE, list);
+	}
+}
+void sched_wait_u16(struct sched_runnable_list *list, _Atomic(u16) *var, u16 mask, u16 expected) {
+	call_cc_ptr2_int2(finish_u16, var, list, mask, expected);
+}
+void sched_wait_u8(struct sched_runnable_list *list, _Atomic(u8) *var, u8 mask, u8 expected) {
+	call_cc_ptr2_int2(sched_finish_u8, var, list, mask, expected);
+}
+
 /* TODO: make a proper interrupt-driven timer infrastructure */
 void usleep(u32 usecs) {
 	timestamp_t start = get_timestamp();

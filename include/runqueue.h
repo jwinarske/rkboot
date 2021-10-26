@@ -37,6 +37,10 @@ void sched_thread_preempted(struct sched_runnable *);
 /// takes the current thread off-CPU, while keeping it runnable
 void sched_yield();
 
+/// takes the current thread off-CPU and queues it on `list` if `*var & mask == expected`
+void sched_wait_u16(struct sched_runnable_list *list, _Atomic(u16) *var, u16 mask, u16 expected);
+void sched_wait_u8(struct sched_runnable_list *list, _Atomic(u8) *var, u8 mask, u8 expected);
+
 void sched_finish_u32(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t clear, ureg_t set);
 void sched_finish_u8(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t clear, ureg_t set);
 void sched_finish_u8ptr(struct sched_runnable *continuation, volatile void *reg, volatile void *list_, ureg_t val);
