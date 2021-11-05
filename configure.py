@@ -64,49 +64,14 @@ flags.update({
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
+    '--boards', type=str,
+    help="comma-separated list of boards to enable"
+)
+parser.add_argument(
     '--with-tf-a-headers',
     type=str,
     dest='tf_a_headers',
     help='path to TF-A export headers'
-)
-parser.add_argument(
-    '--full-debug',
-    action='store_true',
-    dest='full_debug',
-    help='add full debug message output'
-)
-parser.add_argument(
-    '--debug',
-    action='store',
-    type=str,
-    dest='debug',
-    help='modules to select debug verbosity for (comma-separated)'
-)
-parser.add_argument(
-    '--spew',
-    action='store',
-    type=str,
-    dest='spew',
-    help='modules to select debug verbosity for (comma-separated)'
-)
-parser.add_argument(
-    '--uncached-memtest',
-    action='store_true',
-    dest='uncached_memtest',
-    help='configure the memtest binary to use device memory'
-)
-memtest_prngs = {
-    'splittable': '-DMEMTEST_SPLITTABLE',
-    'speck': '-DMEMTEST_SPECK',
-    'chacha': '-DMEMTEST_CHACHAISH',
-}
-parser.add_argument(
-    '--memtest-prng',
-    type=str,
-    dest='memtest_prng',
-    choices=memtest_prngs.keys(),
-    default='splittable',
-    help='PRNG to use for the memtest binary'
 )
 parser.add_argument(
     '--payload-spi',
@@ -163,6 +128,48 @@ parser.add_argument(
     const='zstd',
     help='configure dramstage to decompress its payload using zstd'
 )
+
+# developer options
+parser.add_argument(
+    '--full-debug',
+    action='store_true',
+    dest='full_debug',
+    help='add full debug message output'
+)
+parser.add_argument(
+    '--debug',
+    action='store',
+    type=str,
+    dest='debug',
+    help='modules to select debug verbosity for (comma-separated)'
+)
+parser.add_argument(
+    '--spew',
+    action='store',
+    type=str,
+    dest='spew',
+    help='modules to select debug verbosity for (comma-separated)'
+)
+parser.add_argument(
+    '--uncached-memtest',
+    action='store_true',
+    dest='uncached_memtest',
+    help='configure the memtest binary to use device memory'
+)
+memtest_prngs = {
+    'splittable': '-DMEMTEST_SPLITTABLE',
+    'speck': '-DMEMTEST_SPECK',
+    'chacha': '-DMEMTEST_CHACHAISH',
+}
+parser.add_argument(
+    '--memtest-prng',
+    type=str,
+    dest='memtest_prng',
+    choices=memtest_prngs.keys(),
+    default='splittable',
+    help='PRNG to use for the memtest binary'
+)
+
 args = parser.parse_args()
 flags['rk3399/memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
@@ -170,6 +177,15 @@ if args.uncached_memtest:
 if args.dramstage_initcpio:
     for f in ('dramstage/main', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_DRAMSTAGE_INITCPIO')
+
+if not args.boards:
+    print("no boards selected, assuming 'rp64,pbp'.")
+    boards = {'rp64','pbp'}
+else:
+    boards = set(args.boards.split(','))
+supported_boards = {'rp64', 'pbp'}
+if boards - supported_boards:
+    print(f"unknown boards: {', '.join(boards - supported_boards)}")
 
 for f in (args.debug or '').split(','):
     flags[f].append('-DDEBUG_MSG')
@@ -266,7 +282,9 @@ build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')]
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 sramstage = {'sramstage/main', 'rk3399/pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
 dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy', 'dramstage/board_probe'}
-boot_media_handlers = ('sramstage/main', 'dramstage/main')
+dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
+usbstage = {'rk3399/usbstage', 'lib/dwc3', 'rk3399/usbstage-spi', 'lib/rkspi'}
+
 if decompressors:
     flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
     dramstage |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
@@ -279,6 +297,8 @@ if 'gzip' in decompressors:
 if 'zstd' in decompressors:
     flags['dramstage/decompression'].append('-DHAVE_ZSTD')
     dramstage |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
+
+boot_media_handlers = ('sramstage/main', 'dramstage/main')
 if 'spi' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SPI=1')
@@ -300,8 +320,16 @@ if 'nvme' in boot_media:
     flags['dramstage/main'].append('-DCONFIG_NVME=1')
     sramstage |= {'sramstage/pcie_init'}
     dramstage |= {'dramstage/blk_nvme', 'lib/nvme', 'lib/nvme_xfer', 'dramstage/boot_blockdev'}
-usbstage = {'rk3399/usbstage', 'lib/dwc3', 'rk3399/usbstage-spi', 'lib/rkspi'}
-dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
+
+board_handlers = ('dramstage/board_probe',)
+for x in board_handlers:
+    for o, n in {
+        'rp64': 'RP64',
+        'pbp': 'PBP'
+    }.items():
+        flags[x].append(f'-DCONFIG_BOARD_{n}={1 if o in boards else 0}')
+    flags[x].append(f'-DCONFIG_SINGLE_BOARD={1 if len(boards) == 1 else 0}')
+
 modules = lib | sramstage | dramstage | usbstage | {'sramstage/return_to_brom', 'rk3399/teststage', 'lib/dump_fdt', 'rk3399/memtest'}
 if boot_media:
     modules |= dramstage_embedder
