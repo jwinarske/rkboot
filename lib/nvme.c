@@ -39,7 +39,7 @@ enum iost nvme_init(struct nvme_state *st) {
 	atomic_thread_fence(memory_order_seq_cst);
 	while (1) {
 		u32 status = atomic_load_explicit(&nvme->status, memory_order_acquire);
-		info("CSTS: %08"PRIx32"\n", status);
+		debug("CSTS: %08"PRIx32"\n", status);
 		t_idle = get_timestamp();
 		if (~status & NVME_CSTS_RDY) {break;}
 		if (t_idle - t_wait_idle > timeout) {
@@ -71,7 +71,7 @@ enum iost nvme_init(struct nvme_state *st) {
 	timestamp_t t_ready;
 	while (1) {
 		u32 status = from_le32(atomic_load_explicit(&nvme->status, memory_order_acquire));
-		info("CSTS: %08"PRIx32"\n", status);
+		debug("CSTS: %08"PRIx32"\n", status);
 		t_ready = get_timestamp();
 		if (status & NVME_CSTS_RDY) {break;}
 		if (t_ready - t_idle > timeout) {
@@ -121,7 +121,9 @@ enum iost nvme_process_cqe(volatile struct nvme_state *st, u16 cqid) {
 		return IOST_GLOBAL;
 	}
 	struct nvme_req *cmd = atomic_load_explicit(sq->cmd + cid, memory_order_acquire);
+#if DEBUG_MSG
 	nvme_dump_completion(cqe, cmd_st);
+#endif
 	cmd->data[0] = from_le32(cqe->cmd_spec);
 	cmd->data[1] = from_le32(cqe->reserved);
 	cmd->aux = 0;
@@ -187,7 +189,7 @@ enum iost nvme_wait_req(struct nvme_state *st, struct nvme_req *req) {
 		cmd_st = atomic_load_explicit(&req->status, memory_order_acquire);
 		if (cmd_st != NVME_SUBMITTED) {break;}
 		u32 status = from_le32(nvme->status);
-		info("waiting st%08"PRIx32"\n", status);
+		debug("waiting st%08"PRIx32"\n", status);
 		if (status & NVME_CSTS_CFS) {return IOST_GLOBAL;}
 		usleep(100);
 	}
@@ -280,7 +282,7 @@ void nvme_reset(struct nvme_state *st) {
 	timestamp_t t_wait_shutdown = get_timestamp(), t_shutdown;
 	while (1) {
 		u32 status = from_le32(nvme->status);
-		info("CSTS: %08"PRIx32"\n", status);
+		debug("CSTS: %08"PRIx32"\n", status);
 		t_shutdown = get_timestamp();
 		if (nvme_extr_csts_shst(status) == 2) {
 			nvme->config = to_le32(st->cfg & ~NVME_CC_EN);
