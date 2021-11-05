@@ -5,8 +5,6 @@
 #define DRAM_START ((u64)0)
 #define TZRAM_SIZE 0x00200000
 
-HEADER_FUNC u32 dram_size() {return 0xf8000000;}
-
 void boot_sd();
 void boot_emmc();
 void boot_spi();

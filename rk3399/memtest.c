@@ -7,6 +7,7 @@
 #include <rkpll.h>
 
 #include <rk3399.h>
+#include <rk3399/dram_size.h>
 #include <stage.h>
 
 #define DEFINE_VSTACK X(CPU0) X(CPU1)
@@ -172,9 +173,9 @@ static void timed_flush() {
 static struct sched_runqueue runqueue = {};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
-static _Bool memtest(u64 salt) {
+static _Bool memtest(u64 salt, u32 nblocks) {
 	_Bool res = 1;
-	for_range(block, 0, 31) {
+	for_range(block, 0, nblocks) {
 		u64 block_start = block * 0x08000000;
 		printf("[%"PRIuTS"] testing %08zx–%08zx … ", get_timestamp(), block_start, block_start + 0x07ffffff);
 		write_block(block, salt);
@@ -188,7 +189,7 @@ static _Bool memtest(u64 salt) {
 	}
 	timed_flush();
 	puts("starting retention test");
-	for_range(block, 0, 31) {
+	for_range(block, 0, nblocks) {
 		u64 block_start = block * 0x08000000;
 		printf("[%"PRIuTS"] retention testing %08zx–%08zx … ", get_timestamp(), block_start, block_start + 0x07ffffff);
 		if (test_block(block, salt)) {
@@ -251,6 +252,7 @@ void cortex_a53_exit(u32 flags);
 void reset_entry();
 
 _Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
+	u32 nblocks = dram_size(regmap_pmugrf) / 0x08000000;
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		if (!failed_rounds) {
@@ -258,7 +260,7 @@ _Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
 		} else {
 			printf("\nround %zu, %zu failed so far\n", round, failed_rounds);
 		}
-		failed_rounds += !memtest(round++ << 29);
+		failed_rounds += !memtest(round++ << 29, nblocks);
 	}
 }
 

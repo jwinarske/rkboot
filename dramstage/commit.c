@@ -2,15 +2,19 @@
 #include <rk3399/dramstage.h>
 #include <assert.h>
 
-#include <log.h>
 #include <die.h>
-#include <stage.h>
-#include <rk3399.h>
-#include <rk3399/payload.h>
 #include <fdt.h>
+#include <log.h>
+
 #include <rkgpio_regs.h>
 #include <rkpll.h>
 #include <rkcrypto_v1_regs.h>
+
+#include <rk3399.h>
+#include <rk3399/dram_size.h>
+#include <rk3399/payload.h>
+#include <stage.h>
+
 #include TF_A_BL_COMMON_PATH
 #include TF_A_RK_PARAMS_PATH
 
@@ -137,7 +141,7 @@ _Noreturn void commit(struct payload_desc *payload) {
 
 	struct fdt_addendum fdt_add = {
 		.dram_start = DRAM_START + TZRAM_SIZE,
-		.dram_size = dram_size() - TZRAM_SIZE,
+		.dram_size = dram_size(regmap_pmugrf) - TZRAM_SIZE,
 		.entropy = entropy_buffer,
 		.entropy_words = entropy_words,
 #ifdef CONFIG_DRAMSTAGE_INITCPIO

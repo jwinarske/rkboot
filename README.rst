@@ -50,8 +50,6 @@ Goals for 0.9:
 
 - Exploring the possibility of chainloading U-Boot SPL.
 
-- Use of the correct DRAM size in later stages. Currently everything after DRAM init proper assumes 4 GB of DRAM, which should work on the PBP and 4 GB RockPro64.
-
 Other goals for before 1.0:
 
 - a new block payload format, allowing uncompressed segments and moving

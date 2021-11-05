@@ -265,7 +265,7 @@ build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')]
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 sramstage = {'sramstage/main', 'rk3399/pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
-dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy'}
+dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy', 'dram/read_size'}
 boot_media_handlers = ('sramstage/main', 'dramstage/main')
 if decompressors:
     flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
@@ -389,7 +389,7 @@ def binary(name, modules, base_address):
     build(name + '.bin', 'bin', name + '.elf')
 
 binary('sramstage', sramstage | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
-binary('memtest', {'rk3399/memtest', 'cpu_onoff'} | lib, 'ff8c2000')
+binary('memtest', {'rk3399/memtest', 'cpu_onoff', 'dram/read_size'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
 binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched'), '00280000')
 build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')

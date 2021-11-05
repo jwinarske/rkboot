@@ -26,6 +26,7 @@
 #include <rktimer_regs.h>
 
 #include <rk3399.h>
+#include <rk3399/dram_size.h>
 #include <rk3399/payload.h>
 #include <stage.h>
 
@@ -121,7 +122,7 @@ struct payload_desc *get_payload_desc() {
 
 #if CONFIG_DRAMSTAGE_INITCPIO
 	payload->initcpio_start = (u8 *)initcpio_addr;
-	payload->initcpio_end = (u8 *)(DRAM_START + dram_size());
+	payload->initcpio_end = (u8 *)(DRAM_START + dram_size(regmap_pmugrf));
 #endif
 	return payload;
 }
