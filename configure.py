@@ -61,6 +61,11 @@ flags.update({
     'lib/uart': ['-DCONFIG_BUF_SIZE=128'],
     'aarch64/mmu_asm': ['-DASSERTIONS=1', '-DDEV_ASSERTIONS=0']
 })
+for x in ('entry-ret2brom', 'entry-first'):
+    # must be shorter than 64 bytes
+    flags[x].append('-DCONFIG_GREETING=\"\\"levinboot/0.8\\r\\n\\"\"')
+    # base clock 1.5MHz
+    flags[x].append('-DCONFIG_UART_CLOCK_DIV=1')
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
 parser.add_argument(
