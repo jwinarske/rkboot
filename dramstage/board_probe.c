@@ -45,7 +45,9 @@ static bool ping_cw2015() {
 	i2c4->reg_addr = 1 << 24 | 0;
 	i2c4->rx_count = 1;
 	u32 val;
-	while (!((val = i2c4->int_pending) & RKI2C_INTMASK_XACT_END)) {}
+	while (!((val = i2c4->int_pending) & RKI2C_INTMASK_XACT_END)) {
+		sched_yield();
+	}
 	debug("RKI2C4_CON: %"PRIx32", _IPD: %"PRIx32"\n", i2c4->control, i2c4->int_pending);
 	bool ack = !(val & 1 << RKI2C_INT_NAK);
 	debug("%"PRIx32"\n", i2c4->rx_data[0]);
