@@ -64,7 +64,7 @@ static _Bool finish_pcie_link() {
 	static volatile u32 *const pcie_client = regmap_pcie_client;
 	while (1) {
 		u32 basic_status1 = pcie_client[RKPCIE_CLIENT_BASIC_STATUS+1];
-		info("PCIe link status %08"PRIx32" %08"PRIx32"\n", pcie_client[RKPCIE_CLIENT_DEBUG_OUT+0], basic_status1);
+		debug("PCIe link status %08"PRIx32" %08"PRIx32"\n", pcie_client[RKPCIE_CLIENT_DEBUG_OUT+0], basic_status1);
 		gen1_trained = get_timestamp();
 		if ((basic_status1 >> 20 & 3) == 3) {break;}
 		if (gen1_trained - start > MSECS(500)) {
@@ -223,10 +223,8 @@ void boot_nvme() {
 	dsb_sy();
 	usleep(10);
 	volatile u32 *conf = (u32 *)0xfa000000;
-	for_range(dev, 0, 32) {
-		u32 id = conf[dev << 13];
-		info("00:%02"PRIx32": %04"PRIx32":%04"PRIx32"\n", dev, id & 0xffff, id >> 16);
-	}
+	u32 id = conf[0];
+	info("PCI ID: %04"PRIx32":%04"PRIx32"\n", id & 0xffff, id >> 16);
 	u32 cmd_sts = conf[PCI_CMDSTS];
 	if (~cmd_sts & PCI_CMDSTS_CAP_LIST) {
 		info("no capability list\n");
@@ -305,9 +303,9 @@ void boot_nvme() {
 	case IOST_INVALID: goto out;
 	default: goto shut_down_log;
 	}
-	infos("NVMe MMIO init complete\n");
+	info("[%"PRIuTS"] NVMe MMIO init complete\n", get_timestamp());
 	if (IOST_OK != nvme_init_queues(&st, 1, 1, uncached_buf[UBUF_IDCTL])) {goto shut_down_nvme;}
-	infos("NVMe queue init complete\n");
+	info("[%"PRIuTS"] NVMe queue init complete\n", get_timestamp());
 	nvme_blk.xfer.prp_list_addr = plat_virt_to_phys(wt_buf[WTBUF_PRP]);
 	u8 read_shift = 17;
 	_Static_assert(PLAT_PAGE_SHIFT <= 17, "page size larger than transfer size");
