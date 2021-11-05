@@ -60,14 +60,14 @@ static WRITE_THROUGH _Alignas(1 << PLAT_PAGE_SHIFT) u8 wt_buf[NUM_WTBUF][1 << PL
 static UNCACHED _Alignas(1 << PLAT_PAGE_SHIFT) u8 uncached_buf[NUM_UBUF][1 << PLAT_PAGE_SHIFT];
 
 static _Bool finish_pcie_link() {
-	timestamp_t start = get_timestamp(), gen1_trained, retrained;
+	timestamp_t start = get_timestamp(), trained;
 	static volatile u32 *const pcie_client = regmap_pcie_client;
 	while (1) {
 		u32 basic_status1 = pcie_client[RKPCIE_CLIENT_BASIC_STATUS+1];
 		debug("PCIe link status %08"PRIx32" %08"PRIx32"\n", pcie_client[RKPCIE_CLIENT_DEBUG_OUT+0], basic_status1);
-		gen1_trained = get_timestamp();
+		trained = get_timestamp();
 		if ((basic_status1 >> 20 & 3) == 3) {break;}
-		if (gen1_trained - start > MSECS(500)) {
+		if (trained - start > MSECS(500)) {
 			info("timed out waiting for PCIe link\n");
 			return 0;
 		}
@@ -76,27 +76,10 @@ static _Bool finish_pcie_link() {
 	static volatile u32 *const pcie_mgmt = regmap_pcie_mgmt;
 	u32 plc0 = pcie_mgmt[RKPCIE_MGMT_PLC0];
 	if (~plc0 & RKPCIE_MGMT_PLC0_LINK_TRAINED) {return 0;}
-	info("trained %"PRIu32"x link (waited %"PRIuTS" μs)\n", 1 << (plc0 >> 1 & 3), (gen1_trained - start) / TICKS_PER_MICROSECOND);
-	static volatile u32 *const pcie_rcconf = regmap_pcie_rcconf;
+	info("trained %"PRIu32"x link (waited %"PRIuTS" μs)\n", 1 << (plc0 >> 1 & 3), (trained - start) / TICKS_PER_MICROSECOND);
 	for_range(i, 0, 0x138 >> 2) {
-		spew("%03"PRIx32": %08"PRIx32"\n", i*4, pcie_rcconf[i]);
+		spew("%03"PRIx32": %08"PRIx32"\n", i*4, regmap_pcie_rcconf[i]);
 	}
-	static volatile u32 *const lcs = pcie_rcconf + RKPCIE_RCCONF_PCIECAP + PCIECAP_LCS;
-	info("LCS: %08"PRIx32"\n", *lcs);
-	*lcs |= PCIECAP_LCS_RL;
-	u32 lcs_val;
-	while (1) {
-		lcs_val = *lcs;
-		info("PCIe link status %08"PRIx32" %08"PRIx32"\n", pcie_client[RKPCIE_CLIENT_DEBUG_OUT+0], lcs_val);
-		retrained = get_timestamp();
-		if (lcs_val & PCIECAP_LCS_LBMS) {break;}
-		if (retrained - gen1_trained > MSECS(500)) {
-			info("timed out waiting for Gen2 retrain\n");
-			return 1;	/* fallback is not an error */
-		}
-		usleep(1000);
-	}
-	info("link speed after retrain: %"PRIu32" (waited %"PRIuTS" μs)\n", lcs_val >> 16 & 15, (retrained - gen1_trained) / TICKS_PER_MICROSECOND);
 	/* could power down unused lanes here; we assume full width, so we don't waste code size implementing it */
 	return 1;
 }
