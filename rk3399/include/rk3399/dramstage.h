@@ -79,6 +79,7 @@ void boot_medium_exit(enum boot_medium);
 	MMIO(PCIE_ADDR_XLATION, pcie_addr_xlation, 0xfdc00000, struct rkpcie_addr_xlation)\
 	MMIO(SPI1, spi1, 0xff1d0000, struct rkspi_regs)\
 	MMIO(I2C4, i2c4, 0xff3d0000, struct rki2c_regs)\
+	MMIO(PWM, pwm, 0xff420000, struct rkpwm_regs)\
 	MMIO(GPIO0, gpio0, 0xff720000, struct rkgpio_regs)\
 	MMIO(GPIO1, gpio1, 0xff730000, struct rkgpio_regs)\
 	MMIO(GPIO2, gpio2, 0xff780000, struct rkgpio_regs)\

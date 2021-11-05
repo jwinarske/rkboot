@@ -11,9 +11,9 @@
 
 #include <rki2c_regs.h>
 #include <rki2c.h>
+#include <rkpwm_regs.h>
 
 #include <rk3399.h>
-
 static const enum rk3399_board init_board =
 #if !CONFIG_SINGLE_BOARD
 	BOARD_UNKNOWN
@@ -73,11 +73,10 @@ void rk3399_probe_board() {
 	}
 
 	if (board == BOARD_PINEBOOK_PRO) {
-		mmu_map_mmio_identity(0xff420000, 0xff420fff);
-		mmu_flush();
-		*(volatile u32*)0xff420024 = 0x96e;
-		*(volatile u32*)0xff420028 = 0x25c;
-		*(volatile u32*)0xff42002c = 0x13;
+		// PWM2: controls the VDD_LOG regulator
+		regmap_pwm->channels[2].period = 0x96e;
+		regmap_pwm->channels[2].duty = 0x25c;
+		regmap_pwm->channels[2].control = RKPWM_EN | RKPWM_CONTINUOUS | RKPWM_INACTIVE_POL(1);
 		regmap_pmugrf[PMUGRF_GPIO1C_IOMUX] = SET_BITS16(2, 1) << 6;
 	}
 }
