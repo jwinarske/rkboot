@@ -20,12 +20,12 @@
 	.addr = (u64)REGMAP64K_BASE(REGMAP64K_##caps),\
 	.desc = MMU_MAPPING(DEV_nGnRnE, UINT64_C(baseaddr))\
 },
-	DEFINE_REGMAP64K
+	DEFINE_REGMAP64K(X)
 #undef X
 #define MMIO(caps, name, baseaddr, type)  {\
 	.addr = (u64)REGMAP_BASE(REGMAP_##caps),\
 	.desc = MMU_MAPPING(DEV_nGnRnE, UINT64_C(baseaddr))\
 },
-	DEFINE_REGMAP
+	DEFINE_REGMAP(MMIO)
 #undef MMIO
 	{.addr = (u64)REGMAP_BASE(NUM_REGMAP), .desc = 0},

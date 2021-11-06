@@ -59,54 +59,24 @@ flags.update({
         '-DCONFIG_CONSOLE_FIFO_DEPTH=64',
     ],
     'lib/uart': ['-DCONFIG_BUF_SIZE=128'],
-    'aarch64/mmu.S': ['-DASSERTIONS=1', '-DDEV_ASSERTIONS=0']
+    'aarch64/mmu_asm': ['-DASSERTIONS=1', '-DDEV_ASSERTIONS=0']
 })
+for x in ('entry-ret2brom', 'entry-first'):
+    # must be shorter than 64 bytes
+    flags[x].append('-DCONFIG_GREETING=\"\\"levinboot/0.8\\r\\n\\"\"')
+    # base clock 1.5MHz
+    flags[x].append('-DCONFIG_UART_CLOCK_DIV=1')
 
 parser = argparse.ArgumentParser(description='Configure the levinboot build.')
+parser.add_argument(
+    '--boards', type=str,
+    help="comma-separated list of boards to enable"
+)
 parser.add_argument(
     '--with-tf-a-headers',
     type=str,
     dest='tf_a_headers',
     help='path to TF-A export headers'
-)
-parser.add_argument(
-    '--full-debug',
-    action='store_true',
-    dest='full_debug',
-    help='add full debug message output'
-)
-parser.add_argument(
-    '--debug',
-    action='store',
-    type=str,
-    dest='debug',
-    help='modules to select debug verbosity for (comma-separated)'
-)
-parser.add_argument(
-    '--spew',
-    action='store',
-    type=str,
-    dest='spew',
-    help='modules to select debug verbosity for (comma-separated)'
-)
-parser.add_argument(
-    '--uncached-memtest',
-    action='store_true',
-    dest='uncached_memtest',
-    help='configure the memtest binary to use device memory'
-)
-memtest_prngs = {
-    'splittable': '-DMEMTEST_SPLITTABLE',
-    'speck': '-DMEMTEST_SPECK',
-    'chacha': '-DMEMTEST_CHACHAISH',
-}
-parser.add_argument(
-    '--memtest-prng',
-    type=str,
-    dest='memtest_prng',
-    choices=memtest_prngs.keys(),
-    default='splittable',
-    help='PRNG to use for the memtest binary'
 )
 parser.add_argument(
     '--payload-spi',
@@ -163,6 +133,48 @@ parser.add_argument(
     const='zstd',
     help='configure dramstage to decompress its payload using zstd'
 )
+
+# developer options
+parser.add_argument(
+    '--full-debug',
+    action='store_true',
+    dest='full_debug',
+    help='add full debug message output'
+)
+parser.add_argument(
+    '--debug',
+    action='store',
+    type=str,
+    dest='debug',
+    help='modules to select debug verbosity for (comma-separated)'
+)
+parser.add_argument(
+    '--spew',
+    action='store',
+    type=str,
+    dest='spew',
+    help='modules to select debug verbosity for (comma-separated)'
+)
+parser.add_argument(
+    '--uncached-memtest',
+    action='store_true',
+    dest='uncached_memtest',
+    help='configure the memtest binary to use device memory'
+)
+memtest_prngs = {
+    'splittable': '-DMEMTEST_SPLITTABLE',
+    'speck': '-DMEMTEST_SPECK',
+    'chacha': '-DMEMTEST_CHACHAISH',
+}
+parser.add_argument(
+    '--memtest-prng',
+    type=str,
+    dest='memtest_prng',
+    choices=memtest_prngs.keys(),
+    default='splittable',
+    help='PRNG to use for the memtest binary'
+)
+
 args = parser.parse_args()
 flags['rk3399/memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
@@ -170,6 +182,15 @@ if args.uncached_memtest:
 if args.dramstage_initcpio:
     for f in ('dramstage/main', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_DRAMSTAGE_INITCPIO')
+
+if not args.boards:
+    print("no boards selected, assuming 'rp64,pbp'.")
+    boards = {'rp64','pbp'}
+else:
+    boards = set(args.boards.split(','))
+supported_boards = {'rp64', 'pbp'}
+if boards - supported_boards:
+    print(f"unknown boards: {', '.join(boards - supported_boards)}")
 
 for f in (args.debug or '').split(','):
     flags[f].append('-DDEBUG_MSG')
@@ -265,8 +286,10 @@ build('regtool', 'buildcc', [src('tools/regtool.c'), src('tools/regtool_rpn.c')]
 # ===== C compile jobs =====
 lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/sched'}
 sramstage = {'sramstage/main', 'rk3399/pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
-dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy', 'dram/read_size'}
-boot_media_handlers = ('sramstage/main', 'dramstage/main')
+dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy', 'dramstage/board_probe', 'dram/read_size'}
+dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
+usbstage = {'rk3399/usbstage', 'lib/dwc3', 'rk3399/usbstage-spi', 'lib/rkspi'}
+
 if decompressors:
     flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
     dramstage |= {'compression/lzcommon', 'lib/string', 'dramstage/decompression'}
@@ -279,6 +302,8 @@ if 'gzip' in decompressors:
 if 'zstd' in decompressors:
     flags['dramstage/decompression'].append('-DHAVE_ZSTD')
     dramstage |= {'lib/string', 'compression/zstd', 'compression/zstd_fse', 'compression/zstd_literals', 'compression/zstd_probe_literals', 'compression/zstd_sequences'}
+
+boot_media_handlers = ('sramstage/main', 'dramstage/main')
 if 'spi' in boot_media:
     for f in boot_media_handlers:
         flags[f].append('-DCONFIG_SPI=1')
@@ -300,8 +325,16 @@ if 'nvme' in boot_media:
     flags['dramstage/main'].append('-DCONFIG_NVME=1')
     sramstage |= {'sramstage/pcie_init'}
     dramstage |= {'dramstage/blk_nvme', 'lib/nvme', 'lib/nvme_xfer', 'dramstage/boot_blockdev'}
-usbstage = {'rk3399/usbstage', 'lib/dwc3', 'rk3399/usbstage-spi', 'lib/rkspi'}
-dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
+
+board_handlers = ('dramstage/board_probe',)
+for x in board_handlers:
+    for o, n in {
+        'rp64': 'RP64',
+        'pbp': 'PBP'
+    }.items():
+        flags[x].append(f'-DCONFIG_BOARD_{n}={1 if o in boards else 0}')
+    flags[x].append(f'-DCONFIG_SINGLE_BOARD={1 if len(boards) == 1 else 0}')
+
 modules = lib | sramstage | dramstage | usbstage | {'sramstage/return_to_brom', 'rk3399/teststage', 'lib/dump_fdt', 'rk3399/memtest'}
 if boot_media:
     modules |= dramstage_embedder
@@ -316,24 +349,34 @@ for f in modules:
     build(f+'.o', 'cc', src(f+'.c'), **build_flags)
 
 # ===== special compile jobs =====
-for x in ('gicv3', 'save_restore', 'string'):
-    build(f'aarch64/{x}.o', 'cc', src(f'aarch64/{x}.S'))
-    lib.add(f'aarch64/{x}')
-build('aarch64/dcache-el3.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=3')
-build('aarch64/dcache-el2.o', 'cc', src('aarch64/dcache.S'), flags='-DCONFIG_EL=2')
-build('aarch64/context-el3.o', 'cc', src('aarch64/context.S'), flags='-DCONFIG_EL=3')
-build('aarch64/context-el2.o', 'cc', src('aarch64/context.S'), flags='-DCONFIG_EL=2')
-build('aarch64/mmu.S.o', 'cc', src('aarch64/mmu.S'), flags=' '.join(flags['aarch64/mmu.S']))
-build('entry-ret2brom.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=2')
-build('entry-first.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_FIRST_STAGE=1')
-build('entry.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_EL=3 -DCONFIG_FIRST_STAGE=0')
-build('entry-el2.o', 'cc', src('rk3399/entry.S'), flags='-DCONFIG_EL=2 -DCONFIG_FIRST_STAGE=0')
-build('rk3399/debug-el3.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=3')
-build('rk3399/debug-el2.o', 'cc', src('rk3399/debug.S'), flags='-DCONFIG_EL=2')
-build('cpu_onoff.o', 'cc', src('rk3399/cpu_onoff.S'))
-build('rk3399/handlers-el3.o', 'cc', src('rk3399/handlers.c'), flags='-DCONFIG_EL=3')
-build('rk3399/handlers-el2.o', 'cc', src('rk3399/handlers.c'), flags='-DCONFIG_EL=2')
-lib |= {'aarch64/dcache-el3', 'entry', 'rk3399/handlers-el3', 'rk3399/debug-el3', 'aarch64/mmu.S', 'aarch64/context-el3'}
+asm_jobs = {x: x + '.S' for x in (
+    'aarch64/gicv3', 'aarch64/save_restore', 'aarch64/string',
+    'aarch64/mmu_asm', 'rk3399/cpu_onoff'
+)}
+
+for j, f in {
+    'entry-ret2brom': ('-DCONFIG_FIRST_STAGE=2',),
+    'entry-first':  ('-DCONFIG_FIRST_STAGE=1',),
+    'entry': ('-DCONFIG_FIRST_STAGE=0', '-DCONFIG_EL=3'),
+    'entry-el2': ('-DCONFIG_FIRST_STAGE=0', '-DCONFIG_EL=2')
+}.items():
+    asm_jobs[j] = 'rk3399/entry.S'
+    flags[j].extend(f)
+
+for x in ('aarch64/dcache', 'aarch64/context', 'rk3399/debug'):
+    for el in (2, 3):
+        flags[f'{x}-el{el}'].append(f'-DCONFIG_EL={el}')
+        asm_jobs[f'{x}-el{el}'] = x + '.S'
+
+for x, y in asm_jobs.items():
+    build(x + '.o', 'cc', src(y), flags=' '.join(flags[x]))
+
+for x in (2, 3):
+    flags[f'rk3399/handlers-el{x}'].append(f'-DCONFIG_EL={x}')
+    build(f'rk3399/handlers-el{x}.o', 'cc', src('rk3399/handlers.c'), flags=' '.join(flags[f'rk3399/handlers-el{x}']))
+
+lib |= {'aarch64/'+x for x in ('dcache-el3', 'mmu_asm', 'context-el3', 'gicv3', 'save_restore', 'string')}
+lib |= {'entry', 'rk3399/handlers-el3', 'rk3399/debug-el3'}
 
 regtool_job = namedtuple('regtool_job', ('input', 'flags', 'macros'), defaults=([],))
 phy_job = lambda input, freq, flags='', range=None: regtool_job(input, flags=f'--set freq {freq} --mhz 50 800 400 '+flags+('' if range is None else f' --first {range[0]} --last {range[1]}'), macros=('phy-macros',))
@@ -389,9 +432,9 @@ def binary(name, modules, base_address):
     build(name + '.bin', 'bin', name + '.elf')
 
 binary('sramstage', sramstage | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
-binary('memtest', {'rk3399/memtest', 'cpu_onoff', 'dram/read_size'} | lib, 'ff8c2000')
+binary('memtest', {'rk3399/memtest', 'rk3399/cpu_onoff', 'dram/read_size'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched'), '00280000')
+binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu_asm', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched', 'lib/string'), '00280000')
 build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
 if args.tf_a_headers:
     binary('dramstage', dramstage | lib, '04000000')

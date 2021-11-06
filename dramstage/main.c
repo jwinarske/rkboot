@@ -148,7 +148,7 @@ static const size_t available_boot_media = 0
 ;
 static const u32 all_exit_mask = 0
 #define X(name) | 1 << 4*BOOT_MEDIUM_##name
-	DEFINE_BOOT_MEDIUM
+	DEFINE_BOOT_MEDIUM(X)
 #undef X
 ;
 static _Atomic(u32) boot_state = available_boot_media ^ all_exit_mask;
@@ -158,7 +158,7 @@ static struct sched_runnable_list boot_cue_waiters;
 
 static const char boot_medium_names[NUM_BOOT_MEDIUM][8] = {
 #define X(name) #name,
-	DEFINE_BOOT_MEDIUM
+	DEFINE_BOOT_MEDIUM(X)
 #undef X
 };
 
@@ -208,9 +208,12 @@ static void boot_monitor() {
 			.async = {async_pump_dummy},
 			.buf = blob_buffer,
 		};
-		decompress_payload(&async.async);
+		enum iost res = decompress_payload(&async.async);
+		if (res != IOST_OK) {
+			die("loading payload failed: %s\n", iost_names[res]);
+		}
 #endif
-		return;
+		goto out;
 	}
 	u32 state = atomic_load_explicit(&boot_state, memory_order_acquire);
 	_Bool payload_loaded = 0;
@@ -252,10 +255,16 @@ static void boot_monitor() {
 	}
 	atomic_store_explicit(&current_boot_cue, BOOT_CUE_EXIT, memory_order_release);
 	sched_queue_list(CURRENT_RUNQUEUE, &boot_cue_waiters);
+
+out:
+	while (atomic_load_explicit(&rk3399_detected_board, memory_order_acquire) == BOARD_UNKNOWN) {
+		call_cc_ptr2_int2(sched_finish_u32, &boot_state, &boot_monitors, 0xffffffff, BOARD_UNKNOWN);
+	}
 }
 
 struct thread threads[] = {
 	THREAD_START_STATE(VSTACK_BASE(VSTACK_MONITOR), boot_monitor, ),
+	THREAD_START_STATE(VSTACK_BASE(VSTACK_BOARD_PROBE), rk3399_probe_board, ),
 #if CONFIG_SD
 	THREAD_START_STATE(VSTACK_BASE(VSTACK_SD), boot_sd, ),
 #endif
@@ -275,40 +284,6 @@ _Noreturn void main() {
 
 	/* set DRAM as Non-Secure; needed for DMA */
 	regmap_pmusgrf[PMUSGRF_DDR_RGN_CON+16] = SET_BITS16(1, 1) << 9;
-
-	/* clk_i2c4 = PPLL/4 = 169 MHz, DTS has 200 */
-	regmap_pmucru[PMUCRU_CLKSEL_CON + 3] = SET_BITS16(7, 0);
-
-	volatile u32 *const pmugrf = regmap_pmugrf;
-	volatile struct rki2c_regs *const i2c4 = regmap_i2c4;
-	printf("RKI2C4_CON: %"PRIx32"\n", i2c4->control);
-	struct rki2c_config i2c_cfg = rki2c_calc_config_v1(169, 1000000, 600, 20);
-	printf("setup %"PRIx32" %"PRIx32"\n", i2c_cfg.control, i2c_cfg.clkdiv);
-	i2c4->clkdiv = i2c_cfg.clkdiv;
-	i2c4->control = i2c_cfg.control;
-	pmugrf[PMUGRF_GPIO1B_IOMUX] = SET_BITS16(2, 1) << 6 | SET_BITS16(2, 1) << 8;
-	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_START | RKI2C_CON_MODE_REGISTER_READ | RKI2C_CON_ACK;
-	i2c4->slave_addr = 1 << 24 | 0x62 << 1;
-	i2c4->reg_addr = 1 << 24 | 0;
-	i2c4->rx_count = 1;
-	u32 val;
-	while (!((val = i2c4->int_pending) & RKI2C_INTMASK_XACT_END)) {}
-	printf("RKI2C4_CON: %"PRIx32", _IPD: %"PRIx32"\n", i2c4->control, i2c4->int_pending);
-	_Bool is_pbp = !(val & 1 << RKI2C_INT_NAK);
-	printf("%"PRIx32"\n", i2c4->rx_data[0]);
-	i2c4->control = i2c_cfg.control | RKI2C_CON_ENABLE | RKI2C_CON_STOP;
-
-	if (is_pbp) {
-		mmu_map_mmio_identity(0xff420000, 0xff420fff);
-		dsb_ishst();
-		info("ACK from i2c4-62, this seems to be a Pinebook Pro\n");
-		*(volatile u32*)0xff420024 = 0x96e;
-		*(volatile u32*)0xff420028 = 0x25c;
-		*(volatile u32*)0xff42002c = 0x13;
-        pmugrf[PMUGRF_GPIO1C_IOMUX] = SET_BITS16(2, 1) << 6;
-	} else {
-		info("not running on a Pinebook Pro ⇒ not setting up regulators\n");
-	}
 
 	struct payload_desc *payload = get_payload_desc();
 

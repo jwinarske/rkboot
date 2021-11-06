@@ -1,8 +1,17 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #include <stdlib.h>
+
 #include <die.h>
-#include <plat.h>
+#include <iost.h>
 #include <uart.h>
+
+#include <plat.h>
+
+const char iost_names[NUM_IOST][16] = {
+#define X(name) #name,
+	DEFINE_IOST(X)
+#undef X
+};
 
 FORCE_USED uintptr_t __stack_chk_guard = 0x595e9fbd94fda766;
 

@@ -10,10 +10,10 @@
 
 #include <stage.h>
 
-#define DEFINE_VSTACK X(CPU0)
+#define DEFINE_VSTACK(X) X(CPU0)
 #define VSTACK_DEPTH 0x1000
 
-#define DEFINE_REGMAP\
+#define DEFINE_REGMAP(MMIO)\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
 	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
 	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
@@ -23,7 +23,7 @@
 	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
 	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
 	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
-#define DEFINE_REGMAP64K\
+#define DEFINE_REGMAP64K(X)\
 	X(GRF, grf, 0xff770000, u32)\
 
 #include <rk3399/vmmap.h>
@@ -56,8 +56,6 @@ void plat_handler_irq() {
 
 static struct sched_runqueue runqueue = {};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
-
-void dump_fdt(const struct fdt_header *);
 
 _Noreturn void main(u64 x0) {
 	printf("FDT pointer: %"PRIx64"\n", x0);

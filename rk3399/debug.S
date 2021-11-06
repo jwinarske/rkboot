@@ -25,7 +25,7 @@ PROC(plat_dump_pgtab, 2)
 			str w0, [x2]
 	2:	ldr x0, [x4], #8
 		mov x1, #16
-		bl 8f
+		bl plat_asm_write_rev_hex
 		tbnz x4, 4, 2f
 		3:	/* every second entry, flush the FIFO */
 			ldr w0, [x2, 0x80]
@@ -49,9 +49,10 @@ PROC(plat_dump_pgtab, 2)
 		cmp x4, x5
 		b.lo 1b
 	ret x6
-.cfi_endproc
+ENDFUNC(plat_dump_pgtab)
+
+PROC(plat_asm_write_rev_hex, 2)
 8:	/* write the (reverse) hex repr of x0 to x2, using x1 digits (clobbers x0, x1 and x3) */
-	.cfi_startproc
 	.cfi_same_value x4
 	.cfi_same_value x5
 	.cfi_same_value x6
@@ -76,7 +77,7 @@ PROC(plat_dump_pgtab, 2)
 	sub x1, x1, #1
 	cbnz x1, 8b
 	ret
-ENDFUNC(plat_dump_pgtab)
+ENDFUNC(plat_asm_write_rev_hex)
 
 TEXTSECTION(.text.asm.plat_fail)
 .cfi_startproc

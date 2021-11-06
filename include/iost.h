@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: CC0-1.0 */
 #pragma once
 
-#define DEFINE_IOST\
+#define DEFINE_IOST(X)\
 	X(OK)\
 	X(TRANSIENT)	/* transient fault: the same request may be tried again */\
 	X(INVALID)	/* invalid request: the request is malformed or otherwise permanently failed, but the hardware is operating normally */\
@@ -10,7 +10,9 @@
 
 enum iost {
 #define X(name) IOST_##name,
-	DEFINE_IOST
+	DEFINE_IOST(X)
 #undef X
 	NUM_IOST
 };
+
+extern const char iost_names[NUM_IOST][16];

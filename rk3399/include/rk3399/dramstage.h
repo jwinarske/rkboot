@@ -5,6 +5,17 @@
 #define DRAM_START ((u64)0)
 #define TZRAM_SIZE 0x00200000
 
+struct sched_runnable_list;
+enum rk3399_board {
+	BOARD_UNKNOWN,
+	BOARD_ROCKPRO64,
+	BOARD_PINEBOOK_PRO,
+};
+extern _Atomic(u32) rk3399_detected_board;
+extern struct sched_runnable_list rk3399_board_detection_waiters;
+
+void rk3399_probe_board();
+
 void boot_sd();
 void boot_emmc();
 void boot_spi();
@@ -26,19 +37,21 @@ enum iost boot_blockdev(struct async_blockdev *blk);
 struct fdt_header;
 
 struct fdt_addendum {
+	u64 fdt_address;
 	u64 initcpio_start, initcpio_end, dram_start, dram_size;
 	u32 *entropy;
 	size_t entropy_words;
+	u32 boot_cpu;
 };
 
-void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, const struct fdt_addendum *info);
+_Bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt_header *header, const u32 *in_end, struct fdt_addendum *info);
 _Noreturn void commit(struct payload_desc *payload);
 
 /* this enumeration defines the boot order */
-#define DEFINE_BOOT_MEDIUM X(SD) X(EMMC) X(NVME) X(SPI)
+#define DEFINE_BOOT_MEDIUM(X) X(SD) X(EMMC) X(NVME) X(SPI)
 enum boot_medium {
 #define X(name) BOOT_MEDIUM_##name,
-	DEFINE_BOOT_MEDIUM
+	DEFINE_BOOT_MEDIUM(X)
 #undef X
 	NUM_BOOT_MEDIUM,
 	BOOT_CUE_NONE = NUM_BOOT_MEDIUM,
@@ -49,10 +62,10 @@ _Bool wait_for_boot_cue(enum boot_medium);
 void boot_medium_loaded(enum boot_medium);
 void boot_medium_exit(enum boot_medium);
 
-#define DEFINE_VSTACK X(CPU0) X(MONITOR) X(SD) X(EMMC) X(NVME) X(SPI)
+#define DEFINE_VSTACK(X) X(CPU0) X(MONITOR) X(BOARD_PROBE) DEFINE_BOOT_MEDIUM(X)
 #define VSTACK_DEPTH UINT64_C(0x3000)
 
-#define DEFINE_REGMAP\
+#define DEFINE_REGMAP(MMIO)\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
 	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
 	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
@@ -66,6 +79,7 @@ void boot_medium_exit(enum boot_medium);
 	MMIO(PCIE_ADDR_XLATION, pcie_addr_xlation, 0xfdc00000, struct rkpcie_addr_xlation)\
 	MMIO(SPI1, spi1, 0xff1d0000, struct rkspi_regs)\
 	MMIO(I2C4, i2c4, 0xff3d0000, struct rki2c_regs)\
+	MMIO(PWM, pwm, 0xff420000, struct rkpwm_regs)\
 	MMIO(GPIO0, gpio0, 0xff720000, struct rkgpio_regs)\
 	MMIO(GPIO1, gpio1, 0xff730000, struct rkgpio_regs)\
 	MMIO(GPIO2, gpio2, 0xff780000, struct rkgpio_regs)\
@@ -77,7 +91,7 @@ void boot_medium_exit(enum boot_medium);
 	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
 	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
 	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
-#define DEFINE_REGMAP64K\
+#define DEFINE_REGMAP64K(X)\
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\
 

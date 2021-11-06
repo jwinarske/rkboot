@@ -10,10 +10,10 @@
 #include <rk3399/dram_size.h>
 #include <stage.h>
 
-#define DEFINE_VSTACK X(CPU0) X(CPU1)
+#define DEFINE_VSTACK(X) X(CPU0) X(CPU1)
 #define VSTACK_DEPTH 0x1000
 
-#define DEFINE_REGMAP\
+#define DEFINE_REGMAP(MMIO)\
 	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
 	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
 	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
@@ -24,7 +24,7 @@
 	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
 	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
 	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
-#define DEFINE_REGMAP64K\
+#define DEFINE_REGMAP64K(X)\
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\
 

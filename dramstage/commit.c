@@ -39,16 +39,6 @@ static bl_params_node_t bl33_node = {
 	.ep_info = &bl33_ep,
 };
 
-static struct bl_aux_param_gpio reset_gpio = {
-	.h = {.type = BL_AUX_PARAM_RK_RESET_GPIO, .next = 0},
-	.gpio = {
-		.polarity = ARM_TF_GPIO_LEVEL_HIGH,
-		.direction = ARM_TF_GPIO_DIR_OUT,
-		.pull_mode = ARM_TF_GPIO_PULL_NONE,
-		.index = 1 * 32 + 6,	/* GPIO1A6 */
-	}
-};
-
 static bl_params_t bl_params = {
 	.h = {
 		.type = PARAM_BL_PARAMS,
@@ -140,10 +130,12 @@ _Noreturn void commit(struct payload_desc *payload) {
 	pull_entropy(0);
 
 	struct fdt_addendum fdt_add = {
+		.fdt_address = fdt_out_addr,
 		.dram_start = DRAM_START + TZRAM_SIZE,
 		.dram_size = dram_size(regmap_pmugrf) - TZRAM_SIZE,
 		.entropy = entropy_buffer,
 		.entropy_words = entropy_words,
+		.boot_cpu = 0,
 #ifdef CONFIG_DRAMSTAGE_INITCPIO
 		.initcpio_start = (u64)payload->initcpio_start,
 		.initcpio_end = (u64)payload->initcpio_end,
@@ -155,7 +147,9 @@ _Noreturn void commit(struct payload_desc *payload) {
 
 	const struct elf_header *header = (const struct elf_header*)payload->elf_start;
 	load_elf(header);
-	transform_fdt((const struct fdt_header *)payload->fdt_start, payload->fdt_end, (void *)fdt_out_addr, &fdt_add);
+	if (!transform_fdt((struct fdt_header *)fdt_out_addr, (u32*)payload->kernel_start, (const struct fdt_header *)payload->fdt_start, (const u32*)payload->fdt_end, &fdt_add)) {
+		die("failed to transform FDT\n");
+	}
 
 	bl33_ep.pc = (uintptr_t)payload->kernel_start;
 	bl33_ep.spsr = 9; /* jump into EL2 with SPSel = 1 */
@@ -169,6 +163,6 @@ _Noreturn void commit(struct payload_desc *payload) {
 	regmap_cru[CRU_CLKGATE_CON+1] = SET_BITS16(8, 0);
 	info("[%"PRIuTS"] handing off to BL31\n", get_timestamp());
 	fflush(stdout);
-	next_stage((u64)&bl_params, (u64)&reset_gpio.h, 0, 0, header->entry, 0x1000);
+	next_stage((u64)&bl_params, 0, 0, 0, header->entry, 0x1000);
 	die("BL31 return");
 }

@@ -102,7 +102,6 @@ It makes the following assumptions about the board:
 - an auxiliary (e. g. "standby") LED is attached (active-high) to GPIO0A2. It is lit up after the payload is loaded.
 - ADC1 is connected to an active-low "recovery" button.
 - GPIO0A5 is connected to an active-low "power" button. See _`Boot order` for how this is used.
-- BL31 is configured to use GPIO1A6 as an active-high hard reset pin for system reboot. This is also the TSADC thermal shutdown pin.
 - if loading from SPI is configured, it tries to read using the normal 0x0b 'fast read' command with 3 address and 1 dummy byte at 50 MHz on the SPI1 pins
 - if loading from SD is configured, it will configure the SD pins on GPIO4B0-5 (inclusive) and the card detect pin on GPIO0A7.
 - the eMMC driver does not configure any "power enable" pin for the eMMC, since the designated pin for that (GPIO0A5) is used for the power button.
