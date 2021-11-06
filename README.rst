@@ -97,7 +97,9 @@ levinboot is tested on the RockPro64 and the Pinebook Pro. From looking at the s
 It makes the following assumptions about the board:
 
 - The SoC uses LPDDR4 for DRAM
-- an I²C bus is attached to the i2c4 pins of the SoC. It tries to read register 0 from address 0x62/(first byte byte 0xc5) and if it gets an ACK response, it assumes it is running on a Pinebook Pro and sets up a regulator on behalf of the kernel, which is needed on that platform.
+- if both Pinebook Pro and RockPro64 support is enabled, levinboot sets up i2c4 and tries to read register 0 from address 0x62/(first byte byte 0xc5).
+  If it gets an ACK response, it assumes it is running on a Pinebook Pro.
+- if a Pinebook Pro is either configured or detected, it sets up a regulator controlled by PWM2 on behalf of the kernel, which is needed on that platform.
 - the main "Power" LED is attached (active-high) to GPIO0B3. It is lit up before starting the DRAM initialization.
 - an auxiliary (e. g. "standby") LED is attached (active-high) to GPIO0A2. It is lit up after the payload is loaded.
 - ADC1 is connected to an active-low "recovery" button.
@@ -120,6 +122,8 @@ levinboot uses a Ninja-based build system. The build is configured by running :s
 
 Important command-line arguments for :src:`configure.py` are:
 
+--boards  enables support for certain board combinations, given as a comma-separated list.
+  Known names are 'rp64' for the RockPro64 and 'pbp' for the Pinebook Pro.
 --with-tf-a-headers PATH  tells :src:`configure.py` where the TF-A export headers are. Without this, the :output:`dramstage.bin` stage cannot be built, and will not be configured in the `build.ninja`.
 
 --payload-lz4, --payload-gzip, --payload-zstd  enables decompression in :output:`dramstage.bin`, for the respective formats. TODO: the LZ4 decompressor doesn't compute check hashes yet.
