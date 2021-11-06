@@ -57,8 +57,6 @@ void plat_handler_irq() {
 static struct sched_runqueue runqueue = {};
 struct sched_runqueue *get_runqueue() {return &runqueue;}
 
-void dump_fdt(const struct fdt_header *);
-
 _Noreturn void main(u64 x0) {
 	printf("FDT pointer: %"PRIx64"\n", x0);
 	const struct fdt_header *fdt = (const struct fdt_header*)x0;

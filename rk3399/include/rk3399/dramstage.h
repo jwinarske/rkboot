@@ -39,12 +39,14 @@ enum iost boot_blockdev(struct async_blockdev *blk);
 struct fdt_header;
 
 struct fdt_addendum {
+	u64 fdt_address;
 	u64 initcpio_start, initcpio_end, dram_start, dram_size;
 	u32 *entropy;
 	size_t entropy_words;
+	u32 boot_cpu;
 };
 
-void transform_fdt(const struct fdt_header *header, void *input_end, void *dest, const struct fdt_addendum *info);
+_Bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt_header *header, const u32 *in_end, struct fdt_addendum *info);
 _Noreturn void commit(struct payload_desc *payload);
 
 /* this enumeration defines the boot order */

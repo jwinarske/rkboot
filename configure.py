@@ -391,7 +391,7 @@ def binary(name, modules, base_address):
 binary('sramstage', sramstage | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
 binary('memtest', {'rk3399/memtest', 'cpu_onoff'} | lib, 'ff8c2000')
 binary('usbstage', usbstage | lib, 'ff8c2000')
-binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched'), '00280000')
+binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu.S', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched', 'lib/string'), '00280000')
 build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
 if args.tf_a_headers:
     binary('dramstage', dramstage | lib, '04000000')

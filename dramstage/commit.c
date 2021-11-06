@@ -136,10 +136,12 @@ _Noreturn void commit(struct payload_desc *payload) {
 	pull_entropy(0);
 
 	struct fdt_addendum fdt_add = {
+		.fdt_address = fdt_out_addr,
 		.dram_start = DRAM_START + TZRAM_SIZE,
 		.dram_size = dram_size() - TZRAM_SIZE,
 		.entropy = entropy_buffer,
 		.entropy_words = entropy_words,
+		.boot_cpu = 0,
 #ifdef CONFIG_DRAMSTAGE_INITCPIO
 		.initcpio_start = (u64)payload->initcpio_start,
 		.initcpio_end = (u64)payload->initcpio_end,
@@ -151,7 +153,9 @@ _Noreturn void commit(struct payload_desc *payload) {
 
 	const struct elf_header *header = (const struct elf_header*)payload->elf_start;
 	load_elf(header);
-	transform_fdt((const struct fdt_header *)payload->fdt_start, payload->fdt_end, (void *)fdt_out_addr, &fdt_add);
+	if (!transform_fdt((struct fdt_header *)fdt_out_addr, (u32*)payload->kernel_start, (const struct fdt_header *)payload->fdt_start, (const u32*)payload->fdt_end, &fdt_add)) {
+		die("failed to transform FDT\n");
+	}
 
 	bl33_ep.pc = (uintptr_t)payload->kernel_start;
 	bl33_ep.spsr = 9; /* jump into EL2 with SPSel = 1 */
