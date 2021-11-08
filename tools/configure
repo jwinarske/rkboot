@@ -3,9 +3,7 @@
 
 if [ "$CC" = "" ]; then CC=gcc; fi
 if [ "$CFLAGS" = "" ]; then CFLAGS=-O3; fi
-src=`realpath $0`
-src=`dirname $src`
-src=`echo -n "$src" | sed "s/[\$ :]/\$&/g"`
+src="$(echo -n "$(dirname $(realpath $0))" | sed "s/[\$ :]/\$&/g")"
 
 compression_src="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_probe_literals zstd_sequences"
 
@@ -22,7 +20,7 @@ rule ld
     command = $CC \$in -o \$out
 
 build usbtool: cc $src/usbtool.c
-    flags =  `pkg-config --libs --cflags libusb-1.0`
+    flags =  $(pkg-config --libs --cflags libusb-1.0)
 build idbtool: cc $src/idbtool.c
     flags =
 build regtool: cc $src/regtool.c $src/regtool_rpn.c
