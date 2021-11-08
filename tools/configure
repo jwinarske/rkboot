@@ -19,8 +19,6 @@ rule cc
 rule ld
     command = $CC \$in -o \$out
 
-build usbtool: cc $src/usbtool.c
-    flags =  $(pkg-config --libs --cflags libusb-1.0)
 build idbtool: cc $src/idbtool.c
     flags =
 build regtool: cc $src/regtool.c $src/regtool_rpn.c
@@ -29,6 +27,16 @@ END
 for f in $compression_src; do
 	echo build $f.o: cc "$src/../compression/$f.c" >>build.ninja
 done
+
+if command -v pkg-config && pkg-config --libs --cflags libusb-1.0; then
+	cat >> build.ninja <<END
+build usbtool: cc $src/usbtool.c
+    flags = $(pkg-config --libs --cflags libusb-1.0)
+default usbtool
+END
+else
+	echo "pkg-config or libusb-1 not found, not building usbtool"
+fi
 
 echo build unpacktool.o: cc "$src/unpacktool.c" >>build.ninja
 echo "    flags" = -c  -DHAVE_LZ4 -DHAVE_GZIP -DHAVE_ZSTD >>build.ninja
@@ -39,4 +47,4 @@ for f in $compression_src; do
 done
 echo >>build.ninja
 
-echo default usbtool idbtool regtool unpacktool >>build.ninja
+echo default idbtool regtool unpacktool >>build.ninja
