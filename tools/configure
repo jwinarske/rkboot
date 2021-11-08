@@ -9,7 +9,7 @@ compression_src="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_probe_lit
 
 cat >build.ninja <<END
 ninja_required_version = 1.3
-cflags = -Wall $CFLAGS
+cflags = -Wall $CFLAGS -iquote $src/include
 flags = -c
 rule cc
     depfile = \$out.d
