@@ -266,12 +266,13 @@ build.rule('buildcc',
     ),
 )
 build.rule('cc', f'{cc} -MD -MF $out.d {cflags} $flags -c $in -o $out',
+    description='CC $out'
     depfile="$out.d",
     deps="gcc",
 )
-build.rule('ld', '{ld} $cflags $ldflags $flags $in -o $out'.format(
-    ld=cc,
-))
+build.rule('ld', f'{cc} $cflags $ldflags $flags $in -o $out'
+    description='LD $out'
+)
 objcopy = os.getenv('OBJCOPY', 'objcopy')
 build.rule('bin', f'{objcopy} -O binary $in $out')
 build.rule('incbin', f'{objcopy} -I binary -O elf64-littleaarch64 -B aarch64 $incbin_flags $flags $in $out')
