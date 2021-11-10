@@ -13,14 +13,6 @@ struct dwc3_bufs {
 	};
 };
 
-struct dwc3_setup {
-	volatile struct dwc3_regs *dwc3;
-	struct dwc3_bufs *bufs;
-	const struct dwc3_gadget_ops *ops;
-	u32 hwparams[9];
-	u32 evt_slots;
-};
-
 enum dwc3_ep0phase {
 	DWC3_EP0_SETUP,
 	DWC3_EP0_DATA,
@@ -32,6 +24,11 @@ enum dwc3_ep0phase {
 typedef u32 buf_id_t;
 
 struct dwc3_state {
+	volatile struct dwc3_regs *regs;
+	struct dwc3_bufs *bufs;
+	const struct dwc3_gadget_ops *ops;
+	u32 hwparams[9];
+	u32 evt_slots, evt_pos;
 	enum dwc3_ep0phase ep0phase;
 	enum usb_speed speed;
 	u32 dcfg;
