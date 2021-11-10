@@ -2,9 +2,9 @@
 #include <rk3399/usbstage.h>
 #include <inttypes.h>
 #include <stdlib.h>
-#include <stdatomic.h>
 
 #include <byteorder.h>
+#include <memaccess.h>
 #include <runqueue.h>
 #include <usb.h>
 
@@ -38,14 +38,27 @@ const struct mmu_multimap initial_mappings[] = {
 	{}
 };
 
-void dwc3_irq();
+enum {PHASE_HEADER, PHASE_DATA, PHASE_HANDOFF};
+
+struct usbstage_state {
+	struct dwc3_state st;
+	_Atomic(u8) phase;
+};
+struct usbstage_bufs {
+	struct dwc3_bufs bufs;
+	_Alignas(16) u8 desc[32];
+	struct xhci_trb ep4_trb;
+	_Alignas(16) u8 header[512];
+};
+
+static struct usbstage_state st;
 
 void plat_handler_fiq() {
 	u64 grp0_intid;
 	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
 	atomic_signal_fence(memory_order_acquire);
 	if (grp0_intid) {
-		dwc3_irq();
+		dwc3_irq(&st.st);
 	} else {
 		printf("spurious interrupt\n");
 	}
@@ -65,167 +78,6 @@ struct sched_runqueue *get_runqueue() {return &runqueue;}
 static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
 u64 (*const pagetables)[512] = pagetable_frames;
 const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
-
-static const u32 num_ep = 13;
-
-static void dwc3_write_dctl(volatile struct dwc3_regs *dwc3, u32 val) {
-	dwc3->device_control = val & ~(u32)DWC3_DCTL_LST_CHANGE_REQ_MASK;
-}
-
-
-struct dwc3_gadget_ops {
-	buf_id_t (*prepare_descriptor)(struct dwc3_state *st, const struct usb_setup *req);
-	_Bool (*set_configuration)(struct dwc3_state *st, const struct usb_setup *req);
-	void (*release_buffer)(struct dwc3_state *st, buf_id_t buf);
-};
-
-enum {LAST_TRB = DWC3_TRB_ISP_IMI | DWC3_TRB_IOC | DWC3_TRB_LAST};
-
-static void dwc3_ep0_restart(struct dwc3_state *st) {
-	puts("restarting ep0");
-	volatile struct dwc3_regs *dwc3 = st->regs;
-	dwc3_post_depcmd(dwc3, 0, DWC3_DEPCMD_SET_STALL, 0, 0, 0);
-	dwc3_wait_depcmd(dwc3, 0);
-	struct dwc3_bufs *bufs = st->bufs;
-	dwc3_submit_trb(dwc3, 0, &bufs->ep0_trb, (u64)&bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
-	st->ep0phase = DWC3_EP0_SETUP;
-}
-
-static void dwc3_dispatch_control_request(struct dwc3_state *st, struct usb_setup *req) {
-	volatile struct dwc3_regs *dwc3 = st->regs;
-	struct dwc3_bufs *bufs = st->bufs;
-	dump_mem(req, 16);
-	u16 req_header = (u16)req->bRequestType << 8 | req->bRequest;
-	const u16 wLength = from_le16(req->wLength);
-	const u16 wValue = from_le16(req->wValue);
-	if ((req_header & 0xe0ff) == 0x8006) { /* GET_DESCRIPTOR */
-		assert(wLength);
-		buf_id_t buf = st->ops->prepare_descriptor(st, req);
-		if (buf) {
-			st->ep0_buf = buf;
-			u32 len = st->ep0_buf_size;
-			dump_mem((void*)st->ep0_buf_addr, len);
-			if (len > wLength) {len = wLength;}
-			dwc3_submit_trb(dwc3, 1, &bufs->ep0_trb, st->ep0_buf_addr, len, DWC3_TRB_TYPE_CONTROL_DATA | LAST_TRB);
-			st->ep0phase = DWC3_EP0_DATA;
-		} else {
-			dwc3_ep0_restart(st);
-			return;
-		}
-	} else if ((req_header & 0xe0ff) == 0x0005) { /* SET_ADDRESS */
-		assert(!wLength);
-		assert(wValue < 0x80);
-		u32 tmp = st->dcfg & ~(u32)DWC3_DCFG_DEVADDR_MASK;
-		dwc3->device_config = st->dcfg = tmp | wValue << 3;
-		st->ep0phase = DWC3_EP0_STATUS2;
-	} else if ((req_header & 0xe0ff) == 0x0009) { /* SET_CONFIGURATION */
-		assert(!wLength);
-		dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_ACCEPT_U1 | DWC3_DCTL_ACCEPT_U2);
-
-		if (st->ops->set_configuration(st, req)) {
-			st->ep0phase = DWC3_EP0_STATUS2;
-		} else {
-			dwc3_ep0_restart(st);
-			return;
-		}
-	} else {die("unexpected control request: %04"PRIx16"\n", req_header);}
-}
-
-static void process_ep0_event(struct dwc3_state *st, u32 event) {
-	volatile struct dwc3_regs *dwc3 = st->regs;
-	struct dwc3_bufs *bufs = st->bufs;
-	u32 UNUSED ep = event >> 1 & 0x1f, type = event >> 6 & 15, status = event >> 12 & 15;
-	printf(" type%"PRIu32" status%"PRIu32, type, status);
-	const enum dwc3_ep0phase phase = st->ep0phase;
-	if (type == DWC3_DEPEVT_XFER_COMPLETE) {
-		if (phase == DWC3_EP0_SETUP) {
-			puts(" setup complete");
-			atomic_thread_fence(memory_order_acquire);
-			struct usb_setup *req = &bufs->setup_packet;
-			dwc3_dispatch_control_request(st, req);
-			invalidate_range(req, sizeof(*req));
-		} else if (phase == DWC3_EP0_DATA) {
-			puts(" data complete");
-			st->ops->release_buffer(st, st->ep0_buf);
-			st->ep0_buf = 0;
-			st->ep0phase = DWC3_EP0_STATUS3;
-		} else if (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3) {
-			puts(" restarting EP0 cycle");
-			dwc3_submit_trb(dwc3, 0, &bufs->ep0_trb, (u64)&bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
-			st->ep0phase = DWC3_EP0_SETUP;
-		} else {
-			dump_mem(st->bufs->event_buffer, st->evt_slots * 4);
-			die("XferComplete in unexpected EP0 phase");
-		}
-		assert(st->ep0phase != phase);
-	} else if (type == DWC3_DEPEVT_XFER_NOT_READY) {
-		u32 state = status & 3;
-		if (state == 1 && phase == DWC3_EP0_DATA) {
-			puts(" data not ready");
-		} else if (state == 2 && (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3)) {
-			puts(" status not ready");
-			assert(phase == DWC3_EP0_STATUS3 || ep == 1);
-			u32 cmd = phase == DWC3_EP0_STATUS2
-				? DWC3_TRB_TYPE_CONTROL_STATUS2
-				: DWC3_TRB_TYPE_CONTROL_STATUS3;
-			dwc3_submit_trb(dwc3, ep, &bufs->ep0_trb, (u64)&bufs->setup_packet, 0, cmd | LAST_TRB);
-		} else {die(" unexpected XferNotReady");}
-	} else {die(" unexpected ep0 event\n");}
-}
-
-static enum usb_speed dwc3_speed_to_standard[8] = {
-	USB_HIGH_SPEED,
-	USB_FULL_SPEED,
-	USB_LOW_SPEED,
-	NUM_USB_SPEED,
-	USB_SUPER_SPEED,
-	USB_SUPER_SPEED_PLUS,
-	NUM_USB_SPEED,
-	NUM_USB_SPEED,
-};
-
-static void process_device_event(struct dwc3_state *st, u32 event) {
-	volatile struct dwc3_regs *dwc3 = st->regs;
-	switch (event >> 8 & 15) {
-	case DWC3_DEVT_DISCONNECT:
-		puts(" disconnect");
-		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_INIT_U1 & ~(u32)DWC3_DCTL_INIT_U2);
-		st->ep0phase = DWC3_EP0_DISCONNECTED;
-		break;
-	case DWC3_DEVT_RESET:
-		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_TEST_CONTROL_MASK);
-		for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
-			dwc3_post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
-		}
-		dwc3->device_config = st->dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
-		puts(" USB reset");
-		st->ep0phase = DWC3_EP0_SETUP;
-		break;
-	case DWC3_DEVT_CONNECTION_DONE:
-		printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
-		enum usb_speed speed = dwc3_speed_to_standard[dwc3->device_status & 7];
-		assert(speed < NUM_USB_SPEED);
-		st->speed = speed;
-		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_HIRDTHRES_MASK & ~(u32)DWC3_DCTL_L1_HIBERNATION_EN);
-		dwc3->device_endpoint_enable |= 1 << 4;
-		break;
-	case DWC3_DEVT_LINK_STATE_CHANGE:
-		puts(" link status change");
-		break;
-	default: abort();
-	}
-}
-
-struct usbstage_state {
-	struct dwc3_state st;
-	_Bool expect_header;
-};
-struct usbstage_bufs {
-	struct dwc3_bufs bufs;
-	_Alignas(16) u8 desc[32];
-	struct xhci_trb ep4_trb;
-	_Alignas(16) u8 header[512];
-};
 
 const u8 _Alignas(64) device_desc[18] = {
 	0x12, USB_DEVICE_DESC,	/* length, descriptor type (device) */
@@ -301,11 +153,14 @@ static buf_id_t prepare_descriptor(struct dwc3_state *st, const struct usb_setup
 	} else {return 0;}
 }
 
+
+enum {LAST_TRB = DWC3_TRB_ISP_IMI | DWC3_TRB_IOC | DWC3_TRB_LAST};
+
 static _Bool set_configuration(struct dwc3_state *st, const struct usb_setup *req) {
 	assert(from_le16(req->wValue) == 1);
 	volatile struct dwc3_regs *dwc3 = st->regs;
 	struct usbstage_state *ust = (struct usbstage_state *)st;
-	ust->expect_header = 1;
+	release8(&ust->phase, PHASE_HEADER);
 	struct usbstage_bufs *bufs = (struct usbstage_bufs *)st->bufs;
 
 	u16 max_packet_size = usb_max_packet_size[st->speed];
@@ -320,12 +175,6 @@ static _Bool set_configuration(struct dwc3_state *st, const struct usb_setup *re
 static void release_buffer(struct dwc3_state UNUSED *st, buf_id_t UNUSED buf) {
 	/* do nothing, buffers are statically allocated */
 }
-
-static const struct dwc3_gadget_ops usbstage_ops = {
-	.prepare_descriptor = prepare_descriptor,
-	.set_configuration = set_configuration,
-	.release_buffer = release_buffer,
-};
 
 enum usbstage_command {
 	CMD_LOAD = 0,
@@ -342,18 +191,23 @@ void next_stage(u64, u64, u64, u64, u64, u64);
 
 void usbstage_flash_spi(const u8 *buf, u64 start, u64 length);
 
-static void xfer_complete(struct usbstage_state *st) {
-	volatile struct dwc3_regs *dwc3 = st->st.regs;
-	struct usbstage_bufs *bufs = (struct usbstage_bufs *)st->st.bufs;
+static void xfer_complete(struct dwc3_state *st, u32 event) {
+	assert(event == 0x0000c048);
+	volatile struct dwc3_regs *dwc3 = st->regs;
+	struct usbstage_bufs *bufs = (struct usbstage_bufs *)st->bufs;
+	struct usbstage_state *st_ = (struct usbstage_state*)st;
 
 	u64 *header = (u64 *)bufs->header;
-	if (st->expect_header) {invalidate_range(header, sizeof(bufs->header));}
+	u8 phase = acquire8(&st_->phase);
+	if (phase == PHASE_HEADER) {
+		invalidate_range(header, sizeof(bufs->header));
+	}
 
 #if DEBUG_MSG
 	dump_mem(bufs->header, 64);
 #endif
 	u64 cmd = header[0];
-	if (st->expect_header) {
+	if (phase == PHASE_HEADER) {
 		switch (cmd) {
 		case CMD_FLASH:
 		case CMD_LOAD:;
@@ -361,27 +215,14 @@ static void xfer_complete(struct usbstage_state *st) {
 			assert((size & 0xff0001ff) == 0);
 			u64 addr = cmd == CMD_LOAD ?  header[2] : 0x100000;
 			dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, addr, size, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
-			st->expect_header = 0;
-			break;
+			release8(&st_->phase, PHASE_DATA);
+			return;
 		case CMD_START:;
-			dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_RUN);
-			while (~dwc3->device_status & DWC3_DSTS_HALTED) {
-				u32 evtcount = dwc3->event_count;
-				if (evtcount) {dwc3->event_count = evtcount;}
-				__asm__("yield");
-			}
-			gicv2_disable_spi(regmap_gic500d, 137);
-			gicv2_wait_disabled(regmap_gic500d);
-			gicv3_per_cpu_teardown(regmap_gic500r);
-			info("[%"PRIuTS"] usbstage end\n", get_timestamp());
-			next_stage(header[3], header[4], header[5], header[6], header[1], header[2]);
-			assert(UNREACHABLE);
+			printf("halting");
+			release8(&st_->phase, PHASE_HANDOFF);
+			return;
 		case CMD_CALL:;
 			handoff(header[1], header[2], header[3], header[4], header[5], header[6], header[7], header[8]);
-
-			flush_range(header, sizeof(bufs->header));
-			dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
-			st->expect_header = 1;
 			break;
 		default:assert(UNREACHABLE);
 		}
@@ -393,34 +234,18 @@ static void xfer_complete(struct usbstage_state *st) {
 			break;
 		default: assert(UNREACHABLE);
 		}
-		flush_range(header, sizeof(bufs->header));
-		dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
-		st->expect_header = 1;
 	}
+	flush_range(header, sizeof(bufs->header));
+	dwc3_submit_trb(dwc3, 4, &bufs->ep4_trb, (u64)&bufs->header, 512, DWC3_TRB_TYPE_NORMAL | DWC3_TRB_CSP | LAST_TRB | DWC3_TRB_HWO);
+	release8(&st_->phase, PHASE_HEADER);
 }
 
-static void process_event(struct usbstage_state *st, u32 event) {
-	volatile struct dwc3_regs *dwc3 = st->st.regs;
-	printf("0x%08"PRIx32, event);
-	if (event & 1) { /* generic event */
-		assert((event >> 1 & 0x7f) == 0);
-		process_device_event(&st->st, event);
-	} else { /* endpoint event */
-		u32 ep = event >> 1 & 0x1f;
-		printf(" ep%"PRIu32, ep);
-		if (ep <= 1) {
-			process_ep0_event(&st->st, event);
-		} else {
-			u32 type = event >> 6 & 15, status = event >> 12 & 15;
-			printf(" type%"PRIu32" status%"PRIx32, type, status);
-			printf("DEPCMD: %"PRIx32"\n", dwc3->device_ep_cmd[ep].cmd);
-			if (type == DWC3_DEPEVT_XFER_COMPLETE) {
-				xfer_complete(st);
-			}
-		}
-	}
-	puts("\n");
-}
+static const struct dwc3_gadget_ops usbstage_ops = {
+	.prepare_descriptor = prepare_descriptor,
+	.set_configuration = set_configuration,
+	.release_buffer = release_buffer,
+	.ep_event = xfer_complete,
+};
 
 static void reinit_dwc3(struct usbstage_state *st) {
 	volatile struct dwc3_regs *const dwc3 = st->st.regs;
@@ -476,30 +301,6 @@ static void reinit_dwc3(struct usbstage_state *st) {
 	for_range(i, 0, st->st.evt_slots) {bufs->event_buffer[i] = 0;}
 }
 
-static struct usbstage_state st;
-
-void dwc3_irq() {
-	volatile struct dwc3_regs *dwc3 = st.st.regs;
-	u32 evtcount = dwc3->event_count;
-	assert(evtcount % 4 == 0);
-	evtcount /= 4;
-	debug("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
-	dwc3->event_buffer_size = 256 | 1 << 31;
-	atomic_thread_fence(memory_order_acq_rel);	/* prevent reordering of accesses to event buffer to before the flag is set */
-	u32 *evtbuf = st.st.bufs->event_buffer;
-	for_range(i, 0, evtcount) {
-		u32 event = evtbuf[st.st.evt_pos];
-		st.st.evt_pos = (st.st.evt_pos + 1) % st.st.evt_slots;
-		process_event(&st, event);
-	}
-	atomic_thread_fence(memory_order_acq_rel);
-	invalidate_range(evtbuf, sizeof(st.st.bufs->event_buffer));
-	atomic_thread_fence(memory_order_release);
-	dwc3->event_count = evtcount * 4;
-	dwc3->event_buffer_size = 256;
-	puts("");
-}
-
 _Noreturn void main() {
 	puts("usbstage");
 
@@ -511,6 +312,7 @@ _Noreturn void main() {
 	st = (struct usbstage_state){.st = {
 		.regs = dwc3,
 		.bufs = (struct dwc3_bufs *)bufs,
+		.num_ep = 13,
 		.evt_slots = 64,
 		.hwparams = {
 			dwc3->hardware_parameters[0],
@@ -526,7 +328,7 @@ _Noreturn void main() {
 		.ops = &usbstage_ops,
 		.ep0phase = DWC3_EP0_DISCONNECTED,
 	},
-		.expect_header = 0,
+		.phase = PHASE_HEADER,
 	};
 	const u32 mdwidth = st.st.hwparams[0] >> 8 & 0xff;
 	const u32 ram2_bytes = (st.st.hwparams[7] >> 16) * (mdwidth / 8);
@@ -545,15 +347,15 @@ _Noreturn void main() {
 		st.st.evt_pos = (st.st.evt_pos + brom_skipped_event_bytes / 4) % st.st.evt_slots;
 		st.st.ep0phase = DWC3_EP0_STATUS3;
 		st.st.speed = dwc3_speed_to_standard[dwc3->device_status & 7];
-		for_range(ep, 1, num_ep) {	/* don't clear DEP0 */
+		for_range(ep, 1, st.st.num_ep) {	/* don't clear DEP0 */
 			dwc3_post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
 		}
-		for_range(ep, 1, num_ep) {dwc3_wait_depcmd(dwc3, ep);}
+		for_range(ep, 1, st.st.num_ep) {dwc3_wait_depcmd(dwc3, ep);}
 	}
 
 	printf("new config GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 	u32 max_packet_size = 64;
-	dwc3_new_configuration(dwc3, max_packet_size, num_ep);
+	dwc3_new_configuration(dwc3, max_packet_size, st.st.num_ep);
 	printf("DALEPENA: %"PRIx32"\n", dwc3->device_endpoint_enable);
 
 	if (!reinit) {
@@ -572,7 +374,7 @@ _Noreturn void main() {
 	printf("cmd %"PRIx32"\n", dwc3->device_ep_cmd[0].cmd);
 	udelay(100);
 	if (reinit) {
-		dwc3_write_dctl(dwc3, dwc3->device_control | DWC3_DCTL_RUN);
+		dwc3_start(dwc3);
 		printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 	}
 
@@ -583,7 +385,7 @@ _Noreturn void main() {
 	gicv3_per_cpu_setup(regmap_gic500r);
 	gicv2_setup_spi(regmap_gic500d, 137, 0x80, 1, IGROUP_0 | INTR_LEVEL);
 	timestamp_t last_status = get_timestamp();
-	while (1) {
+	while (acquire8(&st.phase) != PHASE_HANDOFF) {
 		timestamp_t now = get_timestamp();
 		if (now - last_status > 300000 * TICKS_PER_MICROSECOND) {
 			last_status = now;
@@ -594,4 +396,13 @@ _Noreturn void main() {
 		}
 		__asm__("yield");
 	}
+
+	dwc3_halt(st.st.regs);
+	gicv2_disable_spi(regmap_gic500d, 137);
+	gicv2_wait_disabled(regmap_gic500d);
+	gicv3_per_cpu_teardown(regmap_gic500r);
+	info("[%"PRIuTS"] usbstage end\n", get_timestamp());
+	u64 *header = (u64*)bufs->header;
+	next_stage(header[3], header[4], header[5], header[6], header[1], header[2]);
+	assert(UNREACHABLE);
 }
