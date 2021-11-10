@@ -201,12 +201,10 @@ static void process_device_event(struct dwc3_state *st, u32 event) {
 
 void dwc3_irq(struct dwc3_state *st) {
 	volatile struct dwc3_regs *dwc3 = st->regs;
-	u32 evtcount = dwc3->event_count;
+	u32 evtcount = acquire32v(&dwc3->event_count);
 	assert(evtcount % 4 == 0);
 	evtcount /= 4;
 	debug("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
-	dwc3->event_buffer_size = 256 | 1 << 31;
-	atomic_thread_fence(memory_order_acq_rel);	/* prevent reordering of accesses to event buffer to before the flag is set */
 	u32 *evtbuf = st->bufs->event_buffer;
 	for_range(i, 0, evtcount) {
 		u32 event = evtbuf[st->evt_pos];
@@ -227,12 +225,8 @@ void dwc3_irq(struct dwc3_state *st) {
 			}
 		}
 	}
-	atomic_thread_fence(memory_order_acq_rel);
 	invalidate_range(evtbuf, sizeof(st->bufs->event_buffer));
-	atomic_thread_fence(memory_order_release);
-	dwc3->event_count = evtcount * 4;
-	dwc3->event_buffer_size = 256;
-	puts("");
+	release32v(&dwc3->event_count, evtcount * 4);
 }
 
 void dwc3_start(volatile struct dwc3_regs *dwc3) {

@@ -32,7 +32,7 @@ struct dwc3_regs {
 	u32 padding5[29];
 	u32 event_buffer_address[2];
 	u32 event_buffer_size;
-	u32 event_count;
+	_Atomic(uint32_t) event_count;
 	u32 padding6[124];
 	u32 hardware_parameters8;
 	u32 padding7[3];
