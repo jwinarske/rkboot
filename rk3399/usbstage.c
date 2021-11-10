@@ -2,6 +2,7 @@
 #include <rk3399/usbstage.h>
 #include <inttypes.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <byteorder.h>
 #include <memaccess.h>
@@ -301,14 +302,13 @@ static void reinit_dwc3(struct usbstage_state *st) {
 	for_range(i, 0, st->st.evt_slots) {bufs->event_buffer[i] = 0;}
 }
 
+UNCACHED _Alignas(256) struct usbstage_bufs new_bufs;
+
 _Noreturn void main() {
-	puts("usbstage");
+	printf("[%"PRIuTS"] usbstage\n", get_timestamp());
 
 	volatile struct dwc3_regs *const dwc3 = (struct dwc3_regs*)((char *)regmap_otg0 + 0xc100);
-	struct usbstage_bufs *bufs = (struct usbstage_bufs *)0xff8c0210;
-#ifdef DEBUG_MSG
-	dump_mem(&bufs->bufs.event_buffer, sizeof(bufs->bufs.event_buffer));
-#endif
+	struct usbstage_bufs *bufs = &new_bufs;
 	st = (struct usbstage_state){.st = {
 		.regs = dwc3,
 		.bufs = (struct dwc3_bufs *)bufs,
@@ -334,6 +334,9 @@ _Noreturn void main() {
 	const u32 ram2_bytes = (st.st.hwparams[7] >> 16) * (mdwidth / 8);
 	st.st.dcfg = DWC3_HIGH_SPEED | 0 << 12 | (ram2_bytes / 512) << 17 | DWC3_DCFG_LPM_CAPABLE;
 
+	dwc3->event_buffer_size = 0x80000100;
+	dsb_sy();
+	memcpy(&bufs->bufs.event_buffer, (u32*)0xff8c0210, 256);
 	u32 brom_evt_pos = *(u32 *)0xff8c041c;
 	st.st.evt_pos = brom_evt_pos / 4 % st.st.evt_slots;
 	_Bool reinit = 0;
@@ -343,8 +346,6 @@ _Noreturn void main() {
 		reinit = 1;
 	} else {
 		info("reusing BROM connection\n");
-		u32 brom_skipped_event_bytes = *(u32 *)0xff8c0420;
-		st.st.evt_pos = (st.st.evt_pos + brom_skipped_event_bytes / 4) % st.st.evt_slots;
 		st.st.ep0phase = DWC3_EP0_STATUS3;
 		st.st.speed = dwc3_speed_to_standard[dwc3->device_status & 7];
 		for_range(ep, 1, st.st.num_ep) {	/* don't clear DEP0 */
@@ -365,22 +366,25 @@ _Noreturn void main() {
 			.wValue = 1,
 		};
 		set_configuration(&st.st, &dummy);
+		dwc3->event_buffer_address[0] = (u32)(u64)&bufs->bufs.event_buffer;
+		dwc3->event_buffer_address[1] = (u32)((u64)&bufs->bufs.event_buffer >> 32);
+		dsb_sy();
 		dwc3->event_buffer_size = 256;
+		// ACK Status-not-ready from BROM
+		dwc3->event_count = 4;
+		st.st.evt_pos = (st.st.evt_pos + 1) % st.st.evt_slots;
+		dwc3_submit_trb(dwc3, 1, &st.st.bufs->ep0_trb, 0, 0, DWC3_TRB_TYPE_CONTROL_STATUS3 | LAST_TRB);
+	} else {
+		dwc3_submit_trb(dwc3, 0, &st.st.bufs->ep0_trb, (u64)&st.st.bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
 	}
 
 
-	dwc3_submit_trb(dwc3, 0, &st.st.bufs->ep0_trb, (u64)&st.st.bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
 	dwc3_wait_depcmd(dwc3, 0);
 	printf("cmd %"PRIx32"\n", dwc3->device_ep_cmd[0].cmd);
 	udelay(100);
 	if (reinit) {
 		dwc3_start(dwc3);
 		printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
-	}
-
-	{
-		u32 evtcount = dwc3->event_count;
-		printf("%"PRIu32" events pending, evtsiz0x%"PRIx32"\n", evtcount, dwc3->event_buffer_size);
 	}
 	gicv3_per_cpu_setup(regmap_gic500r);
 	gicv2_setup_spi(regmap_gic500d, 137, 0x80, 1, IGROUP_0 | INTR_LEVEL);
