@@ -11,7 +11,7 @@
 #include <memaccess.h>
 
 void dwc3_post_depcmd(volatile struct dwc3_regs *dwc3, u32 ep, u32 cmd, u32 par0, u32 par1, u32 par2) {
-	info("depcmd@%08"PRIx64" 0x%08"PRIx32" %"PRIx32" %"PRIx32" %"PRIx32"\n", (u64)&dwc3->device_ep_cmd[ep].par2, cmd, par0, par1, par2);
+	debug("depcmd@%08"PRIx64" 0x%08"PRIx32" %"PRIx32" %"PRIx32" %"PRIx32"\n", (u64)&dwc3->device_ep_cmd[ep].par2, cmd, par0, par1, par2);
 	dwc3->device_ep_cmd[ep].par2 = par2;
 	dwc3->device_ep_cmd[ep].par1 = par1;
 	dwc3->device_ep_cmd[ep].par0 = par0;
@@ -32,7 +32,7 @@ static void write_trb(struct xhci_trb *trb, u64 param, u32 status, u32 ctrl) {
 }
 
 void dwc3_submit_trb(volatile struct dwc3_regs *dwc3, u32 ep, struct xhci_trb *trb, u64 param, u32 status, u32 ctrl) {
-	printf("submit TRB: %016"PRIx64" %08"PRIx32" %"PRIx32"\n", param, status, ctrl);
+	info("submit TRB to EP%"PRIu32": %016"PRIx64" %08"PRIx32" %"PRIx32"\n", ep, param, status, ctrl);
 	write_trb(trb, param, status, ctrl | DWC3_TRB_HWO);
 	atomic_thread_fence(memory_order_release);
 	dwc3_post_depcmd(dwc3, ep, DWC3_DEPCMD_START_XFER, (u32)((u64)trb >> 32), (u32)(u64)trb, 0);
@@ -61,7 +61,7 @@ void dwc3_configure_bulk_ep(volatile struct dwc3_regs *dwc3, u32 ep, u32 action,
 void dwc3_new_configuration(volatile struct dwc3_regs *dwc3, u32 max_packet_size, u32 num_ep) {
 	dwc3_post_depcmd(dwc3, 0, DWC3_DEPCMD_START_NEW_CONFIG, 0, 0, 0);
 	dwc3_wait_depcmd(dwc3, 0);
-	printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
+	debug("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 	for_range(ep, 0, 2) {
 		configure_control_ep(dwc3, ep, DWC3_DEPCFG0_INIT, max_packet_size);
 	}
@@ -72,7 +72,7 @@ void dwc3_new_configuration(volatile struct dwc3_regs *dwc3, u32 max_packet_size
 	dwc3->device_endpoint_enable = 3;
 	for_range(ep, 0, num_ep) {
 		dwc3_wait_depcmd(dwc3, ep);
-		printf("%"PRIu32": %08"PRIx32"\n", ep, dwc3->device_ep_cmd[ep].cmd);
+		debug("%"PRIu32": %08"PRIx32"\n", ep, dwc3->device_ep_cmd[ep].cmd);
 	}
 }
 
@@ -84,7 +84,7 @@ static void dwc3_write_dctl(volatile struct dwc3_regs *dwc3, u32 val) {
 enum {LAST_TRB = DWC3_TRB_ISP_IMI | DWC3_TRB_IOC | DWC3_TRB_LAST};
 
 static void dwc3_ep0_restart(struct dwc3_state *st) {
-	puts("restarting ep0");
+	info("STALLing and restarting ep0\n");
 	volatile struct dwc3_regs *dwc3 = st->regs;
 	dwc3_post_depcmd(dwc3, 0, DWC3_DEPCMD_SET_STALL, 0, 0, 0);
 	dwc3_wait_depcmd(dwc3, 0);
@@ -143,20 +143,20 @@ static void ep0_xfer_complete(struct dwc3_state *st, u32 event) {
 	const enum dwc3_ep0phase phase = st->ep0phase;
 	u32 ep = event >> 1 & 0x1f;
 	if (phase == DWC3_EP0_SETUP) {
-		puts(" setup complete");
+		info("  setup phase completed\n");
 		atomic_thread_fence(memory_order_acquire);
 		struct usb_setup *req = &bufs->setup_packet;
 		dwc3_dispatch_control_request(st, req);
 		invalidate_range(req, sizeof(*req));
 	} else if (phase == DWC3_EP0_DATA) {
-		puts(" data complete");
+		info("  data phase completed\n");
 		st->ops->release_buffer(st, st->ep0_buf);
 		st->ep0_buf = 0;
 		st->ep0phase = DWC3_EP0_STATUS3;
 		assert(ep == 1);
 		dwc3_submit_trb(dwc3, 1- ep, &bufs->ep0_trb, 0, 0, DWC3_TRB_TYPE_CONTROL_STATUS3 | LAST_TRB);
 	} else if (phase == DWC3_EP0_STATUS2 || phase == DWC3_EP0_STATUS3) {
-		puts(" restarting EP0 cycle");
+		info("  status phase completed, restarting EP0 cycle\n");
 		dwc3_submit_trb(dwc3, 0, &bufs->ep0_trb, (u64)&bufs->setup_packet, 8, DWC3_TRB_TYPE_CONTROL_SETUP | LAST_TRB);
 		st->ep0phase = DWC3_EP0_SETUP;
 	} else {
@@ -166,12 +166,12 @@ static void ep0_xfer_complete(struct dwc3_state *st, u32 event) {
 }
 
 static void process_device_event(struct dwc3_state *st, u32 event) {
-	printf("Device event: %08"PRIx32"\n", event);
+	info("Device event: %08"PRIx32"\n", event);
 	assert((event >> 1 & 0x7f) == 0);
 	volatile struct dwc3_regs *dwc3 = st->regs;
 	switch (event >> 8 & 15) {
 	case DWC3_DEVT_DISCONNECT:
-		puts(" disconnect");
+		info("  disconnect\n");
 		dwc3_write_dctl(dwc3, dwc3->device_control & ~(u32)DWC3_DCTL_INIT_U1 & ~(u32)DWC3_DCTL_INIT_U2);
 		st->ep0phase = DWC3_EP0_DISCONNECTED;
 		break;
@@ -181,11 +181,11 @@ static void process_device_event(struct dwc3_state *st, u32 event) {
 			dwc3_post_depcmd(dwc3, ep, DWC3_DEPCMD_CLEAR_STALL, 0, 0, 0);
 		}
 		dwc3->device_config = st->dcfg &= ~(u32)DWC3_DCFG_DEVADDR_MASK;
-		puts(" USB reset");
+		info("  USB reset\n");
 		st->ep0phase = DWC3_EP0_SETUP;
 		break;
 	case DWC3_DEVT_CONNECTION_DONE:
-		printf(" connection done, status 0x%08"PRIx32, dwc3->device_status);
+		info("  connection done, status 0x%08"PRIx32, dwc3->device_status);
 		enum usb_speed speed = dwc3_speed_to_standard[dwc3->device_status & 7];
 		assert(speed < NUM_USB_SPEED);
 		st->speed = speed;
@@ -219,7 +219,7 @@ void dwc3_irq(struct dwc3_state *st) {
 			if (ep <= 1) {
 				if (type == DWC3_DEPEVT_XFER_COMPLETE) {
 					ep0_xfer_complete(st, event);
-				} else {die(" unexpected ep0 event\n");}
+				} else {info("  unexpected ep0 event\n");}
 			} else {
 				st->ops->ep_event(st, event);
 			}
