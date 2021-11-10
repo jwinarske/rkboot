@@ -291,6 +291,8 @@ int main(int argc, char **argv) {
 			}
 			if (fd) {close(fd);}
 			if (!call) {break;}
+		} else if (!strcmp("--bulk", *arg)) {
+			break;
 		} else {
 			fprintf(stderr, "unknown command line argument %s", *arg);
 			return 1;
