@@ -1,10 +1,13 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <rk3399/usbstage.h>
+#include <rk3399/sramstage.h>
+#include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <byteorder.h>
+#include <die.h>
+#include <log.h>
 #include <memaccess.h>
 #include <runqueue.h>
 #include <usb.h>
@@ -12,6 +15,7 @@
 #include <arch/context.h>
 #include <cache.h>
 #include <mmu.h>
+#include <timer.h>
 
 #include <gic.h>
 #include <gic_regs.h>
@@ -21,23 +25,7 @@
 #include <xhci_regs.h>
 
 #include <rk3399.h>
-#include <stage.h>
 #include <dump_mem.h>
-
-static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
-void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
-
-volatile struct uart *const console_uart = regmap_uart;
-
-const struct mmu_multimap initial_mappings[] = {
-#include <rk3399/base_mappings.inc.c>
-	{.addr = 0, MMU_MAPPING(NORMAL, 0)},
-	{.addr = 0xf8000000, .desc = 0},
-	{.addr = 0xff8c0000, .desc =  MMU_MAPPING(UNCACHED, 0xff8c0000)},
-	{.addr = 0xff8c1000, .desc = 0},
-	VSTACK_MULTIMAP(CPU0),
-	{}
-};
 
 enum {PHASE_HEADER, PHASE_DATA, PHASE_HANDOFF};
 
@@ -54,31 +42,13 @@ struct usbstage_bufs {
 
 static struct usbstage_state st;
 
-void plat_handler_fiq() {
-	u64 grp0_intid;
-	__asm__ volatile("mrs %0, "ICC_IAR0_EL1";msr DAIFClr, #0xf" : "=r"(grp0_intid));
-	atomic_signal_fence(memory_order_acquire);
-	if (grp0_intid) {
+void sramstage_late_irq(u32 intid) {
+	if (intid == 137) {
 		dwc3_irq(&st.st);
 	} else {
 		printf("spurious interrupt\n");
 	}
-	atomic_signal_fence(memory_order_release);
-	__asm__ volatile(
-		"msr DAIFSet, #0xf;"
-		"msr "ICC_EOIR0_EL1", %0;"
-		"msr "ICC_DIR_EL1", %0"
-	: : "r"(grp0_intid));
 }
-void plat_handler_irq() {
-	die("unexpected IRQ");
-}
-
-static struct sched_runqueue runqueue = {.head = 0, .tail = &runqueue.head};
-struct sched_runqueue *get_runqueue() {return &runqueue;}
-static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[11][512];
-u64 (*const pagetables)[512] = pagetable_frames;
-const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
 
 const u8 _Alignas(64) device_desc[18] = {
 	0x12, USB_DEVICE_DESC,	/* length, descriptor type (device) */
@@ -190,8 +160,6 @@ __asm__("handoff: add x8, sp, #0; add sp, x1, #0; stp x30, x8, [sp, #-16]!; blr 
 
 void next_stage(u64, u64, u64, u64, u64, u64);
 
-void usbstage_flash_spi(const u8 *buf, u64 start, u64 length);
-
 static void xfer_complete(struct dwc3_state *st, u32 event) {
 	assert(event == 0x0000c048);
 	volatile struct dwc3_regs *dwc3 = st->regs;
@@ -231,7 +199,7 @@ static void xfer_complete(struct dwc3_state *st, u32 event) {
 		switch (cmd) {
 		case CMD_LOAD: break;
 		case CMD_FLASH:
-			usbstage_flash_spi((const u8 *)0x100000, header[2], header[1]);
+			sramstage_usb_flash_spi((const u8 *)0x100000, header[2], header[1]);
 			break;
 		default: assert(UNREACHABLE);
 		}
@@ -304,8 +272,10 @@ static void reinit_dwc3(struct usbstage_state *st) {
 
 UNCACHED _Alignas(256) struct usbstage_bufs new_bufs;
 
-_Noreturn void main() {
+_Noreturn void sramstage_late() {
 	printf("[%"PRIuTS"] usbstage\n", get_timestamp());
+	mmu_map_range(0xff8c0000, 0xff8c1fff, 0xff8c0000, MEM_TYPE_UNCACHED);
+	mmu_map_range(0, 0xf7ffffff, 0, MEM_TYPE_UNCACHED);
 
 	volatile struct dwc3_regs *const dwc3 = (struct dwc3_regs*)((char *)regmap_otg0 + 0xc100);
 	struct usbstage_bufs *bufs = &new_bufs;
@@ -386,7 +356,6 @@ _Noreturn void main() {
 		dwc3_start(dwc3);
 		printf("GSTS: %08"PRIx32" DSTS: %08"PRIx32"\n", dwc3->global_status, dwc3->device_status);
 	}
-	gicv3_per_cpu_setup(regmap_gic500r);
 	gicv2_setup_spi(regmap_gic500d, 137, 0x80, 1, IGROUP_0 | INTR_LEVEL);
 	timestamp_t last_status = get_timestamp();
 	while (acquire8(&st.phase) != PHASE_HANDOFF) {

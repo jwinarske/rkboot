@@ -176,9 +176,9 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-flags['rk3399/memtest'].append(memtest_prngs[args.memtest_prng])
+flags['sramstage/memtest'].append(memtest_prngs[args.memtest_prng])
 if args.uncached_memtest:
-    flags['rk3399/memtest'].append('-DUNCACHED_MEMTEST')
+    flags['sramstage/memtest'].append('-DUNCACHED_MEMTEST')
 if args.dramstage_initcpio:
     for f in ('dramstage/main', 'dramstage/commit', 'dramstage/decompression'):
         flags[f].append('-DCONFIG_DRAMSTAGE_INITCPIO')
@@ -210,7 +210,7 @@ if args.tf_a_headers:
 elif boot_media or decompressors:
     print(
         "ERROR: booting a kernel requires TF-A support, which is enabled by providing --with-tf-a-headers.\n"
-        + "If you just want memtest and/or usbstage, don't configure with boot medium or decompression support"
+        + "If you just want memtest and/or the USB loader, don't configure with boot medium or decompression support"
     )
     sys.exit(1)
 
@@ -288,7 +288,8 @@ lib = {'lib/error', 'lib/uart', 'lib/uart16550a', 'lib/mmu', 'lib/gicv2', 'lib/s
 sramstage = {'sramstage/main', 'rk3399/pll', 'sramstage/pmu_cru', 'sramstage/misc_init'} | {'dram/' + x for x in ('training', 'memorymap', 'mirror', 'ddrinit')}
 dramstage = {'dramstage/main', 'dramstage/transform_fdt', 'lib/rki2c', 'dramstage/commit', 'dramstage/entropy', 'dramstage/board_probe', 'dram/read_size'}
 dramstage_embedder =  {'sramstage/embedded_dramstage', 'compression/lzcommon', 'compression/lz4', 'lib/string'}
-usbstage = {'rk3399/usbstage', 'lib/dwc3', 'rk3399/usbstage-spi', 'lib/rkspi'}
+usb_loader = {'sramstage/usb_loader', 'lib/dwc3', 'sramstage/usb_loader-spi', 'lib/rkspi'}
+memtest = {'sramstage/memtest', 'dram/read_size'}
 
 if decompressors:
     flags['dramstage/main'].append('-DCONFIG_DRAMSTAGE_DECOMPRESSION')
@@ -335,7 +336,7 @@ for x in board_handlers:
         flags[x].append(f'-DCONFIG_BOARD_{n}={1 if o in boards else 0}')
     flags[x].append(f'-DCONFIG_SINGLE_BOARD={1 if len(boards) == 1 else 0}')
 
-modules = lib | sramstage | dramstage | usbstage | {'sramstage/return_to_brom', 'rk3399/teststage', 'lib/dump_fdt', 'rk3399/memtest'}
+modules = lib | sramstage | dramstage | usb_loader | memtest | {'rk3399/teststage', 'lib/dump_fdt'}
 if boot_media:
     modules |= dramstage_embedder
 build.comment(f'modules: {" ".join(modules)}')
@@ -353,9 +354,9 @@ asm_jobs = {x: x + '.S' for x in (
     'aarch64/gicv3', 'aarch64/save_restore', 'aarch64/string',
     'aarch64/mmu_asm', 'rk3399/cpu_onoff'
 )}
+memtest |= {'rk3399/cpu_onoff'}
 
 for j, f in {
-    'entry-ret2brom': ('-DCONFIG_FIRST_STAGE=2',),
     'entry-first':  ('-DCONFIG_FIRST_STAGE=1',),
     'entry': ('-DCONFIG_FIRST_STAGE=0', '-DCONFIG_EL=3'),
     'entry-el2': ('-DCONFIG_FIRST_STAGE=0', '-DCONFIG_EL=2')
@@ -415,6 +416,7 @@ sramstage |= {'dramcfg'}
 
 # ===== linking and image post processing =====
 sramstage = (sramstage | lib) - {'entry'}
+sramstage |= {'entry-first'}
 build('dramstage.lz4', 'lz4', 'dramstage.bin', flags='--content-size')
 build('dramstage.lz4.o', 'incbin', 'dramstage.lz4')
 dramstage_embedder |= {'dramstage.lz4', 'entry-first'}
@@ -431,19 +433,18 @@ def binary(name, modules, base_address):
     )
     build(name + '.bin', 'bin', name + '.elf')
 
-binary('sramstage', sramstage | {'entry-ret2brom', 'sramstage/return_to_brom'}, 'ff8c2000')
-binary('memtest', {'rk3399/memtest', 'rk3399/cpu_onoff', 'dram/read_size'} | lib, 'ff8c2000')
-binary('usbstage', usbstage | lib, 'ff8c2000')
+binary('sramstage-usb', sramstage | usb_loader, 'ff8c2000')
+binary('memtest', sramstage | memtest, 'ff8c2000')
 binary('teststage', ('rk3399/teststage', 'entry-el2', 'aarch64/dcache-el2', 'aarch64/context-el2', 'rk3399/handlers-el2', 'rk3399/debug-el2', 'aarch64/mmu_asm', 'lib/uart', 'lib/uart16550a', 'lib/error', 'lib/mmu', 'lib/dump_fdt', 'lib/sched', 'lib/string'), '00280000')
-build.default('sramstage.bin', 'memtest.bin', 'usbstage.bin', 'teststage.bin')
+build('memtest-sd.img', 'run', 'memtest.bin', deps='idbtool', bin='./idbtool')
+build.default('sramstage-usb.bin', 'memtest.bin', 'teststage.bin', 'memtest-sd.img')
 if args.tf_a_headers:
     binary('dramstage', dramstage | lib, '04000000')
     build.default('dramstage.bin')
 if boot_media:
-    binary('levinboot-img', sramstage | dramstage_embedder, 'ff8c2000')
     binary('levinboot-usb', sramstage | dramstage_embedder, 'ff8c2000')
-    build('levinboot-spi.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool', flags='spi')
-    build('levinboot-sd.img', 'run', 'levinboot-img.bin', deps='idbtool', bin='./idbtool')
+    build('levinboot-spi.img', 'run', 'levinboot-usb.bin', deps='idbtool', bin='./idbtool', flags='spi')
+    build('levinboot-sd.img', 'run', 'levinboot-usb.bin', deps='idbtool', bin='./idbtool')
     build.default('levinboot-sd.img', 'levinboot-spi.img', 'levinboot-usb.bin')
 
 for addr in base_addresses:

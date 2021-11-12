@@ -9,7 +9,10 @@ struct sdhci_state;
 void emmc_init(struct sdhci_state *st);
 void pcie_init();
 
-void end_sramstage();
+_Noreturn void sramstage_late();
+void sramstage_late_irq(u32 intid);
+
+void sramstage_usb_flash_spi(const u8 *buf, u64 start, u64 length);
 
 #define DEFINE_VSTACK(X)\
 	X(CPU0) X(DDRC0) X(DDRC1) X(SDMMC) X(EMMC) X(PCIE)
@@ -43,6 +46,7 @@ void end_sramstage();
 	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
 	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
 #define DEFINE_REGMAP64K(X)\
+	X(OTG0, otg0, 0xfe800000, void)\
 	X(DMC, dmc, 0xffa80000, u32)\
 	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
 	X(GRF, grf, 0xff770000, u32)\
