@@ -194,7 +194,8 @@ w32	LPDDR4 RdLvl pattern 11 = 0x55555a5a
 b1	rd preamble training en = 1
 b1	reg DIMM enable = 0
 freq 89+9 90+8
-	b8	RdLvl adj = freq(5, 12, 9)
+	# called pi_rdlvl_adj in the docs
+	b8	RdLat adj = freq(5, 12, 9)
 b8	tDFI RdData en: ro
 freq 90+16 91+8
 	b8	WrLat adj = freq(2, 6, 4)
@@ -242,10 +243,10 @@ b1	CA train VRef en = 1
 freq 104+25 109+10
 	b5	tDFI CACSCA = 0
 	b5	tDFI CASel = 1
-	# the +1 shouldn't be there
-	<b10	tVRef short = 250ns 1tCK +
 	# should probably be 80ns
-	<b10	tVRef long = 250ns 1tCK +
+	<b10	tVRef short = 250ns 1tCK +
+	# the +1 shouldn't be there
+	<b10	tVRef long PI = 250ns 1tCK +
 b7	CALvl VRef initial starting point = 26
 b7	CALvl VRef initial stop point = 30
 b4	CALvl VRef initial stepsize = 4
@@ -341,14 +342,14 @@ freq 155+27 157+10
 b5	tCCD = 8
 freq 157+21 169+8
 	b8	tRTP = 8
-	# tRPab; modified minimum, see PCTL
-	<b8	tRP = 21ns 4tCK max
+	# tRPab; modified minimum, see PCTL; called pi_trp_f* in the docs
+	<b8	tRP AB = 21ns 4tCK max
 	<b8	tRCD = 18ns 4tCK max
 	b6	tWTR = 10
 	# should be 6, 16, 10 per spec
 	b6	tWR = freq(4, 17, 10)
 	# should be 70200ns, but this is slightly off
-	b17	tRAS max = freq(0xd92, 0xd92e, 0x6c97)
+	b17	tRAS max PI = freq(0xd92, 0xd92e, 0x6c97)
 	<b8	tRAS min = 42ns 3tCK max
 	<b4	tDQSCK max = 3.5ns
 	b6	tCCDMW = 32

@@ -27,21 +27,21 @@ p1	cycle shift = 0
 
 sync 5+12 5+12
 b3	DQ TSel enable: packed
-p1	during read cycles = TSEL_RD_EN
+p1	TSel rd en = TSEL_RD_EN
 p1	during write cycles = 0
 p1	during idle cycles = 0
 b24	DQ TSel select: packed
-p8	during read cycles = TSEL_DQ_RD
-p8	during write cycles = TSEL_DQ_WR
-p8	during idle cycles = 0
+p8	TSel DQ rd = TSEL_DQ_RD
+p8	TSel DQ wr = TSEL_DQ_WR
+p8	TSel DQ idle = 0
 b3	DQS TSel enable: packed
-p1	during read cycles = TSEL_RD_EN
+p1	TSel rd en = TSEL_RD_EN
 p1	during write cycles = 0
 p1	during idle cycles = 0
 b24	DQS TSel select: packed
-p8	during read cycles = TSEL_DQ_RD
-p8	during write cycles = TSEL_DQ_WR
-p8	during idle cycles = 0
+p8	TSel DQ rd = TSEL_DQ_RD
+p8	TSel DQ wr = TSEL_DQ_WR
+p8	TSel DQ idle = 0
 b2	two cyc preamble: packed
 !p1	for reads = 1
 !p1	for writes = 1

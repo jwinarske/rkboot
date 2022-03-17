@@ -36,7 +36,7 @@ freq 18+26 19+21
 w32	tRst PwrOn = 80
 w32	CKE inactive = 200
 freq 21+32 23+16
-	h16	TDLL = 0
+	h16	tDLL = 0
 freq 23+16 25+22
 	b7	CASLat lin = 2RL_nDBI
 	b5	WrLat = 1WL_A
@@ -261,7 +261,7 @@ freq 122+2 129+32
 	<h10	tFC = 250ns
 	<b5	tCKFSPE = 7.5ns 4tCK max
 	<b5	tCKFSPX = 7.5ns 4tCK max
-	<h16	tVREF long = 250ns
+	<h16	tVRef long = 250ns
 freq 129+32 131+16
 	h16	MRR promote threshold = 0
 freq 131+16 132+32
