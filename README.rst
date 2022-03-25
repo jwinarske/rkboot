@@ -43,6 +43,21 @@ What should work at this point:
 Roadmap
 -------
 
+1. lbpayload
+    - uncompressed
+        - layout
+        - ITB gen
+    - dramstage support
+    - precompressed
+    - usbtool support
+    - ITS gen
+    - on-the-fly compression
+    - smarter layout
+2. USB
+3. DRAM params
+4. PPP
+5. SPI DMA
+
 Goals for 0.9:
 
 - USB keyboard support for selecting boot media and possibly payload partitions,
