@@ -130,63 +130,6 @@ void dump_segment(const struct segment *seg) {
 	printf("%016"PRIx64" %016"PRIx64" %3"PRIu8"\n", seg->first, seg->last, seg->alignment);
 }
 
-struct fixup {size_t pos, value;};
-
-struct outbuf {
-	DECL_VEC(uint8_t, bytes);
-	DECL_VEC(struct fixup, fixups);
-};
-
-static size_t vuint_length(uint64_t val) {
-	size_t length = 0;
-	do {
-		length += 1;
-		val >>= 7;
-	} while (val);
-	return length;
-}
-
-static void write_vuint(struct outbuf *bst, uint64_t val) {
-	size_t length = vuint_length(val);
-	if (bst->bytes_cap - bst->bytes_size < length) {
-		assert(bst->bytes_cap > SIZE_MAX >> 1);
-		bst->bytes_cap <<= 1;
-		bst->bytes = realloc(bst->bytes, bst->bytes_cap);
-		assert(bst->bytes);
-	}
-	bst->bytes_size += length;
-	uint8_t *ptr = bst->bytes + length;
-	do {
-		*--ptr = val;
-		val >>= 8;
-	} while (val);
-	if (length % 8) {
-		uint8_t mask = (1 << (length % 8 - 1)) - 1;
-		*ptr |= mask << (8 - length % 8);
-	}
-	length /= 8;
-	while (length--) {*--ptr = 0xff;}
-}
-
-static void output_payload(struct context *ctx) {
-	struct outbuf header;
-	INIT_VEC(header.bytes);
-	uint64_t magic = 0;
-	for (size_t i = 0; i < 7; ++i) {
-		magic |= (uint64_t)"levinbt"[i] << (56 - i * 8);
-	}
-	write_vuint(&header, magic);
-	write_vuint(&header, 0);	/* version */
-	write_vuint(&header, 9);	/* disk alignment (shift) */
-	struct fixup *wrapper_length = BUMP(header.fixups);
-	wrapper_length->pos = header.bytes_size;
-	/*size_t delta = 0;
-	for (size_t i = 0; i < ctx->segments_size; ++i) {
-		const struct segment *seg = ctx->segments + i;
-		struct fixup *seg_length = BUMP(header.fixups);
-	}*/
-}
-
 int main(int argc, char **argv) {
 	struct context ctx;
 	INIT_VEC(ctx.segments);
