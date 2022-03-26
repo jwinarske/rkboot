@@ -494,6 +494,38 @@ int main(int argc, char **argv) {
 			};
 			ctx.have_initrd = 1;
 			break;
+		case CLI_CMD_LINUX:
+			if (size < 64) {
+				fprintf(stderr, "File too small for Linux header\n");
+				return 3;
+			}
+			if (buf[56] != 'A' || buf[57] != 'R' || buf[58] != 'M' || buf[59] != 0x64) {
+				fprintf(stderr, "Wrong magic number for ARM64 Linux image\n");
+				return 3;
+			}
+			uint64_t image_size = 0, text_offset = 0;
+			for (size_t i = 0; i < 8; ++i) {
+				text_offset |= buf[8 + i] << 8*i;
+				image_size |= buf[16 + i] << 8*i;
+			}
+			if (image_size < size) {
+				fprintf(stderr, "Unexpected image_size of 0x%"PRIx64" for 0x%zx-byte Linux image\n", image_size, size);
+				return 3;
+			}
+			ctx.kernel_entry = (struct rel_addr) {
+				.segment = ctx.segments_size,
+				.offset = 0,
+			};
+			*BUMP(ctx.segments) = (struct segment) {
+				.first = text_offset,
+				.last_init = text_offset + size - 1,
+				.last = text_offset + image_size - 1,
+				.buf = buf, .size = size,
+				.role = SEG_ROLE_KERNEL,
+				.alignment = 21,
+			};
+			ctx.have_kernel = 1;
+			break;
 		default: fprintf(stderr, "unexpected command %u\n", (unsigned)cmd); abort();
 		}
 	}
