@@ -132,28 +132,32 @@ static uint64_t padded_size(const struct segment *s) {
 	return (~mask | s->last) - (mask & s->first);
 }
 
-static size_t *argsort_segments(const struct segment *arr, size_t *res, size_t size) {
-	/* insertion sort because I'm a lazy slob and don't expect more than
-	a couple dozen segments */
-	for (size_t frontier = 1; frontier < size; ++frontier) {
-		const struct segment *b = arr + frontier;
-		uint64_t bsize = padded_size(b);
-		size_t i = frontier;
-		while (i--) {
-			size_t pos = res[i];
-			res[i + 1] = pos;
-			const struct segment *a = arr + pos;
-			uint64_t asize = padded_size(a);
-#define CMP(a, b) if ((a) < (b)) {break;} if ((b) < (a)) {continue;}
-			CMP(bsize, asize)
-			CMP(a->first, b->first)
-			CMP(a->last, b->last)
-			CMP(a->last_init, b->last_init)
-			break;
+static void sort(void *arr, size_t size, size_t len, int (*cmp)(void *, void *, void*), void *arg) {
+	for (size_t frontier = 1; frontier < len; ++frontier) {
+		for (size_t i = frontier; i; --i) {
+			char *el = (char*)arr + i * size;
+			if (cmp(el - size, el, arg) <= 0) {break;}
+			for (char *p = el - size; p < el; ++p) {
+				char t = *p;
+				*p = p[size];
+				p[size] = t;
+			}
 		}
-		res[i + 1] = frontier;
 	}
-	return res;
+}
+
+static int cmp_segment(void *a_, void *b_, void *segs_) {
+	const struct segment *segs = (const struct segment *)segs_;
+	const struct segment *a = segs + *(const size_t *)a_;
+	const struct segment *b = segs + *(const size_t *)b_;
+
+#define CMP(a, b) if ((a) < (b)) {return -1;} if ((b) < (a)) {return 1;}
+	uint64_t asize = padded_size(a), bsize = padded_size(b);
+	CMP(bsize, asize)
+	CMP(b->alignment, a->alignment)
+	CMP(a->first, b->first)
+	CMP(b->size, a->size)
+	return 0;
 }
 
 static void dump_segment(const struct segment *seg) {
@@ -177,7 +181,8 @@ static const struct mem_region rk3399_regions[] = {
 static void layout_segments(struct context *ctx) {
 	size_t *order = calloc(ctx->segments_size, sizeof(size_t));
 	if (!order) {perror("While sorting the segments"); abort();}
-	argsort_segments(ctx->segments, order, ctx->segments_size);
+	for (size_t i = 0; i < ctx->segments_size; ++i) {order[i] = i;}
+	sort(order, sizeof(size_t), ctx->segments_size, cmp_segment, ctx->segments);
 	printf("Sorted segments:\n");
 	const struct mem_region *regions = rk3399_regions, *regions_end = regions + sizeof(rk3399_regions)/sizeof(rk3399_regions[0]);
 	const struct mem_region *region = regions;
