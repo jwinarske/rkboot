@@ -25,7 +25,7 @@ build idbtool: cc $src/idbtool.c
     flags =
 build regtool: cc $src/regtool.c $src/regtool_rpn.c
     flags =
-build lbpayload: cc $src/lbpayload/main.c $src/lbpayload/elf.c
+build lbpayload: cc $src/lbpayload/main.c $src/lbpayload/elf.c $src/lbpayload/layout.c
     flags =
 END
 for f in $compression_src; do
