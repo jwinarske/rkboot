@@ -132,7 +132,8 @@ void dump_segment(const struct segment *seg) {
 
 int main(int argc, char **argv) {
 	struct context ctx;
-	INIT_VEC(ctx.segments);
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.offset_alignment = 9;
 	char **cur_arg = argv;
 	char *arg = *++cur_arg;
 	size_t fdt_transform_reserve = 0x2000;
@@ -329,8 +330,13 @@ int main(int argc, char **argv) {
 		default: fprintf(stderr, "unexpected command %u\n", (unsigned)cmd); abort();
 		}
 	}
-	for (size_t i = 0; i < ctx.segments_size; ++i) {
-		dump_segment(ctx.segments + i);
+	uint32_t offset = 0;
+	uint32_t offset_align_mask = UINT32_C(0xffffffff) << ctx.offset_alignment;
+	for (size_t i_seg = 0; i_seg < ctx.segments_size; ++i_seg) {
+		ctx.segments[i_seg].offset = offset;
+		size_t size = ctx.segments[i_seg].size;
+		if (size > offset_align_mask - offset) {return 4;}
+		offset = (offset + size + ~offset_align_mask) & offset_align_mask;
 	}
 	layout_segments(&ctx);
 	return 0;

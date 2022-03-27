@@ -17,6 +17,7 @@ struct segment {
 	// for other segments.
 	uint64_t first, last_init, last;
 	const uint8_t *buf;
+	uint32_t offset;
 	size_t size;
 	uint8_t alignment;
 #define SEG_ADDR_FIXED 0xff
@@ -39,6 +40,7 @@ struct rel_addr {
 
 struct context {
 	DECL_VEC(struct segment, segments);
+	uint8_t offset_alignment;
 	size_t *processing_order;
 	struct rel_addr bl31_entry;
 	struct rel_addr kernel_entry;

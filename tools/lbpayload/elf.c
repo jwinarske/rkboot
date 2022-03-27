@@ -111,6 +111,8 @@ bool load_elf(struct context *ctx, const uint8_t *buf, size_t size, struct rel_a
 				.last_init = last,
 				.last = last,
 				.buf = buf + offset,
+				// should fit in size_t since we have it in memory
+				.size = filesz,
 				.role = SEG_ROLE_LOAD,
 				.alignment = SEG_ADDR_FIXED,
 			};
