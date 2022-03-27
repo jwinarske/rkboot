@@ -63,12 +63,7 @@ void layout_segments(struct context *ctx) {
 	if (!order) {perror("While sorting the segments"); abort();}
 	for (size_t i = 0; i < ctx->segments_size; ++i) {order[i] = i;}
 	sort(order, sizeof(size_t), ctx->segments_size, cmp_segment, ctx->segments);
-	printf("Sorted segments:\n");
-	for (size_t i = 0; i < ctx->segments_size; ++i) {
-		size_t i_seg = order[i];
-		printf("%2zu: ", i_seg);
-		dump_segment(ctx->segments + i_seg);
-	}
+	ctx->processing_order = order;
 
 	DECL_VEC(struct mem_region_allocations, allocs);
 	INIT_VEC(allocs);
