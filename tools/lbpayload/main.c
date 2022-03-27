@@ -127,7 +127,7 @@ uint8_t *read_file(int fd, size_t *size) {
 }
 
 void dump_segment(const struct segment *seg) {
-	printf("%016"PRIx64" %016"PRIx64" %3"PRIu8"\n", seg->first, seg->last, seg->alignment);
+	fprintf(stderr, "%016"PRIx64" %016"PRIx64" %3"PRIu8"\n", seg->first, seg->last, seg->alignment);
 }
 
 int main(int argc, char **argv) {

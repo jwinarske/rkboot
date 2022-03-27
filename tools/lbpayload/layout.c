@@ -115,7 +115,6 @@ void layout_segments(struct context *ctx) {
 			if (first_aligned < first_free) {continue;}
 			if (first_aligned > alloc->region.last) {continue;}
 			uint64_t delta = first_aligned - seg->first;
-			printf("%"PRIx64" %"PRIx64"\n", first_free, first_aligned);
 			assert((delta & align_mask) == delta);
 			uint64_t last = seg->last + delta;
 			if (last < first_aligned) {continue;}
@@ -134,10 +133,10 @@ void layout_segments(struct context *ctx) {
 	}
 
 	for (size_t i = 0; i < allocs_size; ++i) {
-		printf("Region %"PRIx64"–%"PRIx64"\n", allocs[i].region.first, allocs[i].region.last);
+		fprintf(stderr, "Region %"PRIx64"–%"PRIx64"\n", allocs[i].region.first, allocs[i].region.last);
 		for (size_t j = 0; j < allocs[i].segments_size; ++j) {
 			size_t i_seg = allocs[i].segments[j];
-			printf("%2zu: ", i_seg);
+			fprintf(stderr, "%2zu: ", i_seg);
 			dump_segment(ctx->segments + i_seg);
 		}
 	}
