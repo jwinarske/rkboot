@@ -6,7 +6,7 @@ if [ "$CFLAGS" = "" ]; then CFLAGS=-O3; fi
 src="$(echo -n "$(dirname $(realpath $0))" | sed "s/[\$ :]/\$&/g")"
 
 compression_src="lz4 lzcommon inflate zstd zstd_fse zstd_literals zstd_probe_literals zstd_sequences"
-lbpayload_src="elf layout main"
+lbpayload_src="elf fit layout main"
 
 cat >build.ninja <<END
 ninja_required_version = 1.3

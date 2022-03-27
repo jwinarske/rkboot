@@ -342,5 +342,6 @@ int main(int argc, char **argv) {
 		offset = (offset + size + ~offset_align_mask) & offset_align_mask;
 	}
 	layout_segments(&ctx);
+	write_itb(&ctx, stdout);
 	return 0;
 }

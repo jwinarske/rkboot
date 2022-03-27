@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "tools.h"
 
@@ -56,3 +57,4 @@ struct context {
 bool load_elf(struct context *ctx, const uint8_t *buf, size_t size, struct rel_addr *entry);
 void dump_segment(const struct segment *);
 void layout_segments(struct context *ctx);
+void write_itb(const struct context *ctx, FILE *out);
