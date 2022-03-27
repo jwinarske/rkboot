@@ -262,6 +262,9 @@ int main(int argc, char **argv) {
 			break;
 		case CLI_CMD_ELF:
 			if (!load_elf(&ctx, buf, size, &ctx.kernel_entry)) {return 3;}
+			if (ctx.kernel_entry.segment != SIZE_MAX) {
+				ctx.segments[ctx.kernel_entry.segment].role = SEG_ROLE_KERNEL;
+			}
 			ctx.have_kernel = 1;
 			break;
 		case CLI_CMD_INITRD:
@@ -290,10 +293,10 @@ int main(int argc, char **argv) {
 				.last = aligned_size + size + fdt_transform_reserve - 1,
 				.buf = buf,
 				.size = size,
-				.role = SEG_ROLE_LOAD,
+				.role = SEG_ROLE_DTB,
 				.alignment = default_alignment > 3 ? default_alignment : 3,
 			};
-			ctx.have_initrd = 1;
+			ctx.have_fdt = 1;
 			break;
 		case CLI_CMD_LINUX:
 			if (size < 64) {
