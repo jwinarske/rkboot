@@ -94,7 +94,7 @@ static u32 *insert_memory_node(u32 *out, u32 *out_end, const struct fdt_addendum
 	return out;
 }
 
-bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt_header *header, const u32 *in_end, struct fdt_addendum *info) {
+bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt_header *header, const char *in_end, struct fdt_addendum *info) {
 	// don't pass an output buffer larger than 4GiB
 	assert(out_end - (u32*)out_header <= 0x40000000);
 
@@ -104,13 +104,13 @@ bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt
 	u32 version = be32(header->version), compatible = be32(header->last_compatible_version);
 	if (version < compatible || version < 16 || compatible > 17) {return false;}
 
-	size_t words = in_end - (const u32*)header;
+	size_t in_size = in_end - (const char*)header;
 	u32 totalsize = be32(header->totalsize);
-	if (totalsize > words * 4) {return false;}
+	if (totalsize > in_size) {return false;}
 	u32 struct_offset = be32(header->struct_offset);
-	if (struct_offset % 4 != 0 || struct_offset > words * 4) {return false;}
+	if (struct_offset % 4 != 0 || struct_offset > in_size) {return false;}
 	const u32 *toks = (const u32*)header + struct_offset / 4;
-	const u32 *toks_end = in_end;
+	const u32 *toks_end = (const u32 *)header + in_size / 4;
 	if (version >= 17) {
 		u32 struct_size = be32(header->struct_size);
 		if (struct_size % 4 != 0 || struct_size / 4 > toks_end - toks) {return false;}

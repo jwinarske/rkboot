@@ -44,7 +44,7 @@ struct fdt_addendum {
 	u32 boot_cpu;
 };
 
-_Bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt_header *header, const u32 *in_end, struct fdt_addendum *info);
+_Bool transform_fdt(struct fdt_header *out_header, u32 *out_end, const struct fdt_header *header, const char *in_end, struct fdt_addendum *info);
 _Noreturn void commit(struct payload_desc *payload);
 
 /* this enumeration defines the boot order */

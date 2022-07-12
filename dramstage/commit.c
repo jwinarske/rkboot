@@ -147,7 +147,7 @@ _Noreturn void commit(struct payload_desc *payload) {
 
 	const struct elf_header *header = (const struct elf_header*)payload->elf_start;
 	load_elf(header);
-	if (!transform_fdt((struct fdt_header *)fdt_out_addr, (u32*)payload->kernel_start, (const struct fdt_header *)payload->fdt_start, (const u32*)payload->fdt_end, &fdt_add)) {
+	if (!transform_fdt((struct fdt_header *)fdt_out_addr, (u32*)payload->kernel_start, (const struct fdt_header *)payload->fdt_start, (const char *)payload->fdt_end, &fdt_add)) {
 		die("failed to transform FDT\n");
 	}
 
