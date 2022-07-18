@@ -31,7 +31,7 @@ static void write_u64(volatile struct uart *uart, u64 val, unsigned width) {
 	}
 }
 
-void UNUSED dump_page_tables(volatile struct uart *uart) {
+static void UNUSED dump_page_tables(volatile struct uart *uart) {
 	for_range(table, 0, next_pagetable) {
 		for (u32 i = 0; i < ARRAY_SIZE(pagetables[table]); i += 4) {
 			write_u64(uart, (u64)&pagetables[table][i], 8);
