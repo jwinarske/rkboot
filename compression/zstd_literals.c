@@ -100,8 +100,8 @@ const u8 *zstd_decode_tree_description(const u8 *in, const u8 *end, struct decta
 	weights[num] = lastweight;
 	for_range(i, (u32)num + 1, 256) {weights[i] = 0;}
 	u32 maxbits = lastweight;
-	while (sum > (1 << maxbits)) {maxbits += 1;}
-	check(sum == 1 << maxbits, "Huffman tree not complete (sum %"PRIu32")\n", sum);
+	while (sum > (1u << maxbits)) {maxbits += 1;}
+	check(sum == (1u << maxbits), "Huffman tree not complete (sum %"PRIu32")\n", sum);
 	debug("tree depth=%"PRIu8"\n", maxbits);
 	check(maxbits <= 11, "Huffman tree is more than 11-deep\n");
 	u8 order[256];

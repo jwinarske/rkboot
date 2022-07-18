@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include "../include/defs.h"
-#include "../include/log.h"
+#include "zstd_internal.h"
 #include <inttypes.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -78,7 +77,7 @@ const u8 *fse_decode_distribution(const u8 *in, const u8 *end, u8 *log_ptr, u8 m
 }
 
 static void UNUSED dump_dectable(u8 log, u32 UNUSED *table) {
-	for (u32 i = 0; i < (1 << log); i += 4) {
+	for (u32 i = 0; i < (1u << log); i += 4) {
 		debug("%4"PRIu32": %08"PRIx32" %08"PRIx32" %08"PRIx32" %08"PRIx32"\n", i, table[i], table[i + 1], table[i + 2], table[i + 3]);
 	}
 }
@@ -119,7 +118,7 @@ void fse_build_table(u8 log, u8 num_sym, const u32 *distribution, u32 *table) {
 		}
 	}
 	assert(pos == 0);
-	for_range(i, 0, (1 << log) - num_lt1) {
+	for_range(i, 0, (1u << log) - num_lt1) {
 		u32 sym = table[i];
 		assert(sym < num_sym);
 		assert(distribution[sym] > 1);

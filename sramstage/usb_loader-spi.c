@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: CC0-1.0 */
-#include <rk3399/usbstage.h>
+#include <rk3399/sramstage.h>
 #include <inttypes.h>
 #include <assert.h>
 
@@ -54,7 +54,7 @@ static void wait_until_ready() {
 	spi1->slave_enable = 0;
 }
 
-void usbstage_flash_spi(const u8 *buf, u64 start, u64 length) {
+void sramstage_usb_flash_spi(const u8 *buf, u64 start, u64 length) {
 	static volatile u32 *const cru = regmap_cru;
 	cru[CRU_CLKGATE_CON+23] = SET_BITS16(1, 0) << 11;
 	/* clk_spi1 = CPLL/8 = 100 MHz */

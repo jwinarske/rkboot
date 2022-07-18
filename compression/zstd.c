@@ -488,14 +488,14 @@ static size_t decode_block(struct decompressor_state *state, const u8 *in, const
 	}
 	out += decomp_size;
 	st->st.out = out;
-	if (out - st->st.window_start > st->window_size) {
+	if ((size_t)(out - st->st.window_start) > st->window_size) {
 		st->st.window_start = out - st->window_size;
 	}
 	if (last_block) {st->st.decode = decode_trailer;}
 	return NUM_DECODE_STATUS + total_size;
 }
 
-void xxh64_init(struct xxh64_state *state) {
+static void xxh64_init(struct xxh64_state *state) {
 	state->offset = 0;
 	state->len = 0;
 	state->long_hash = 0;

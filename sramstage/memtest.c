@@ -1,34 +1,19 @@
 /* SPDX-License-Identifier: CC0-1.0 */
+#include <rk3399/sramstage.h>
+#include <inttypes.h>
+#include <stdio.h>
+
+#include <die.h>
 #include <runqueue.h>
 
 #include <arch/context.h>
 #include <mmu.h>
+#include <timer.h>
 
 #include <rkpll.h>
 
 #include <rk3399.h>
 #include <rk3399/dram_size.h>
-#include <stage.h>
-
-#define DEFINE_VSTACK(X) X(CPU0) X(CPU1)
-#define VSTACK_DEPTH 0x1000
-
-#define DEFINE_REGMAP(MMIO)\
-	MMIO(GIC500D, gic500d, 0xfee00000, struct gic_distributor)\
-	MMIO(GIC500R, gic500r, 0xfef00000, struct gic_redistributor)\
-	MMIO(STIMER0, stimer0, 0xff860000, struct rktimer_regs)\
-	MMIO(GPIO0, gpio0, 0xff720000, struct rkgpio_regs)\
-	MMIO(UART, uart, 0xff1a0000, struct uart)\
-	MMIO(CRU, cru, 0xff760000, u32)\
-	MMIO(PMU, pmu, 0xff310000, u32)\
-	MMIO(PMUCRU, pmucru, 0xff750000, u32)\
-	MMIO(PMUGRF, pmugrf, 0xff320000, u32)\
-	/* the generic SoC registers are last, because they are referenced often, meaning they get addresses 0xffffxxxx, which can be generated in a single MOVN instruction */
-#define DEFINE_REGMAP64K(X)\
-	X(PMUSGRF, pmusgrf, 0xff330000, u32)\
-	X(GRF, grf, 0xff770000, u32)\
-
-#include <rk3399/vmmap.h>
 
 #define MEMTEST_CHACHAISH
 #ifdef MEMTEST_SPLITTABLE
@@ -170,9 +155,6 @@ static void timed_flush() {
 #endif
 }
 
-static struct sched_runqueue runqueue = {};
-struct sched_runqueue *get_runqueue() {return &runqueue;}
-
 static _Bool memtest(u64 salt, u32 nblocks) {
 	_Bool res = 1;
 	for_range(block, 0, nblocks) {
@@ -203,56 +185,20 @@ static _Bool memtest(u64 salt, u32 nblocks) {
 }
 
 
-static UNINITIALIZED _Alignas(4096) u8 vstack_frames[NUM_VSTACK][VSTACK_DEPTH];
-void *const boot_stack_end = (void*)VSTACK_BASE(VSTACK_CPU0);
+void sramstage_late_irq(u32 intid) {
+	printf("unexpected interrupt %"PRIu32"\n", intid);
+}
 
-static u64 _Alignas(4096) UNINITIALIZED pagetable_frames[9][512];
-u64 (*const pagetables)[512] = pagetable_frames;
-const size_t num_pagetables = ARRAY_SIZE(pagetable_frames);
-
-volatile struct uart *const console_uart = regmap_uart;
-
-const struct mmu_multimap initial_mappings[] = {
-#include <rk3399/base_mappings.inc.c>
+_Noreturn void sramstage_late() {
+	u64 ramsize = dram_size(regmap_pmugrf);
+	mmu_map_range(0, ramsize - 1, 0,
 #ifdef UNCACHED_MEMTEST
-	{.addr = 0, .desc = MMU_MAPPING(DEV_GRE, 0)},
+		MEM_TYPE_DEV_GRE
 #else
-	{.addr = 0, .desc = MMU_MAPPING(NORMAL, 0)},
+		MEM_TYPE_NORMAL
 #endif
-	{.addr = 0xf8000000, .desc = 0},
-	VSTACK_MULTIMAP(CPU0),
-	VSTACK_MULTIMAP(CPU1),
-	{}
-};
-
-void plat_handler_fiq() {
-	die("unexpected FIQ");
-}
-void plat_handler_irq() {
-	die("unexpected IRQ");
-}
-
-struct percpu_data {
-	void *cpu_stack_base;
-};
-struct percpu_index {
-	u64 mpidr;
-	struct percpu_data *data;
-};
-struct percpu_data percpu_data[6] = {
-	{
-		.cpu_stack_base = (void*)VSTACK_BASE(VSTACK_CPU1),
-	},
-};
-struct percpu_index percpu_index[7] = {
-	{.mpidr = 0x80000001, percpu_data + 0}
-};
-
-void cortex_a53_exit(u32 flags);
-void reset_entry();
-
-_Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
-	u32 nblocks = dram_size(regmap_pmugrf) / 0x08000000;
+	);
+	u32 nblocks = ramsize / 0x08000000;
 	u64 round = 0, failed_rounds = 0;
 	while (1) {
 		if (!failed_rounds) {
@@ -262,17 +208,4 @@ _Noreturn void secondary_cpu_main(struct percpu_data UNUSED *percpu) {
 		}
 		failed_rounds += !memtest(round++ << 29, nblocks);
 	}
-}
-
-_Noreturn void main() {
-	puts("memtest");
-
-	regmap_pmusgrf[PMUSGRF_SOC_CON0] = 0x80008000;
-	regmap_pmusgrf[0xc180/4] = (u32)(u64)reset_entry;
-	fflush(stdout);
-	//secondary_cpu_main(0);
-	regmap_pmu[PMU_PWRDN_CON] &= ~(u32)2;
-	//cortex_a53_exit(1);
-	//while (1) {putchar('.');}
-	die("reached end of main\n");
 }

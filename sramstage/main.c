@@ -34,8 +34,6 @@ volatile struct uart *const console_uart = regmap_uart;
 
 const struct mmu_multimap initial_mappings[] = {
 #include <rk3399/base_mappings.inc.c>
-	{.addr = 0xff8c0000, .desc =  MMU_MAPPING(NORMAL, 0xff8c0000)},
-	{.addr = 0xff8c2000, .desc = 0},
 	VSTACK_MULTIMAP(CPU0),
 	{}
 };
@@ -83,7 +81,7 @@ void plat_handler_fiq() {
 		}
 		break;	/* do nothing, just want to wake the main loop */
 	default:
-		die("unexpected intid%"PRIu64"\n", grp0_intid);
+		sramstage_late_irq(grp0_intid);
 	}
 	atomic_signal_fence(memory_order_release);
 	__asm__ volatile(
@@ -136,7 +134,7 @@ void rk3399_set_init_flags(size_t flags) {
 	atomic_fetch_or_explicit(&rk3399_init_flags, flags, memory_order_release);
 }
 
-void main() {
+_Noreturn void main() {
 	/* GPIO0A2: red LED on RockPro64 and Pinebook Pro, not connected on Rock Pi 4 */
 	regmap_gpio0->port |= 1 << 2;
 	regmap_gpio0->direction |= 1 << 2;
@@ -227,7 +225,6 @@ void main() {
 
 	for_array(i, intids) {gicv2_disable_spi(gic500d, intids[i].intid);}
 	gicv2_wait_disabled(gic500d);
-	gicv3_per_cpu_teardown(gic500r);
 	info("[%"PRIuTS"] sramstage finish\n", get_timestamp());
-	end_sramstage();
+	sramstage_late();
 }

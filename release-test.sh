@@ -37,49 +37,49 @@ read -p "enter a configuration number, or press enter to start from the beginnin
 if [ -z "$skip" -o "$skip" = "0" ]; then
 	echo "Configuration 0: wipe SPI ID block. Not needed if there is no bootloader in SPI, will require some kind of recovery button mechanism to get into mask ROM mode if there is."
 	"$src/configure.py"
-	until ninja sramstage.bin usbstage.bin && prompt || echo -en "\\xff" | usbtool --call sramstage.bin --run usbstage.bin --flash 0 -; do true; done
+	until ninja sramstage-usb.bin && prompt || echo -en "\\xff" | usbtool --call sramstage-usb.bin --bulk --flash 0 -; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "1" ]; then
-	echo "Configuration 1: sramstage + memtest"
+	echo "Configuration 1: memtest"
 	"$src/configure.py"
-	until ninja sramstage.bin memtest.bin && prompt || usbtool --call sramstage.bin --run memtest.bin; do true; done
+	until ninja memtest.bin && prompt || usbtool --run memtest.bin; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "2" ]; then
-	echo "Configuration 2: sramstage + uncached memtest"
+	echo "Configuration 2: uncached memtest"
 	"$src/configure.py" --uncached-memtest
-	until ninja sramstage.bin memtest.bin && prompt || usbtool --call sramstage.bin --run memtest.bin; do true; done
+	until ninja memtest.bin && prompt || usbtool --run memtest.bin; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "3" ]; then
-	echo "Configuration 3: sramstage + usbstage + dramstage + teststage"
+	echo "Configuration 3: sramstage-usb + dramstage + teststage"
 	"$src/configure.py" --with-tf-a-headers "$atf"
-	until ninja sramstage.bin usbstage.bin dramstage.bin teststage.bin && prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 dramstage.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 teststage.bin --start 4000000 1000; do true; done
+	until ninja sramstage-usb.bin dramstage.bin teststage.bin && prompt || usbtool --call sramstage-usb.bin --bulk --load 4000000 dramstage.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 teststage.bin --start 4000000 1000; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "4" ]; then
-	echo "Configuration 4: sramstage + usbstage + dramstage + kernel"
+	echo "Configuration 4: sramstage-usb + dramstage + kernel"
 	"$src/configure.py" --with-tf-a-headers "$atf"
-	until ninja sramstage.bin usbstage.bin dramstage.bin && prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 dramstage.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 "$artifacts/Image" --start 4000000 1000; do true; done
+	until ninja sramstage-usb.bin dramstage.bin && prompt || usbtool --call sramstage-usb.bin --bulk --load 4000000 dramstage.bin --load 4200000 "$artifacts/bl31.elf" --load 100000 "$artifacts/fdt.dtb" --load 280000 "$artifacts/Image" --start 4000000 1000; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "5" ]; then
-	echo "Configuration 5: sramstage + usbstage + dramstage + teststage, gzip compression"
+	echo "Configuration 5: sramstage-usb + dramstage + teststage, gzip compression"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-gzip
-	ninja sramstage.bin usbstage.bin dramstage.bin teststage.bin
+	ninja sramstage-usb.bin dramstage.bin teststage.bin
 	gzip -k teststage.bin
 	until prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
 		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | gzip | cat "$artifacts/bl31.gz" - teststage.bin.gz | \
-		usbtool --call sramstage.bin --run usbstage.bin --load 4000000 dramstage.bin --load 4400000 -  --start 4000000 1000; do true; done
+		usbtool --call sramstage-usb.bin --bulk --load 4000000 dramstage.bin --load 4400000 -  --start 4000000 1000; do true; done
 	rm teststage.bin.gz
 fi
 
 if [ -z "$skip" -o "$skip" == "6" ]; then
-	echo "Configuration 6: sramstage + usbstage + dramstage + kernel, mixed compression"
+	echo "Configuration 6: sramstage-usb + dramstage + kernel, mixed compression"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{lz4,gzip,zstd}
-	until ninja sramstage.bin usbstage.bin dramstage.bin teststage.bin && prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
-		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" | usbtool --call sramstage.bin --run usbstage.bin --load 4400000 - --load 4000000 dramstage.bin --start 4000000 4102000; do true; done
+	until ninja sramstage-usb.bin dramstage.bin teststage.bin && prompt || dtc -@ "$src/overlay-example.dts" -I dts -O dtb -o - | \
+		fdtoverlay -i "$artifacts/fdt.dtb" -o - - | lz4 | cat "$artifacts/bl31.gz" - "$artifacts/Image.zst" | usbtool --call sramstage-usb.bin --bulk --load 4400000 - --load 4000000 dramstage.bin --start 4000000 4102000; do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "7" ]; then
@@ -103,22 +103,22 @@ if [ -z "$skip" -o "$skip" == "9" ]; then
 fi
 
 if [ -z "$skip" -o "$skip" == 10 ]; then
-	echo "Configuration 10: levinboot + usbstage + eMMC dramstage, configured for initcpio use (gzip+zstd decompression)"
+	echo "Configuration 10: sramstage-usb + eMMC dramstage, configured for initcpio use (gzip+zstd decompression)"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{emmc,gzip,zstd,initcpio}
-	until ninja sramstage.bin usbstage.bin dramstage.bin; do read -p "press enter to rebuild";done
-	until prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 dramstage.bin --start 4000000 1000;do true; done
+	until ninja sramstage-usb.bin dramstage.bin; do read -p "press enter to rebuild";done
+	until prompt || usbtool --call sramstage-usb.bin --bulk --load 4000000 dramstage.bin --start 4000000 1000;do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == 11 ]; then
-	echo "Configuration 11: levinboot + usbstage + NVMe dramstage, configured for initcpio use (LZ4 decompression)"
+	echo "Configuration 11: sramstage-usb + NVMe dramstage, configured for initcpio use (LZ4 decompression)"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{nvme,lz4,initcpio}
-	until ninja sramstage.bin usbstage.bin dramstage.bin; do read -p "press enter to rebuild";done
-	until prompt || usbtool --call sramstage.bin --run usbstage.bin --load 4000000 dramstage.bin --start 4000000 1000;do true; done
+	until ninja sramstage-usb.bin dramstage.bin; do read -p "press enter to rebuild";done
+	until prompt || usbtool --call sramstage-usb.bin --bulk --load 4000000 dramstage.bin --start 4000000 1000;do true; done
 fi
 
 if [ -z "$skip" -o "$skip" == "99" ]; then
 	echo "Configuration 99: flash levinboot SPI image configured for SD, eMMC, NVMe and SPI boot with initcpio (lz4, gzip and zstd decompression)"
 	"$src/configure.py" --with-tf-a-headers "$atf" --payload-{sd,emmc,nvme,spi,lz4,gzip,zstd,initcpio}
-	until ninja levinboot-spi.img sramstage.bin usbstage.bin && prompt || usbtool --call sramstage.bin --run usbstage.bin --flash 0 levinboot-spi.img;do true; done
+	until ninja levinboot-spi.img sramstage-usb.bin && prompt || usbtool --call sramstage-usb.bin --bulk --flash 0 levinboot-spi.img;do true; done
 	read -p "now reset the board to try it out (boot from each boot medium), press enter to continue"
 fi

@@ -139,9 +139,9 @@ Important command-line arguments for :src:`configure.py` are:
 
 Primary build targets are:
 
-- :output:`sramstage.bin`: this is the first stage of levinboot, used to initialize DRAM (and potentially other hardware) for use by :output:`usbstage`, :output:`memtest.bin` and/or :output:`dramstage.bin`.
-
 - :output:`levinboot-usb.bin`: this is used for single-stage _`Booting via USB`
+
+- :output:`sramstage-usb.bin`: this is used for two-stage _`Booting via USB`
 
 - :output:`levinboot-sd.img`: this is an image that can be written to sector 64 on an SD/eMMC drive.
   This target is only available if a boot medium is configured.
@@ -149,9 +149,9 @@ Primary build targets are:
 - :output:`levinboot-spi.img`: this is an image that can be written to the start of SPI flash.
   This target is only available if a boot medium is configured.
 
-- :output:`memtest.bin`: this is a very simple payload and just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
+- :output:`memtest.bin`: this is a simple memory tester which just writes pseudorandom numbers to DRAM in 128MiB blocks and reads them back to check if the values are retained.
 
-- :output:`dramstage.bin`: this is the payload loading stage for multi-stage _`Booting via USB`.
+- :output:`dramstage.bin`: this is the payload loading stage for two-stage _`Booting via USB`.
   Depending on the configuration it can behave in different ways:
 
   - if no compression format is configured: starting a kernel (or similar EL2 payload like :output:`teststage.bin`) pre-loaded at 0x00280000 with a BL31 ELF pre-loaded at 0x04200000 and a DTB pre-loaded at 0x00100000.
@@ -159,8 +159,6 @@ Primary build targets are:
   - if a boot medium is configured: booting from the configured boot media, like in self-boot.
 
 - :output:`teststage.bin`: this is a simple EL2 payload. Currently it only dumps the passed FDT blob, if it is detected at :code:`*X0`.
-
-- :output:`usbstage.bin`: this binary re-initializes the OTG USB interface and connects as a device, providing a bulk-based interface better suited for transferring large payloads than the mask ROM control-based interface.
 
 :src:`release-test.sh` contains a number of configurations that are supposed to be kept working.
 
@@ -224,31 +222,17 @@ There are several possible boot processes via USB:
 
   The primary purpose of this boot process is testing self-boot configurations in a situation as close as possible to self-boot, but without having to write to boot media.
 
-- two-stage USB boot using boot media: :command:`usbtool --call sramstage.bin --load 4000000 dramstage.bin --jump 4000000 1000`
+- two-stage USB boot without compression: :command:`usbtool --call sramstage-usb.bin --bulk --load 100000 path/to/fdt-blob.dtb --load 280000 path/to/kernel/Image --load 4200000 path/to/bl31.elf --load 4000000 dramstage.bin --start 4000000 4102000`
 
-  This is functionally equivalent to the first, with the difference that sramstage does not unpack an embedded copy of dramstage, which means that the build-process is slightly simpler and faster.
+  Note that this boot process cannot use an initcpio, since compression is needed for framing.
 
-  This is useful for quickly testing dramstage changes related to boot medium handling. It is mutually exclusive with the next option:
+- two-stage USB boot with compression: :command:`usbtool --call sramstage-usb.bin --bulk --load 4400000 path/to/payload-blob --load 4000000 dramstage.bin --start 4000000 4102000`
 
-- two-stage USB boot with mask-ROM transfer: :command:`usbtool --call sramstage.bin --load 4000000 dramstage.bin --load 4200000 path/to/bl31.elf --load 100000 path/to/fdt-blob.dtb --load 280000 teststage.bin --jump 4000000 1000` (with the paths substituted for your system)
-
-  This should run sramstage to initialize DRAM, load all payload files into DRAM, and finally jump to :output:`dramstage.bin` which will start BL31, which will give control to :output:`teststage.bin`, which should dump the FDT header as well as its contents in DTS syntax.
-
-  The primary use case for this boot process is testing any changes related to payload handoff, especially for small payloads.
-
-  You can use an (uncompressed) kernel image instead of teststage, though beware that mask-ROM-based transfers are rather slow. Instead it is recommended to use the following:
-
-- three-stage USB boot without compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 100000 path/to/fdt-blob.dtb --load 280000 path/to/kernel/Image --load 4200000 path/to/bl31.elf --load 4000000 dramstage.bin --start 4000000 4102000`
-
-  This will use faster bulk transfers to copy the payload into memory. Note that neither this nor the previous boot process can use an initcpio, since compression is needed for framing.
-
-- three-stage USB boot with compression: :command:`usbtool --call sramstage.bin --run usbstage.bin --load 4400000 path/to/payload-blob --load 4000000 dramstage.bin --start 4000000 4102000`
-
-  Note that usbstage can use stdin instead of a file by specifying '-'.
+  Note that usbtool can use stdin instead of a file by specifying '-'.
 
   The usecase for this is booting actual systems (i. e. not payloads designed to test levinboot) via USB.
 
-You can also test DRAM by running :command:`usbtool --call sramstage.bin --run memtest.bin`. Furthermore, usbstage can also be used for _`Flashing SPI`.
+You can also test DRAM by running :command:`usbtool --call memtest.bin`. Furthermore, sramstage-usb can also be used for _`Flashing SPI`.
 
 Booting from SPI
 ================
@@ -275,8 +259,8 @@ The recovery button function is built in all configurations of levinboot, even t
 Flashing SPI
 ------------
 
-You can write to SPI anytime you can boot via USB, as described above: :output:`usbstage.bin` implements a command to write a block of data (such as a levinboot image) to any erase-block-(typically 4k-)aligned address in SPI flash.
-Run :command:`usbtool --call sramstage.bin --run usbstage.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
+You can write to SPI anytime you can boot via USB, as described above: :output:`sramstage-usb.bin` implements a command to write a block of data (such as a levinboot image) to any erase-block-(typically 4k-)aligned address in SPI flash.
+Run :command:`usbtool --call sramstage-usb.bin --flash 0 your.img` where `0` is the start address for the image, and `your.img` is the file you want to flash.
 
 Booting from SD/eMMC/NVMe
 =========================

@@ -25,17 +25,6 @@ entry_point: .global entry_point
 #if CONFIG_FIRST_STAGE
 	cortex_a53_init x1, var_rev=0x04
 	isb
-#if CONFIG_FIRST_STAGE > 1
-	/* save BROM execution state on stack.
-	can't assume we even have a stack otherwise */
-	stp x29, x30, [sp, #-48]!
-	mrs x0, SCTLR_EL3
-	mrs x1, VBAR_EL3
-	mrs x2, SCR_EL3
-	add x29, sp, #0
-	stp x0, x1, [x29, #16]
-	stp x2, x19, [x29, #32]
-#endif
 #endif
 	ic iallu
 	isb
@@ -211,45 +200,16 @@ prepare_main:
 
 2:	adrp x29, boot_stack_end
 	ldr x29, [x29, #:lo12:boot_stack_end]
-#if CONFIG_FIRST_STAGE > 1
-	stp xzr, xzr, [x29, #-32]!
-	add x0, sp, #0
-	mrs x1, SPSel
-	stp x0, x1, [x29, #16]
-#else
 	stp xzr, xzr, [x29, #-16]!
-#endif
 	msr SPSel, 1
 	add sp, x29, #0
 	msr DAIFClr, #15
 	msr_per_el TPIDR, CONFIG_EL, xzr
-#if CONFIG_FIRST_STAGE > 1
-	bl main
-	msr DAIFSet, #15
-	ldp x29, x0, [sp, #16]
-	msr SPSel, x0
-	add sp, x29, #0
-	ldp x0, x1, [x29, #16]
-	ldp x2, x19, [x29, #32]
-	msr VBAR_EL3, x1
-	msr SCR_EL3, x2
-	orr x0, x0, #SCTLR_I
-	bl set_sctlr_flush_dcache
-	tlbi alle3
-	dsb sy
-	ldr x0, [x29, #16]
-	msr SCTLR_EL3, x0
-	add sp, x29, #0
-	ldp x29, x30, [sp], #48
-	isb
-	ret
-#else
 	.if \el == 2
 		mov x0, x20
 	.endif
 	mov x30, #0
 	b main
-#endif
 
 #if CONFIG_FIRST_STAGE
 force_hard_reset:
