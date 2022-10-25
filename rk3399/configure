@@ -1,0 +1,32 @@
+#!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
+
+# defaults
+if [ -z "$CC" ]; then CC=clang; fi
+if [ -z "$OBJCOPY" ]; then OBJCOPY=objcopy; fi
+if [ -z "$CFLAGS" ]; then CFLAGS=-O3; fi
+
+# find the absolute path to the source directory
+src_path="$(dirname "$(dirname "$(realpath "$0")")")"
+# ninja-escape
+src="$(echo -n "$src_path" | sed "s/[\$ :]/\$&/g")"
+
+cat >build.ninja <<END
+ninja_required_version = 1.3
+cflags = -Wall $CFLAGS -isystem $src/aarch64/include
+flags = -c
+rule cc
+    depfile = \$out.d
+    deps = gcc
+    command = $CC -MD -MF \$out.d \$cflags \$flags \$in -o \$out
+
+rule ld
+    command = $CC \$in -o \$out
+
+rule bin
+    command = $OBJCOPY -O binary \$in \$out
+
+build rk3399/stub-usb.o: cc $src/rk3399/stub-usb.S
+  flags = -c -DCONFIG_GREETING=\"levinboot/0.9\\\\r\\\\n\" -DCONFIG_UART_CLOCK_DIV=1
+build rk3399/stub-usb.bin: bin rk3399/stub-usb.o
+END

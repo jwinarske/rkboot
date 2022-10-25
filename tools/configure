@@ -1,0 +1,37 @@
+#!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
+
+# defaults
+if [ -z "$CC" ]; then CC=clang; fi
+if [ -z "$CFLAGS" ]; then CFLAGS=-O3; fi
+
+# find the absolute path to the source directory and ninja-escape
+src_path="$(dirname "$(realpath "$0")")"
+src="$(echo -n "$src_path" | sed "s/[\$ :]/\$&/g")"
+
+have_libusb=""
+if command -v pkg-config >/dev/null; then 
+    libusb_flags="$(pkg-config --libs --cflags libusb-1.0 || true)"
+    if [ $? -eq 0 ]; then have_libusb=y; fi
+fi
+
+cat >build.ninja <<END
+ninja_required_version = 1.3
+cflags = $CFLAGS -isystem $src/../lib/include
+flags = -c
+rule cc
+    depfile = \$out.d
+    deps = gcc
+    command = $CC -MD -MF \$out.d \$cflags \$flags \$in -o \$out
+
+rule ld
+    command = $CC \$in -o \$out
+
+END
+
+if [ -n "$have_libusb" ]; then
+cat >>build.ninja <<END
+build lbusb: cc $src/lbusb.c $src/load_file.c
+    flags = $libusb_flags -iquote $src/include
+END
+fi
