@@ -6,11 +6,8 @@
 .text
 	.ascii "RK33"
 PROC(entry_point, 2)
-	isb
-	ic iallu
 	mov32 x0, (SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ)
 	mov32 x1, (SCTLR_I | SCTLR_SA | SCTLR_EL23_RES1)
-	isb
 	msr SCR_EL3, x0
 	msr SCTLR_EL3, x1
 	cortex_a53_init x8, var_rev=0x04
