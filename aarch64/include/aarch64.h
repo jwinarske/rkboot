@@ -103,7 +103,16 @@
 #define TCR_EL23_TBI 0x100000
 #define TCR_EL3_RES1 UINT64_C(0x80800000)
 
+#define VMSAV8_64_XN (UINT64_C(1) << 54)
+#define VMSAV8_64_DBM (UINT64_C(1) << 51)
+#define VMSAV8_64_AF 0x400
+#define VMSAV8_64_RO 0x80
+#define VMSAV8_64_PRIV 0x40
+#define VMSAV8_64_OSH 0x200
+#define VMSAV8_64_ISH 0x300
+
 #ifdef __ASSEMBLER__
+#define UINT64_C(x) x
 .macro mov32 reg val
 	mov \reg, #((\val) & 0xffff0000)
 	movk \reg, #((\val) & 0xffff)

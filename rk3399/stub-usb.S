@@ -51,6 +51,45 @@ PROC(entry_point, 2)
 	subs x10, x10, #8
 	b.hi 0b
 
+	// zero out the top 16 KiB of main SRAM for page tables
+	mov32 x9, 0xff8ec000
+0:	// for each 16 B of page table
+	stp xzr, xzr, [x9], #16
+	tbz x9, 16, 0b	// stop at 0xff8f0000
+
+	// set initial PTEs: identity-map this first page and map
+	// 0xff8ef000, the last-level page table, to 0xff9ff000
+	adr x9, initial_ptes
+	adr x10, initial_pte_addrs
+	mov x11, #5
+0:	// for each initial PTE
+	ldr x0, [x9], #8
+	ldr w1, [x10], #4
+	subs x11, x11, #1
+	str x0, [x1]
+	b.ne 0b
+
+	// enable MMU
+	ldr x9, mair
+	mov32 x10, 0xff8ec000
+	mov32 x11, (TCR_EL3_RES1 | TCR_REGION0(TCR_INNER_CACHED | TCR_OUTER_CACHED | TCR_OUTER_SHARED | TCR_4K_GRANULE | TCR_TxSZ(16)) | TCR_PS(0))
+	mov32 x12, (SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA | SCTLR_M | SCTLR_C)
+	msr MAIR_EL3, x9
+	msr TTBR0_EL3, x10
+	msr TCR_EL3, x11
+	dsb sy
+	isb
+	msr SCTLR_EL3, x12
+	isb
+
+	// install secondary mappings
+	adr x0, secondary_ptes
+	mov32 x1, 0xff9fffe8
+0:	// for each pair of secondary mappings
+	ldp x2, x3, [x0], #16
+	stp x3, x2, [x1], #-16
+	cbnz x3, 0b
+
 0:	wfi
 	b 0b
 ENDFUNC(entry_point)
@@ -60,4 +99,28 @@ greeting:
 .ascii CONFIG_GREETING
 greeting_end:
 
-.align 2
+#define PAGE(attridx) (3 | VMSAV8_64_AF | VMSAV8_64_OSH | (attridx) << 2)
+#define MAP_NULL 0
+#define MAP_CODE (PAGE(0) | VMSAV8_64_RO)
+#define MAP_RO (PAGE(0) | VMSAV8_64_RO | VMSAV8_64_XN)
+#define MAP_RW (PAGE(0) | VMSAV8_64_XN)
+#define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
+#define MAP_UNCACHED (PAGE(2) | VMSAV8_64_RO)
+
+#define ENUM_STUB_MAPPINGS(X)\
+	X(uart2, 0xff1a0000, MAP_DEV)
+
+.align 3
+initial_ptes:
+	.8byte 0xff8ed003, 0xff8ee003, 0xff8ef003, (0xff8c2000 | MAP_CODE)
+	.8byte (0xff8ef000 | MAP_RW)
+mair:
+	.8byte 0xbb4400ff
+secondary_ptes:
+#define X(n, addr, flags) (addr | flags),
+	.8byte ENUM_STUB_MAPPINGS(X) 0
+#undef X
+.align 4
+initial_pte_addrs:
+	.4byte 0xff8ec000, 0xff8ed018, 0xff8eefe0, 0xff8ef610
+	.4byte 0xff8efff8
