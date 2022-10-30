@@ -26,7 +26,7 @@ PROC(entry_point, 2)
 	mov x1, #1
 	str w1, [x2, #28]	// start the timer
 	
-	mov x8, #0xff1a0000	// UART address, this stays in X8 for the rest of entry.S
+	mov x8, #0xff1a0000
 	mov x1, #0x83	// LCR: 8 data bits, divisor latch access
 	str w1, [x8, #12]
 	mov x1, #CONFIG_UART_CLOCK_DIV
@@ -41,15 +41,14 @@ PROC(entry_point, 2)
 
 	// print greeting
 	adr x9, greeting
-	mov x10, #(greeting_end - greeting)
-0:
+0:	// for each 8 bytes of greeting
 	ldr x11, [x9], #8
-1:
+1:	// for each byte of greeting
 	str w11, [x8]	// UART will ignore all but low byte
+	cmp x11, #' '
 	lsr x11, x11, #8
 	cbnz x11, 1b
-	subs x10, x10, #8
-	b.hi 0b
+	b.hs 0b
 
 	// zero out the top 16 KiB of main SRAM for page tables
 	mov32 x9, 0xff8ec000
@@ -90,14 +89,18 @@ PROC(entry_point, 2)
 	stp x3, x2, [x1], #-16
 	cbnz x3, 0b
 
+	// another life-sign
+	mov32 x2, 0xff9fe000
+	mov x0, #'\n'
+	str x0, [x2]
+
 0:	wfi
 	b 0b
 ENDFUNC(entry_point)
 
 .align 3
 greeting:
-.ascii CONFIG_GREETING
-greeting_end:
+	.ascii CONFIG_GREETING "\r"
 
 #define PAGE(attridx) (3 | VMSAV8_64_AF | VMSAV8_64_OSH | (attridx) << 2)
 #define MAP_NULL 0
