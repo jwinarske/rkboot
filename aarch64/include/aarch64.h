@@ -103,13 +103,23 @@
 #define TCR_EL23_TBI 0x100000
 #define TCR_EL3_RES1 UINT64_C(0x80800000)
 
-#define VMSAV8_64_XN (UINT64_C(1) << 54)
-#define VMSAV8_64_DBM (UINT64_C(1) << 51)
+#define VMSAV8_64_PAGE(attrIdx) (3 | (attrIdx) << 2)
+#define VMSAV8_64_BLOCK(attrIdx) (2 | (attrIdx) << 2)
+// high page/block mapping attributes
+#define VMSAV8_64_XN (UINT64_C(0x0040) << 48)
+#define VMSAV8_64_PXN (UINT64_C(0x0020) << 48)
+#define VMSAV8_64_C (UINT64_C(0x0010) << 48)
+#define VMSAV8_64_DBM (UINT64_C(0x0008) << 48)
+#define VMSAV8_64_GP (UINT64_C(0x0004) << 48)
+// low page/block mapping attributes
+#define VMSAV8_64_nT 0x10000
+#define VMSAV8_64_nG 0x800
 #define VMSAV8_64_AF 0x400
-#define VMSAV8_64_RO 0x80
-#define VMSAV8_64_PRIV 0x40
-#define VMSAV8_64_OSH 0x200
 #define VMSAV8_64_ISH 0x300
+#define VMSAV8_64_OSH 0x200
+#define VMSAV8_64_RO 0x80	// AP[2] in the ARMv8 ARM
+#define VMSAV8_64_PRIV 0x40	// AP[1] in the ARMv8 ARM
+#define VMSAV8_64_NS 0x20
 
 #ifdef __ASSEMBLER__
 #define UINT64_C(x) x

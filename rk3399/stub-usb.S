@@ -91,15 +91,22 @@ PROC(entry_point, 2)
 	mov x0, #'\n'
 	str x0, [x2]
 
+	// map OTG0 registers
+	ldr x0, otg0_pte
+	mov32 x4, 0xff9fff80
+	mov x1, #3
+0:	// for each PTE
+	add x5, x0, x1, lsl 12
+	subs x1, x1, #1
+	str x5, [x4, #-8]!
+	b.hs 0b
+
 0:	wfi
 	b 0b
 ENDFUNC(entry_point)
 
-.align 3
-greeting:
-	.ascii CONFIG_GREETING "\r"
 
-#define PAGE(attridx) (3 | VMSAV8_64_AF | VMSAV8_64_OSH | (attridx) << 2)
+#define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
 #define MAP_NULL 0
 #define MAP_CODE (PAGE(0) | VMSAV8_64_RO)
 #define MAP_RO (PAGE(0) | VMSAV8_64_RO | VMSAV8_64_XN)
@@ -108,19 +115,35 @@ greeting:
 #define MAP_UNCACHED (PAGE(2) | VMSAV8_64_RO)
 
 #define ENUM_STUB_MAPPINGS(X)\
-	X(uart2, 0xff1a0000, MAP_DEV)
+	X(uart2, 0xff1a0000, MAP_DEV)\
+	X(emmc, 0xfe330000, MAP_DEV)\
+	X(sdmmc, 0xfe320000, MAP_DEV)\
+	X(spi1, 0xff1d0000, MAP_DEV)\
+	X(dmac1, 0xff6f0000, MAP_DEV)\
+	X(stub_uncached, 0xff8eb000, MAP_UNCACHED)\
+	X(stack, 0xff8e9000, MAP_RW)\
+	X(brom_stack, 0xff8c1000, MAP_RO)	/* unmapped later */\
+	X(brom_data, 0xff8c0000, MAP_RO)	/* unmapped later */\
+	X(stub_code, 0xff8ea000, MAP_RW)	/* remapped to RX later */\
+
+.align 4
+secondary_ptes:
+#define X(n, addr, flags) (addr | flags),
+	.8byte ENUM_STUB_MAPPINGS(X) 0,
+#undef X
+// the PTEs above are copied in pairs, this ensures that at least
+// the second one is a zero (terminating condition).
+.align 4
+greeting:
+	.ascii CONFIG_GREETING "\r"
 
 .align 3
 initial_ptes:
 	.8byte 0xff8ed003, 0xff8ee003, 0xff8ef003, (0xff8c2000 | MAP_CODE)
 	.8byte (0xff8ef000 | MAP_RW)
+otg0_pte: .8byte (0xfe800000 | MAP_DEV | VMSAV8_64_C)
 mair:
 	.8byte 0xbb4400ff
-secondary_ptes:
-#define X(n, addr, flags) (addr | flags),
-	.8byte ENUM_STUB_MAPPINGS(X) 0
-#undef X
-.align 4
 initial_pte_addrs:
 	.4byte 0xff8ec000, 0xff8ed018, 0xff8eefe0, 0xff8ef610
 	.4byte 0xff8efff8
