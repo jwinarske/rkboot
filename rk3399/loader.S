@@ -114,22 +114,22 @@ ENDFUNC(entry_point)
 #define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
 #define MAP_UNCACHED (PAGE(2) | VMSAV8_64_RO)
 
-#define ENUM_STUB_MAPPINGS(X)\
+#define ENUM_LOADER_MAPPINGS(X)\
 	X(uart2, 0xff1a0000, MAP_DEV)\
 	X(emmc, 0xfe330000, MAP_DEV)\
 	X(sdmmc, 0xfe320000, MAP_DEV)\
 	X(spi1, 0xff1d0000, MAP_DEV)\
 	X(dmac1, 0xff6f0000, MAP_DEV)\
-	X(stub_uncached, 0xff8eb000, MAP_UNCACHED)\
+	X(loader_uncached, 0xff8eb000, MAP_UNCACHED)\
 	X(stack, 0xff8e9000, MAP_RW)\
 	X(brom_stack, 0xff8c1000, MAP_RO)	/* unmapped later */\
 	X(brom_data, 0xff8c0000, MAP_RO)	/* unmapped later */\
-	X(stub_code, 0xff8ea000, MAP_RW)	/* remapped to RX later */\
+	X(loader_code, 0xff8ea000, MAP_RW)	/* remapped to RX later */\
 
 .align 4
 secondary_ptes:
 #define X(n, addr, flags) (addr | flags),
-	.8byte ENUM_STUB_MAPPINGS(X) 0,
+	.8byte ENUM_LOADER_MAPPINGS(X) 0,
 #undef X
 // the PTEs above are copied in pairs, this ensures that at least
 // the second one is a zero (terminating condition).

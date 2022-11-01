@@ -19,7 +19,7 @@ This gives rise to 3 groups of artifacts produced by the |project| build process
 
 - SPI image: :artifact:`levinboot-spi.img`
 - SD/eMMC image: :artifact:`levinboot-sdmmc.img`
-- USB boot binaries: :artifact:`stub-usb.bin`, :artifact:`sramstage-usb.bin`
+- USB boot binaries: :artifact:`loader-usb.bin`, :artifact:`sramstage-usb.bin`
 
 Boot stages
 -----------
@@ -27,16 +27,16 @@ Boot stages
 |project| boots the RK3399 in 6 stages:
 
 1. BROM – This is etched into the SoC and is not part of |project|.
-2. stub – This is the first stage of |project| and exists mainly to make up for shortcomings in the BROM.
+2. loader – This is the first stage of |project| and does some CPU initialization before loading sramstage, more efficiently than the BROM could.
 3. sramstage – second stage of |project|, does most early hardware initialization, most importantly brings up DRAM.
 4. dramstage – third stage of |project|, puts the payload pieces into place, potentially with user interaction
 5. BL31 – resident firmware provided by TF-A, implements PSCI
 6. OS
 
-Stub
-....
+loader
+......
 
-The stub stage performs the following tasks (in rough order):
+The loader stage performs the following tasks (in rough order):
 
 - bring the boot CPU into a sane state
 

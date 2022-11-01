@@ -26,7 +26,7 @@ rule ld
 rule bin
     command = $OBJCOPY -O binary \$in \$out
 
-build rk3399/stub-usb.o: cc $src/rk3399/stub-usb.S
+build rk3399/loader-usb.o: cc $src/rk3399/loader.S
   flags = -c -DCONFIG_GREETING=\"levinboot/0.9\" -DCONFIG_UART_CLOCK_DIV=1
-build rk3399/stub-usb.bin: bin rk3399/stub-usb.o
+build rk3399/loader-usb.bin: bin rk3399/loader-usb.o
 END

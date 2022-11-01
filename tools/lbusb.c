@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
 				return cliStateError(argv[0], *cmd, ctx.st);
 			}
 			if ((res = connectRk3399(&ctx))) {return res;}
-		} else if (0 == strcmp("stub", *cmd)) {
+		} else if (0 == strcmp("loader", *cmd)) {
 			if (ctx.st != LBUSB_RK_MASKROM) {
 				return cliStateError(argv[0], *cmd, ctx.st);
 			}
