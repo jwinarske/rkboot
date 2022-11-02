@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: CC0-1.0
+#include <rk3399/loader.h>
 #include <asm.h>
 #include <aarch64/cortex_a53.h>
 #include <aarch64.h>
@@ -80,21 +81,21 @@ PROC(entry_point, 2)
 
 	// install secondary mappings
 	adr x0, secondary_ptes
-	mov32 x1, 0xff9fffe8
+	mov32 x1, (LOADER_VA_PGTAB + 0xfe8)
 0:	// for each pair of secondary mappings
 	ldp x2, x3, [x0], #16
 	stp x3, x2, [x1], #-16
 	cbnz x3, 0b
 
 	// another life-sign
-	mov32 x2, 0xff9fe000
+	mov32 x2, LOADER_VA_UART2
 	mov x0, #'\n'
 	str x0, [x2]
 
 	// map OTG0 registers
 	ldr x0, otg0_pte
-	mov32 x4, 0xff9fff80
-	mov x1, #3
+	mov32 x4, (LOADER_VA_PGTAB + 0xf00)
+	mov x1, #15
 0:	// for each PTE
 	add x5, x0, x1, lsl 12
 	subs x1, x1, #1
@@ -113,18 +114,6 @@ ENDFUNC(entry_point)
 #define MAP_RW (PAGE(0) | VMSAV8_64_XN)
 #define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
 #define MAP_UNCACHED (PAGE(2) | VMSAV8_64_RO)
-
-#define ENUM_LOADER_MAPPINGS(X)\
-	X(uart2, 0xff1a0000, MAP_DEV)\
-	X(emmc, 0xfe330000, MAP_DEV)\
-	X(sdmmc, 0xfe320000, MAP_DEV)\
-	X(spi1, 0xff1d0000, MAP_DEV)\
-	X(dmac1, 0xff6f0000, MAP_DEV)\
-	X(loader_uncached, 0xff8eb000, MAP_UNCACHED)\
-	X(stack, 0xff8e9000, MAP_RW)\
-	X(brom_stack, 0xff8c1000, MAP_RO)	/* unmapped later */\
-	X(brom_data, 0xff8c0000, MAP_RO)	/* unmapped later */\
-	X(loader_code, 0xff8ea000, MAP_RW)	/* remapped to RX later */\
 
 .align 4
 secondary_ptes:
