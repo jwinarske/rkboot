@@ -102,9 +102,30 @@ PROC(entry_point, 2)
 	str x5, [x4, #-8]!
 	b.hs 0b
 
+	// top of the stack page, start of the uncached page
+	mov32 x8, LOADER_VA_LOADER_UNCACHED
+
+	// clear both stack and uncached page
+	sub x0, x8, 0x1000
+	mov x1, #0x2000
+	bl zero_range
+
+	mov x0, #'\n'
+	str x0, [x2]
+
 0:	wfi
 	b 0b
 ENDFUNC(entry_point)
+
+SPROC(zero_range, 2)
+0:	// for each 64 B (known dc zva block size, alignment of
+	// range is assumed)
+	dc zva, x0
+	add x0, x0, #64
+	subs x1, x1, #64
+	b.hi 0b
+	ret
+ENDFUNC(zero_range)
 
 
 #define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
@@ -113,7 +134,7 @@ ENDFUNC(entry_point)
 #define MAP_RO (PAGE(0) | VMSAV8_64_RO | VMSAV8_64_XN)
 #define MAP_RW (PAGE(0) | VMSAV8_64_XN)
 #define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
-#define MAP_UNCACHED (PAGE(2) | VMSAV8_64_RO)
+#define MAP_UNCACHED (PAGE(2) | VMSAV8_64_XN)
 
 .align 4
 secondary_ptes:
