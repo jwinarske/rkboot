@@ -12,6 +12,7 @@
 	X(brom_stack, 0xff8c1000, MAP_RO)	/* unmapped later */\
 	X(brom_data, 0xff8c0000, MAP_RO)	/* unmapped later */\
 	X(loader_code, 0xff8ea000, MAP_RW)	/* remapped to RX later */\
+	X(otg0_extra, 0xfe80c000, MAP_DEV)\
 
 #define LOADER_VA_PGTAB 0xff9ff000
 #define LOADER_VA_UART2 0xff9fe000
@@ -21,7 +22,7 @@
 #define LOADER_VA_DMAC1 0xff9fa000
 #define LOADER_VA_LOADER_UNCACHED 0xff9f9000
 #define LOADER_VA_BROM_DATA 0xff9f6000
-#define LOADER_VA_OTG0 0xff9d0000
+#define LOADER_VA_OTG0 0xff9f4000
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>

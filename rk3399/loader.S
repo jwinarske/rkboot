@@ -92,15 +92,6 @@ PROC(entry_point, 2)
 	mov x0, #'\n'
 	str x0, [x2]
 
-	// map OTG0 registers
-	ldr x0, otg0_pte
-	mov32 x4, (LOADER_VA_PGTAB + 0xf00)
-	mov x1, #15
-0:	// for each PTE
-	add x5, x0, x1, lsl 12
-	subs x1, x1, #1
-	str x5, [x4, #-8]!
-	b.hs 0b
 
 	// top of the stack page, start of the uncached page
 	mov32 x8, LOADER_VA_LOADER_UNCACHED
@@ -151,7 +142,6 @@ greeting:
 initial_ptes:
 	.8byte 0xff8ed003, 0xff8ee003, 0xff8ef003, (0xff8c2000 | MAP_CODE)
 	.8byte (0xff8ef000 | MAP_RW)
-otg0_pte: .8byte (0xfe800000 | MAP_DEV | VMSAV8_64_C)
 mair:
 	.8byte 0xbb4400ff
 initial_pte_addrs:
