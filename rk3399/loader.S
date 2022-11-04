@@ -4,7 +4,24 @@
 #include <aarch64/cortex_a53.h>
 #include <aarch64.h>
 
-.text
+// Sub-section use:
+// .text 0  pre-relocation (setup) code
+// .text 1  pre-relocation (setup) rodata
+// .text 2  common code
+// .text 3  common rodata
+// .text 4  post-relocation (transfer) code
+// .text 5  post-relocation (transfer) rodata
+
+// PTE macros
+#define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
+#define MAP_NULL 0
+#define MAP_CODE (PAGE(0) | VMSAV8_64_RO)
+#define MAP_RO (PAGE(0) | VMSAV8_64_RO | VMSAV8_64_XN)
+#define MAP_RW (PAGE(0) | VMSAV8_64_XN)
+#define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
+#define MAP_UNCACHED (PAGE(2) | VMSAV8_64_XN)
+
+.text 0
 	.ascii "RK33"
 PROC(entry_point, 2)
 	mov32 x0, (SCR_EL3_RES1 | SCR_EA | SCR_FIQ | SCR_IRQ)
@@ -48,6 +65,12 @@ PROC(entry_point, 2)
 	cbnz x11, 1b
 	b.hs 0b
 
+.text 1
+.align 3
+greeting:
+	.ascii CONFIG_GREETING "\r"
+
+.text 0
 	// zero out the top 16 KiB of main SRAM for page tables
 	mov32 x9, 0xff8ec000
 0:	// for each 16 B of page table
@@ -66,6 +89,17 @@ PROC(entry_point, 2)
 	str x0, [x1]
 	b.ne 0b
 
+.text 1
+.align 3
+initial_ptes:
+	.8byte 0xff8ed003, 0xff8ee003, 0xff8ef003, (0xff8c2000 | MAP_CODE)
+	.8byte (0xff8ef000 | MAP_RW)
+
+initial_pte_addrs:
+	.4byte 0xff8ec000, 0xff8ed018, 0xff8eefe0, 0xff8ef610
+	.4byte 0xff8efff8
+
+.text 0
 	// enable MMU
 	ldr x9, mair
 	mov32 x10, 0xff8ec000
@@ -79,6 +113,12 @@ PROC(entry_point, 2)
 	msr SCTLR_EL3, x12
 	isb
 
+.text 1
+.align 3
+mair:
+	.8byte 0xbb4400ff
+
+.text 0
 	// install secondary mappings
 	adr x0, secondary_ptes
 	mov32 x1, (LOADER_VA_PGTAB + 0xfe8)
@@ -87,6 +127,17 @@ PROC(entry_point, 2)
 	stp x3, x2, [x1], #-16
 	cbnz x3, 0b
 
+.text 1
+.align 4
+secondary_ptes:
+#define X(n, addr, flags) (addr | flags),
+	.8byte ENUM_LOADER_MAPPINGS(X) 0
+#undef X
+// the PTEs above are copied in pairs, this ensures that at least
+// the second one is a zero (terminating condition).
+.align 4
+
+.text 0
 	// another life-sign
 	mov32 x2, LOADER_VA_UART2
 	mov x0, #'\n'
@@ -116,6 +167,7 @@ PROC(entry_point, 2)
 	b 0b
 ENDFUNC(entry_point)
 
+.text 2
 SPROC(zero_range, 2)
 0:	// for each 64 B (known dc zva block size, alignment of
 	// range is assumed)
@@ -176,32 +228,3 @@ rhex:
 	ret
 ENDFUNC(rhex32)
 #endif
-
-#define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
-#define MAP_NULL 0
-#define MAP_CODE (PAGE(0) | VMSAV8_64_RO)
-#define MAP_RO (PAGE(0) | VMSAV8_64_RO | VMSAV8_64_XN)
-#define MAP_RW (PAGE(0) | VMSAV8_64_XN)
-#define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
-#define MAP_UNCACHED (PAGE(2) | VMSAV8_64_XN)
-
-.align 4
-secondary_ptes:
-#define X(n, addr, flags) (addr | flags),
-	.8byte ENUM_LOADER_MAPPINGS(X) 0,
-#undef X
-// the PTEs above are copied in pairs, this ensures that at least
-// the second one is a zero (terminating condition).
-.align 4
-greeting:
-	.ascii CONFIG_GREETING "\r"
-
-.align 3
-initial_ptes:
-	.8byte 0xff8ed003, 0xff8ee003, 0xff8ef003, (0xff8c2000 | MAP_CODE)
-	.8byte (0xff8ef000 | MAP_RW)
-mair:
-	.8byte 0xbb4400ff
-initial_pte_addrs:
-	.4byte 0xff8ec000, 0xff8ed018, 0xff8eefe0, 0xff8ef610
-	.4byte 0xff8efff8
