@@ -92,6 +92,14 @@ PROC(entry_point, 2)
 	mov x0, #'\n'
 	str x0, [x2]
 
+#if ENV_VERBOSITY >= 6
+	mov32 x5, LOADER_VA_PGTAB
+	add x6, x5, #0x1000
+	bl dumpmem
+	mov32 x5, LOADER_VA_BROM_DATA
+	add x6, x5, #0x2000
+	bl dumpmem
+#endif
 
 	// top of the stack page, start of the uncached page
 	mov32 x8, LOADER_VA_LOADER_UNCACHED
@@ -118,6 +126,56 @@ SPROC(zero_range, 2)
 	ret
 ENDFUNC(zero_range)
 
+#if ENV_VERBOSITY >= 4
+SPROC(dumpmem, 2)
+	mov x7, x30
+0:	// for each 16B
+	mov x0, x5
+	bl rhex32
+	ldp x0, x4, [x5], #16
+	mov x17, #' '
+	str w17, [x2]
+	bl rhex64
+	mov x0, #' '
+	str w0, [x2]
+	mov x0, x4
+	bl rhex64
+	bl endline
+	cmp x5, x6
+	b.lo 0b
+	ret x7
+ENDFUNC(dumpmem)
+
+SPROC(endline, 2)
+	mov x0, #'\r'
+	str w0, [x2]
+	mov x0, #'\n'
+	str w0, [x2]
+uart_idle:
+	ldr w0, [x2, 0x80]
+	cbnz x0, uart_idle
+	ret
+ENDFUNC(endline)
+
+SPROC(rhex32, 2)
+	mov x1, #8
+	b rhex
+rhex64:
+	mov x1, #16
+rhex:
+8:	/* write the (reverse) hex repr of x0 to x2, using x1 digits (clobbers x0, x1 and x3) */
+	and x3, x0, #15
+	cmp x3, #10
+	b.lo 1f
+		add x3, x3, #('a' - '0' - 10)
+1:	add x3, x3, #'0'
+	str w3, [x2]
+	lsr x0, x0, #4
+	sub x1, x1, #1
+	cbnz x1, 8b
+	ret
+ENDFUNC(rhex32)
+#endif
 
 #define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
 #define MAP_NULL 0
