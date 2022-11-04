@@ -24,6 +24,8 @@
 #define LOADER_VA_BROM_DATA 0xff9f6000
 #define LOADER_VA_OTG0 0xff9f4000
 
+#define LOADER_DWC3_GEVNT 0x400
+
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 

@@ -160,14 +160,67 @@ secondary_ptes:
 	mov x1, #0x2000
 	bl zero_range
 
+	// stop events from being written out to system RAM
+	// by masking the interrupt
+	adr x9, otg_data
+	ldp w10, w11, [x9]
+	ldp w12, w13, [x9, #8]
+	str w11, [x10, #8]	// GEVNTSIZ
+
+	// migrate the event buffer
+	mov32 x0, (LOADER_VA_BROM_DATA + 0x210)
+	add x1, x8, #0x200
+	mov x3, #0x100
+	bl copy
+	stp w12, wzr, [x10]	// GEVNTADR
+
+	// continue event writing
+	str w13, [x10, #8]	// GEVNTSIZ
+	dsb sy
+.text 1
+.align 2
+otg_data:
+	.4byte (LOADER_VA_OTG0 + LOADER_DWC3_GEVNT), 0x80000100, 0xff8eb200, 0x100
+
+.text 0
 	mov x0, #'\n'
 	str x0, [x2]
+
+	add x5, x8, 0x200
+	add x6, x8, 0x300
+	bl dumpmem
+
+	// load the BROM's event dequeue pointer
+	mov32 x0, (LOADER_VA_BROM_DATA + 0x41c)
+	ldr x0, [x0]
+	bl rhex32
+	mov x0, #' '
+	str w0, [x2]
+	ldr w0, [x10, #12]
+	bl rhex32
+	bl endline
+
+	mov32 x5, (LOADER_VA_BROM_DATA + 0x210)
+	add x6, x5, #0x100
+	bl dumpmem
+
+	mov x0, #4
+	str w0, [x10, #12]
 
 0:	wfi
 	b 0b
 ENDFUNC(entry_point)
 
 .text 2
+SPROC(copy, 2)
+0:	// for each 16 B
+	ldp x4, x5, [x0], #16
+	stp x4, x5, [x1], #16
+	subs x3, x3, #16
+	b.hi 0b
+	ret
+ENDFUNC(copy)
+
 SPROC(zero_range, 2)
 0:	// for each 64 B (known dc zva block size, alignment of
 	// range is assumed)
