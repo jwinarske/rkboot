@@ -21,6 +21,8 @@
 #define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
 #define MAP_UNCACHED (PAGE(2) | VMSAV8_64_XN)
 
+#define TOC_OFFS(n) ((n) - toc_setup - 0x100)
+
 .text 0
 	.ascii "RK33"
 PROC(entry_point, 2)
@@ -30,17 +32,28 @@ PROC(entry_point, 2)
 	msr SCTLR_EL3, x1
 	cortex_a53_init x8, var_rev=0x04
 	isb
+#if ENV_VERBOSITY >= 4
+	stp x29, x30, [sp, #-32]!
+	add x29, sp, #0
+	stp x27, x28, [x29, #16]
+#endif
 
+	adr x28, toc_setup + 0x100
 	// init architectural counter
-	mov32 x1, 0x16e3600	// 24000000 (timer ticks per second)
-	mov32 x2, 0xff8680a0
+	ldp w1, w2, [x28, #TOC_OFFS(toc_setup)]
 	msr CNTFRQ_EL0, x1
 	mov x1, #0xffffffff
 	str wzr, [x2, #28]	// stop the timer
 	stp w1, w1, [x2]		// set to start at -1
 	mov x1, #1
 	str w1, [x2, #28]	// start the timer
-	
+
+.text 1
+toc_setup:
+	.4byte 0x16e3600	// 24000000 (timer ticks per second)
+	.4byte 0xff8680a0	// STimer11 address
+
+.text 0
 	mov x8, #0xff1a0000
 	mov x1, #0x83	// LCR: 8 data bits, divisor latch access
 	str w1, [x8, #12]
@@ -50,10 +63,15 @@ PROC(entry_point, 2)
 	str w1, [x8, #12]
 	mov x1, #0x33
 	str w1, [x8, #8]	// reset and enable FIFO
-	mov32 x1, 0xff77e028	// GRF_GPIO4C_IOMUX
-	mov32 x2, 0x03c00140
+	ldp w1, w2, [x28, #TOC_OFFS(uart_setup)]
 	str w2, [x1]	// mux out UART2
 
+.text 1
+uart_setup:
+	.4byte 0xff77e028	// GRF_GPIO4C_IOMUX
+	.4byte 0x03c00140	// mux out UART2 TX and RX
+
+.text 0
 	// print greeting
 	adr x9, greeting
 0:	// for each 8 bytes of greeting
@@ -101,10 +119,9 @@ initial_pte_addrs:
 
 .text 0
 	// enable MMU
-	ldr x9, mair
+	ldr x9, mmu_setup
 	mov32 x10, 0xff8ec000
-	mov32 x11, (TCR_EL3_RES1 | TCR_REGION0(TCR_INNER_CACHED | TCR_OUTER_CACHED | TCR_OUTER_SHARED | TCR_4K_GRANULE | TCR_TxSZ(16)) | TCR_PS(0))
-	mov32 x12, (SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA | SCTLR_M | SCTLR_C)
+	ldp w11, w12, [x28, TOC_OFFS(mmu_setup + 8)]
 	msr MAIR_EL3, x9
 	msr TTBR0_EL3, x10
 	msr TCR_EL3, x11
@@ -115,19 +132,24 @@ initial_pte_addrs:
 
 .text 1
 .align 3
-mair:
+mmu_setup:
 	.8byte 0xbb4400ff
+	.4byte (TCR_EL3_RES1 | TCR_REGION0(TCR_INNER_CACHED | TCR_OUTER_CACHED | TCR_OUTER_SHARED | TCR_4K_GRANULE | TCR_TxSZ(16)) | TCR_PS(0))
+	.4byte (SCTLR_EL23_RES1 | SCTLR_I | SCTLR_SA | SCTLR_M | SCTLR_C)
 
 .text 0
 	// install secondary mappings
 	adr x0, secondary_ptes
-	mov32 x1, (LOADER_VA_PGTAB + 0xfe8)
+	ldp w1, w27, [x28, TOC_OFFS(pgtab_uart_addrs)]
 0:	// for each pair of secondary mappings
 	ldp x2, x3, [x0], #16
 	stp x3, x2, [x1], #-16
 	cbnz x3, 0b
 
 .text 1
+.align 2
+pgtab_uart_addrs:
+	.4byte (LOADER_VA_PGTAB + 0xfe8), LOADER_VA_UART2
 .align 4
 secondary_ptes:
 #define X(n, addr, flags) (addr | flags),
@@ -139,9 +161,8 @@ secondary_ptes:
 
 .text 0
 	// another life-sign
-	mov32 x2, LOADER_VA_UART2
 	mov x0, #'\n'
-	str x0, [x2]
+	str x0, [x27]
 
 #if ENV_VERBOSITY >= 6
 	mov32 x5, LOADER_VA_PGTAB
@@ -184,7 +205,7 @@ otg_data:
 
 .text 0
 	mov x0, #'\n'
-	str x0, [x2]
+	str x0, [x27]
 
 	add x5, x8, 0x200
 	add x6, x8, 0x300
@@ -195,7 +216,7 @@ otg_data:
 	ldr x0, [x0]
 	bl rhex32
 	mov x0, #' '
-	str w0, [x2]
+	str w0, [x27]
 	ldr w0, [x10, #12]
 	bl rhex32
 	bl endline
@@ -239,10 +260,10 @@ SPROC(dumpmem, 2)
 	bl rhex32
 	ldp x0, x4, [x5], #16
 	mov x17, #' '
-	str w17, [x2]
+	str w17, [x27]
 	bl rhex64
 	mov x0, #' '
-	str w0, [x2]
+	str w0, [x27]
 	mov x0, x4
 	bl rhex64
 	bl endline
@@ -253,11 +274,11 @@ ENDFUNC(dumpmem)
 
 SPROC(endline, 2)
 	mov x0, #'\r'
-	str w0, [x2]
+	str w0, [x27]
 	mov x0, #'\n'
-	str w0, [x2]
+	str w0, [x27]
 uart_idle:
-	ldr w0, [x2, 0x80]
+	ldr w0, [x27, 0x80]
 	cbnz x0, uart_idle
 	ret
 ENDFUNC(endline)
@@ -274,7 +295,7 @@ rhex:
 	b.lo 1f
 		add x3, x3, #('a' - '0' - 10)
 1:	add x3, x3, #'0'
-	str w3, [x2]
+	str w3, [x27]
 	lsr x0, x0, #4
 	sub x1, x1, #1
 	cbnz x1, 8b
