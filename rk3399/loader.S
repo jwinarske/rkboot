@@ -33,9 +33,11 @@ PROC(entry_point, 2)
 	cortex_a53_init x8, var_rev=0x04
 	isb
 #if ENV_VERBOSITY >= 4
-	stp x29, x30, [sp, #-32]!
+	stp x29, x30, [sp, #-64]!
 	add x29, sp, #0
 	stp x27, x28, [x29, #16]
+	stp x25, x26, [x29, #32]
+	stp x23, x24, [x29, #48]
 #endif
 
 	adr x28, toc_setup + 0x100
@@ -174,12 +176,15 @@ secondary_ptes:
 #endif
 
 	// top of the stack page, start of the uncached page
-	mov32 x8, LOADER_VA_LOADER_UNCACHED
+	mov32 x26, LOADER_VA_LOADER_UNCACHED
 
 	// clear both stack and uncached page
-	sub x0, x8, 0x1000
+	sub x0, x26, 0x1000
 	mov x1, #0x2000
 	bl zero_range
+
+#define DWC3_GEVNT 0x400
+#define DWC3_DEPCMD 0x800
 
 	// stop events from being written out to system RAM
 	// by masking the interrupt
@@ -190,7 +195,7 @@ secondary_ptes:
 
 	// migrate the event buffer
 	mov32 x0, (LOADER_VA_BROM_DATA + 0x210)
-	add x1, x8, #0x200
+	add x1, x26, #0x200
 	mov x3, #0x100
 	bl copy
 	stp w12, wzr, [x10]	// GEVNTADR
@@ -201,14 +206,14 @@ secondary_ptes:
 .text 1
 .align 2
 otg_data:
-	.4byte (LOADER_VA_OTG0 + LOADER_DWC3_GEVNT), 0x80000100, 0xff8eb200, 0x100
+	.4byte (LOADER_VA_OTG0 + DWC3_GEVNT), 0x80000100, 0xff8eb200, 0x100
 
 .text 0
 	mov x0, #'\n'
 	str x0, [x27]
 
-	add x5, x8, 0x200
-	add x6, x8, 0x300
+	add x5, x26, 0x200
+	add x6, x26, 0x300
 	bl dumpmem
 
 	// load the BROM's event dequeue pointer
@@ -221,12 +226,44 @@ otg_data:
 	bl rhex32
 	bl endline
 
-	mov32 x5, (LOADER_VA_BROM_DATA + 0x210)
-	add x6, x5, #0x100
-	bl dumpmem
 
 	mov x0, #4
 	str w0, [x10, #12]
+
+#define DWC3_DTRB_HWO 1
+#define DWC3_DTRB_LAST 2
+#define DWC3_DTRB_CHAIN 4
+#define DWC3_DTRB_CSP 8
+#define DWC3_DTRB_NORMAL 0x10
+#define DWC3_DTRB_SETUP 0x20
+#define DWC3_DTRB_STATUS2 0x30
+#define DWC3_DTRB_STATUS3 0x40
+#define DWC3_DTRB_CTL_DATA 0x50
+#define DWC3_DTRB_ISOC_FIRST 0x60
+#define DWC3_DTRB_ISOC 0x70
+#define DWC3_DTRB_LINK 0x80
+#define DWC3_DTRB_ISP 0x400
+#define DWC3_DTRB_IOC 0x800
+	mov x0, #((DWC3_DTRB_STATUS3 | DWC3_DTRB_HWO | DWC3_DTRB_LAST | DWC3_DTRB_IOC) << 32)
+	stp xzr, x0, [x26]
+	mov32 x0, LOADER_PA_UNCACHED
+	mov32 x9, LOADER_VA_OTG0 + DWC3_DEPCMD
+	stp wzr, w0, [x9, #0x10]
+	str wzr, [x9, #0x18]
+	dmb sy
+	mov x0, #0x506
+	str w0, [x9, #0x1c]
+
+0:
+	ldr w8, [x9, #0x1c]
+	mov x0, x8
+	bl rhex32
+	bl endline
+	tbnz x8, 10, 0b
+
+	add x5, x26, 0x200
+	add x6, x26, 0x300
+	bl dumpmem
 
 0:	wfi
 	b 0b
