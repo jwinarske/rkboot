@@ -27,6 +27,10 @@
 #define LOADER_VA_BROM_DATA 0xff9f6000
 #define LOADER_VA_OTG0 0xff9f4000
 
+#define LOADER_BOOT_MEDIUM_OFF (-0x100)
+#define LOADER_EVTBUF_POS_OFF (-0xfc)
+#define LOADER_EVTBUF_OFF 0x200
+
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 

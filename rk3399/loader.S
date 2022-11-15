@@ -184,6 +184,7 @@ secondary_ptes:
 	bl zero_range
 
 #define DWC3_GEVNT 0x400
+#define DWC3_DCFG 0x700
 #define DWC3_DEPCMD 0x800
 
 	// stop events from being written out to system RAM
@@ -219,13 +220,15 @@ otg_data:
 	// load the BROM's event dequeue pointer
 	mov32 x0, (LOADER_VA_BROM_DATA + 0x41c)
 	ldr x0, [x0]
+	add x0, x0, #4
+	and x0, x0, #0xff
+	strb w0, [x26, #LOADER_EVTBUF_POS_OFF]
 	bl rhex32
 	mov x0, #' '
 	str w0, [x27]
 	ldr w0, [x10, #12]
 	bl rhex32
 	bl endline
-
 
 	mov x0, #4
 	str w0, [x10, #12]
@@ -261,9 +264,31 @@ otg_data:
 	bl endline
 	tbnz x8, 10, 0b
 
-	add x5, x26, 0x200
-	add x6, x26, 0x300
+	add x5, x26, #LOADER_EVTBUF_OFF
+	add x6, x26, #(LOADER_EVTBUF_OFF + 256)
 	bl dumpmem
+
+	mov32 x8, LOADER_VA_OTG0 + DWC3_GEVNT
+0:	// for each event
+	ldr w0, [x8, #12]
+	cbz x0, no_more_events
+
+	ldrb w0, [x26, #LOADER_EVTBUF_POS_OFF]
+	add x1, x0, #4
+	add x0, x0, x26
+	add x0, x0, #LOADER_EVTBUF_OFF
+	strb w1, [x26, #LOADER_EVTBUF_POS_OFF]
+	ldr w0, [x0]
+	bl rhex32
+	bl endline
+
+	mov x0, #4
+	str w0, [x8, #12]	// ack 4 bytes
+	b 0b
+
+no_more_events:
+	add x0, x8, #(DWC3_DCFG - DWC3_GEVNT)
+	str wzr, [x0, #4]
 
 0:	wfi
 	b 0b
