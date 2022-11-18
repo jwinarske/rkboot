@@ -12,6 +12,12 @@
 
 #include "load_file.h"
 
+#define ERR_OTHER 1
+#define ERR_CMDLINE 2
+#define ERR_USB 3
+#define ERR_ALLOC 4
+#define ERR_FS 5
+
 #define ENUM_LBUSB_STATE(X) X(NO_DEVICE) X(RK_MASKROM)
 
 typedef enum {
@@ -54,14 +60,14 @@ static int connectRk3399(LbusbContext *ctx) {
 	if (!ctx->usb_ctx) {
 		if (libusb_init(&ctx->usb_ctx)) {
 			fprintf(stderr, "error initializing libusb\n");
-			return 2;
+			return ERR_USB;
 		}
 	}
 	libusb_device **list;
 	ssize_t err;
 	if ((err = libusb_get_device_list(ctx->usb_ctx, &list)) < 0) {
 		fprintf(stderr, "error listing devices: %zd (%s)\n", err, libusb_error_name(err));
-		return 2;
+		return ERR_USB;
 	}
 	for (size_t pos = 0; list[pos]; ++pos) {
 		struct libusb_device_descriptor devdesc;
@@ -72,7 +78,7 @@ static int connectRk3399(LbusbContext *ctx) {
 			ctx->st = LBUSB_RK_MASKROM;
 			if (err) {
 				fprintf(stderr, "error opening device: %d (%s)\n", err, libusb_error_name(err));
-				return 2;
+				return ERR_USB;
 			}
 			break;
 		}
@@ -80,7 +86,7 @@ static int connectRk3399(LbusbContext *ctx) {
 	libusb_free_device_list(list, 1);
 	if (ctx->st != LBUSB_RK_MASKROM) {
 		fprintf(stderr, "No RK3399 in mask ROM mode (USB 2207:330c) found\n");
-		return 3;
+		return ERR_OTHER;
 	}
 	return 0;
 }
@@ -132,7 +138,7 @@ static int rk3399MaskRomTransfer(LbusbContext *ctx, const char *buf, size_t size
 		);
 		if (res != (ssize_t)blocklen) {
 			fprintf(stderr, "error while sending data: %zd (%s)\n", res, libusb_error_name((int)res));
-			return 2;
+			return ERR_USB;
 		}
 		if (blocklen != 0x1000) {return 0;}
 	}
@@ -147,7 +153,7 @@ static int rk3399MaskRomTransfer(LbusbContext *ctx, const char *buf, size_t size
 	);
 	if (res != 2) {
 		fprintf(stderr, "error while sending CRC: %zd (%s)\n", res, libusb_error_name((int)res));
-		return 2;
+		return ERR_USB;
 	}
 	return 0;
 }
@@ -155,7 +161,7 @@ static int rk3399MaskRomTransfer(LbusbContext *ctx, const char *buf, size_t size
 static int cliStateError(const char *name, const char *cmd, LbusbState st) {
 	fprintf(stderr, "Error: %s command in state %s\n", cmd, lbusb_state_names[st]);
 	usage(name);
-	return 1;
+	return ERR_CMDLINE;
 }
 
 int main(int argc, char **argv) {
@@ -181,8 +187,12 @@ int main(int argc, char **argv) {
 				return cliStateError(argv[0], *cmd, ctx.st);
 			}
 			char *filename = *++cmd;
+			if (!filename) {
+				fprintf(stderr, "'loader' command expects a filename argument\n");
+				return ERR_CMDLINE;
+			}
 			LoadFile file;
-			if (!loadFile(filename, &file)) {return 2;}
+			if (!loadFile(filename, &file)) {return ERR_FS;}
 			if ((res = rk3399MaskRomTransfer(
 				&ctx, file.buf, file.size, 0x471
 			))) {return res;}
@@ -190,7 +200,7 @@ int main(int argc, char **argv) {
 		} else {
 			fprintf(stderr, "Error: unknown command %s in state %s\n", *cmd, lbusb_state_names[ctx.st]);
 			usage(argv[0]);
-			return 1;
+			return ERR_CMDLINE;
 		}
 		cmd++;
 	}
