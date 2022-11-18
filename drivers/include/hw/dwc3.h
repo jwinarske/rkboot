@@ -60,3 +60,17 @@
 #define DWC3_DTRB_LINK 0x80
 #define DWC3_DTRB_ISP 0x400
 #define DWC3_DTRB_IOC 0x800
+
+// Events format:
+// [0] 0: EP event, 1: device event
+// For EP events:
+// [1] 0: OUT, 1: IN
+// [2..6] EP number
+// [6..10] Event code:
+// 1: transfer complete
+// 2: transfer progress
+// 3: transfer not ready (not usable for Control-SETUP and Control-Data phases)
+// 4: FIFO over-/underrun
+// 6: stream
+// 7: command completion
+// [12..16] Status bits

@@ -253,9 +253,9 @@ otg_data:
 	bl dumpmem
 
 	mov32 x8, LOADER_VA_OTG0 + DWC3_GEVNT
-0:	// for each event
+next_dwc3_event:
 	ldr w0, [x8, #12]
-	cbz x0, no_more_events
+	cbz x0, next_dwc3_event
 
 	// bump dequeue position, compute pointer
 	ldrb w0, [x26, #LOADER_EVTBUF_POS_OFF]
@@ -263,15 +263,27 @@ otg_data:
 	add x0, x0, x26
 	add x0, x0, #LOADER_EVTBUF_OFF
 	strb w1, [x26, #LOADER_EVTBUF_POS_OFF]
-	ldr w0, [x0]
+
+	ldr w9, [x0]	// load event
+	mov x0, x9	// copy for debug output
+	mov x1, #4
+	str w1, [x8, #12]	// ack 4 bytes
 	bl rhex32
 	bl endline
 
-	mov x0, #4
-	str w0, [x8, #12]	// ack 4 bytes
-	b 0b
+	// === decode event ===
+	// we don't want to deal with device events (link state
+	// change, disconnect, reset, …): just disconnect if they
+	// appear
+	tbnz x9, 0, halt
+	tst x9, 0x78
+	b.eq handle_ep0
+	b next_dwc3_event
 
-no_more_events:
+handle_ep0:
+	b next_dwc3_event
+
+halt:
 	add x0, x8, #(DWC3_DCFG - DWC3_GEVNT)
 	str wzr, [x0, #4]
 
