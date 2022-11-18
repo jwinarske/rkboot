@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <libusb.h>
@@ -18,7 +19,10 @@
 #define ERR_ALLOC 4
 #define ERR_FS 5
 
-#define ENUM_LBUSB_STATE(X) X(NO_DEVICE) X(RK_MASKROM)
+#define ENUM_LBUSB_STATE(X)\
+	X(NO_DEVICE)\
+	X(RK_MASKROM)\
+	X(LOADER)\
 
 typedef enum {
 #define X(n) LBUSB_##n,
@@ -197,6 +201,35 @@ int main(int argc, char **argv) {
 				&ctx, file.buf, file.size, 0x471
 			))) {return res;}
 			unloadFile(&file);
+
+			int err = libusb_claim_interface(ctx.usb_handle, 0);
+			if (err) {
+				fprintf(stderr, "error claiming interface: %d (%s)\n", err, libusb_error_name(err));
+				return 2;
+			}
+			ctx.st = LBUSB_LOADER;
+		} else if (0 == strcmp("sramstage", *cmd)) {
+			if (ctx.st != LBUSB_LOADER) {
+				return cliStateError(argv[0], *cmd, ctx.st);
+			}
+			char *buf = malloc(512);
+			if (!buf) {
+				fputs("memory allocation failure", stderr);
+				return ERR_ALLOC;
+			}
+			memset(buf, 0, 512);
+			strncpy(buf, "Herro Warudo!", 512);
+			int transferred_bytes = 0;
+			fprintf(stderr, "sending bulk command\n");
+			int err = libusb_bulk_transfer(
+				ctx.usb_handle, 2,
+				(unsigned char *)buf, 512, &transferred_bytes,
+				1000
+			);
+			if (err) {
+				fprintf(stderr, "error while sending command: %d (%s)\n", err, libusb_error_name(err));
+				return ERR_USB;
+			}
 		} else {
 			fprintf(stderr, "Error: unknown command %s in state %s\n", *cmd, lbusb_state_names[ctx.st]);
 			usage(argv[0]);
