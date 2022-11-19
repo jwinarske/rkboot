@@ -52,6 +52,7 @@ PROC(entry_point, 2)
 	str w1, [x2, #28]	// start the timer
 
 .text 1
+.align 3
 toc_setup:
 	.4byte 0x16e3600	// 24000000 (timer ticks per second)
 	.4byte 0xff8680a0	// STimer11 address
@@ -70,6 +71,7 @@ toc_setup:
 	str w2, [x1]	// mux out UART2
 
 .text 1
+.align 2
 uart_setup:
 	.4byte 0xff77e028	// GRF_GPIO4C_IOMUX
 	.4byte 0x03c00140	// mux out UART2 TX and RX
@@ -230,18 +232,74 @@ otg_data:
 	mov x0, #4
 	str w0, [x10, #12]
 
+	mov32 x9, LOADER_VA_OTG0 + DWC3_DEPCMD
+
+	// configure EP2OUT
+	ldp w0, w1, [x28, #TOC_OFFS(ep2out_config)]
+	stp wzr, w1, [x9, #0x40]
+	str w0, [x9, #0x48]
+	mov x0, #(DWC3_DEPCMD_SET_EP_CFG | DWC3_DEPCMD_ACT | DWC3_DEPCMD_IOC)
+	dmb sy
+	str w0, [x9, #0x4c]
+.text 1
+.align 2
+ep2out_config:
+	.4byte (DWC3_DEPCFG0(512, 0, 0, 0) | DWC3_DEPCFG0_BULK_EP)
+	.4byte (DWC3_DEPCFG1(0, 0, 2, 0) | DWC3_DEPCFG1_INTEN_XFER_COMPLETE | DWC3_DEPCFG1_INTEN_FIFO_ERR)
+
+.text 0
+	add x2, x9, #0x4c
+	bl wait_depcmd
+
+	// make dwc3 assign a transfer resource to EP2OUT
+	mov x0, #1
+	stp wzr, wzr, [x9, #0x40]
+	str w0, [x9, #0x48]
+	mov x0, #(DWC3_DEPCMD_SET_XFER_RSC_CFG | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
+	str w0, [x9, #0x4c]
+	add x2, x9, #0x4c
+	bl wait_depcmd
+
+	// enable EP2OUT
+	mov x0, #0x13
+	str w0, [x9, #(DWC3_DALEPENA - DWC3_DEPCMD)]
+
 	// complete status phase of the request that started us
 	mov x0, #((DWC3_DTRB_STATUS3 | DWC3_DTRB_HWO | DWC3_DTRB_LAST | DWC3_DTRB_IOC) << 32)
 	stp xzr, x0, [x26]
 	mov32 x0, LOADER_PA_UNCACHED
-	mov32 x9, LOADER_VA_OTG0 + DWC3_DEPCMD
 	stp wzr, w0, [x9, #0x10]
 	str wzr, [x9, #0x18]
 	dmb sy
 	mov x0, #(DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
 	str w0, [x9, #0x1c]
+
+	// accept 512 B on EP2OUT
+	ldp x0, x1, [x28, #TOC_OFFS(command_trb)]
+	stp w0, wzr, [x26, #0x10]
+	str x1, [x26, #0x18]
+	lsr x0, x0, #32
+	stp wzr, w0, [x9, #0x40]
+	str wzr, [x9, #0x48]
+	dmb sy
+	mov x0, #(DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
+	str w0, [x9, #0x4c]
+.text 1
+.align 3
+command_trb:
+	// this is written zero-extended to the first 8 bytes of the DTRB
+	.4byte (LOADER_PA_UNCACHED + 0x400)
+	// physical address of the DTRB
+	.4byte (LOADER_PA_UNCACHED + 0x10)
+	.4byte 0x200	// size
+	.4byte (DWC3_DTRB_NORMAL | DWC3_DTRB_HWO | DWC3_DTRB_IOC | DWC3_DTRB_LAST)	// control word
+
+.text 0
 	add x2, x9, #0x1c
 	bl wait_depcmd
+	add x2, x9, #0x4c
+	bl wait_depcmd
+	bl endline
 
 	add x5, x26, #LOADER_EVTBUF_OFF
 	add x6, x26, #(LOADER_EVTBUF_OFF + 256)
