@@ -191,7 +191,9 @@ secondary_ptes:
 	adr x9, otg_data
 	ldp w10, w11, [x9]
 	ldp w12, w13, [x9, #8]
-	str w11, [x10, #8]	// GEVNTSIZ
+	add x14, x10, #8	// GEVNTSIZ
+	str w11, [x14]
+	ldar w11, [x14]	// sync with DMA
 
 	// migrate the event buffer
 	mov32 x0, (LOADER_VA_BROM_DATA + 0x210)
@@ -201,8 +203,7 @@ secondary_ptes:
 	stp w12, wzr, [x10]	// GEVNTADR
 
 	// continue event writing
-	str w13, [x10, #8]	// GEVNTSIZ
-	dsb sy
+	stlr w13, [x14]	// GEVNTSIZ
 .text 1
 .align 2
 otg_data:
@@ -270,9 +271,9 @@ ep2out_config:
 	mov32 x0, LOADER_PA_UNCACHED
 	stp wzr, w0, [x9, #0x10]
 	str wzr, [x9, #0x18]
-	dmb sy
+	add x1, x9, #0x1c
 	mov x0, #(DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
-	str w0, [x9, #0x1c]
+	stlr w0, [x1]
 
 	// accept 512 B on EP2OUT
 	ldp x0, x1, [x28, #TOC_OFFS(command_trb)]
@@ -281,9 +282,9 @@ ep2out_config:
 	lsr x0, x0, #32
 	stp wzr, w0, [x9, #0x40]
 	str wzr, [x9, #0x48]
-	dmb sy
+	add x1, x9, #0x4c
 	mov x0, #(DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
-	str w0, [x9, #0x4c]
+	stlr w0, [x1]
 .text 1
 .align 3
 command_trb:
