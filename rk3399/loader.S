@@ -240,13 +240,8 @@ otg_data:
 	dmb sy
 	mov x0, #(DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
 	str w0, [x9, #0x1c]
-
-0:
-	ldr w8, [x9, #0x1c]
-	mov x0, x8
-	bl rhex32
-	bl endline
-	tbnz x8, 10, 0b
+	add x2, x9, #0x1c
+	bl wait_depcmd
 
 	add x5, x26, #LOADER_EVTBUF_OFF
 	add x6, x26, #(LOADER_EVTBUF_OFF + 256)
@@ -292,6 +287,24 @@ halt:
 ENDFUNC(entry_point)
 
 .text 2
+SPROC(wait_depcmd_, 2)
+#if ENV_VERBOSITY >= 6
+	mov x7, x30
+#if ENV_VERBOSITY >= 7
+	bl rhex32
+#endif
+	mov x0, #'.'
+	bl putc
+	mov x30, x7
+#endif
+wait_depcmd:
+#if ENV_VERBOSITY >= 4
+#endif
+	ldr w0, [x2]
+	tbnz x0, 10, wait_depcmd_
+	ret
+ENDFUNC(wait_depcmd_)
+
 SPROC(copy, 2)
 0:	// for each 16 B
 	ldp x4, x5, [x0], #16
@@ -335,6 +348,7 @@ SPROC(endline, 2)
 	mov x0, #'\r'
 	str w0, [x27]
 	mov x0, #'\n'
+putc:
 	str w0, [x27]
 uart_idle:
 	ldr w0, [x27, 0x80]
