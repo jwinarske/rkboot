@@ -308,7 +308,8 @@ command_trb:
 
 	mov32 x8, LOADER_VA_OTG0 + DWC3_GEVNT
 next_dwc3_event:
-	ldr w0, [x8, #12]
+	add x0, x8, #12
+	ldar w0, [x0]
 	cbz x0, next_dwc3_event
 
 	// bump dequeue position, compute pointer
@@ -318,10 +319,10 @@ next_dwc3_event:
 	add x0, x0, #LOADER_EVTBUF_OFF
 	strb w1, [x26, #LOADER_EVTBUF_POS_OFF]
 
-	ldr w9, [x0]	// load event
-	mov x0, x9	// copy for debug output
+	ldr w10, [x0]	// load event
 	mov x1, #4
 	str w1, [x8, #12]	// ack 4 bytes
+	mov x0, x10
 	bl rhex32
 	bl endline
 
@@ -329,20 +330,30 @@ next_dwc3_event:
 	// we don't want to deal with device events (link state
 	// change, disconnect, reset, …): just disconnect if they
 	// appear
-	tbnz x9, 0, halt
-	tst x9, 0x78
-	b.eq handle_ep0
-	b next_dwc3_event
-
-handle_ep0:
-	b next_dwc3_event
+	tbnz x10, 0, halt
+	ubfx x11, x10, 6, 4
+	cmp x11, #7	// command completion
+	b.eq next_dwc3_event
+	and x11, x10, 0xfff
+	cmp x11, #0x042	// EP0IN transfer complete
+	b.eq  next_dwc3_event
+	cmp x11, #0x048	// EP2OUT transfer complete
+	b.eq ep2out_complete
 
 halt:
+	mov x0, #'@'
+	str w0, [x27]
 	add x0, x8, #(DWC3_DCFG - DWC3_GEVNT)
 	str wzr, [x0, #4]
 
 0:	wfi
 	b 0b
+
+ep2out_complete:
+	mov x5, x26
+	add x6, x26, #0x500
+	bl dumpmem
+	b next_dwc3_event
 ENDFUNC(entry_point)
 
 .text 2
