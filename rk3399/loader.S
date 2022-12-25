@@ -169,7 +169,7 @@ secondary_ptes:
 	mov x0, #'\n'
 	str x0, [x27]
 
-#if ENV_VERBOSITY >= 6
+#if ENV_VERBOSITY >= 8
 	mov32 x5, LOADER_VA_PGTAB
 	add x6, x5, #0x1000
 	bl dumpmem
@@ -210,25 +210,26 @@ otg_data:
 	.4byte (LOADER_VA_OTG0 + DWC3_GEVNT), 0x80000100, 0xff8eb200, 0x100
 
 .text 0
-	mov x0, #'\n'
-	str x0, [x27]
-
+#if ENV_VERBOSITY >= 7
 	add x5, x26, 0x200
 	add x6, x26, 0x300
 	bl dumpmem
+#endif
 
 	// load the BROM's event dequeue pointer
 	mov32 x0, (LOADER_VA_BROM_DATA + 0x41c)
 	ldr x0, [x0]
 	add x0, x0, #4
-	and x0, x0, #0xff
 	strb w0, [x26, #LOADER_EVTBUF_POS_OFF]
+#if ENV_VERBOSITY >= 5
+	and x0, x0, #0xff
 	bl rhex32
 	mov x0, #' '
 	str w0, [x27]
 	ldr w0, [x10, #12]
 	bl rhex32
 	bl endline
+#endif
 
 	mov x0, #4
 	str w0, [x10, #12]
@@ -300,11 +301,14 @@ command_trb:
 	bl wait_depcmd
 	add x2, x9, #0x4c
 	bl wait_depcmd
+
+#if ENV_VERBOSITY >= 5
 	bl endline
 
 	add x5, x26, #LOADER_EVTBUF_OFF
 	add x6, x26, #(LOADER_EVTBUF_OFF + 256)
 	bl dumpmem
+#endif
 
 	mov32 x8, LOADER_VA_OTG0 + DWC3_GEVNT
 next_dwc3_event:
@@ -322,9 +326,13 @@ next_dwc3_event:
 	ldr w10, [x0]	// load event
 	mov x1, #4
 	str w1, [x8, #12]	// ack 4 bytes
+#if ENV_VERBOSITY >= 4
+	mov x0, '*'
+	str w0, [x27]
 	mov x0, x10
 	bl rhex32
 	bl endline
+#endif
 
 	// === decode event ===
 	// we don't want to deal with device events (link state
@@ -341,8 +349,10 @@ next_dwc3_event:
 	b.eq ep2out_complete
 
 halt:
+#if ENV_VERBOSITY >= 4
 	mov x0, #'@'
 	str w0, [x27]
+#endif
 	add x0, x8, #(DWC3_DCFG - DWC3_GEVNT)
 	str wzr, [x0, #4]
 
@@ -350,9 +360,11 @@ halt:
 	b 0b
 
 ep2out_complete:
+#if ENV_VERBOSITY >= 5
 	mov x5, x26
 	add x6, x26, #0x500
 	bl dumpmem
+#endif
 	b next_dwc3_event
 ENDFUNC(entry_point)
 
@@ -432,7 +444,7 @@ SPROC(rhex32, 2)
 rhex64:
 	mov x1, #16
 rhex:
-8:	/* write the (reverse) hex repr of x0 to x2, using x1 digits (clobbers x0, x1 and x3) */
+8:	/* write the (reverse) hex repr of x0 to x27, using x1 digits (clobbers x0, x1 and x3) */
 	and x3, x0, #15
 	cmp x3, #10
 	b.lo 1f

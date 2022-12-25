@@ -27,7 +27,7 @@ rule bin
     command = $OBJCOPY -O binary \$binflags \$in \$out
 
 build rk3399/loader-usb.o: cc $src/rk3399/loader.S
-  flags = -c -DCONFIG_GREETING=\"levinboot/0.9\" -DCONFIG_UART_CLOCK_DIV=1 -DENV_VERBOSITY=8
+  flags = -c -DCONFIG_GREETING=\"levinboot/0.9\" -DCONFIG_UART_CLOCK_DIV=1 -DENV_VERBOSITY=7
 build rk3399/loader-usb.bin: bin rk3399/loader-usb.o
   binflags = --only-section=.text
 END
