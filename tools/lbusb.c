@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 #include <assert.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,7 @@ typedef struct {
 	libusb_context *usb_ctx;
 	libusb_device *usb_device;
 	libusb_device_handle *usb_handle;
+	bool maskrom_rc4;
 } LbusbContext;
 
 static void usage(const char *name) {
@@ -49,7 +51,8 @@ static void usage(const char *name) {
 "Usage: %s [commands]\n\n"
 "Available commands:\n"
 "  help  display this help text and exit\n"
-"  rk3399  connect to RK3399 maskrom\n",
+"  rk3399  connect to RK3399 maskrom\n"
+"  rk3566  connect to RK3366 maskrom\n",
 		name
 	);
 }
@@ -60,7 +63,7 @@ static int help(const char *name) {
 	return 0;
 }
 
-static int connectRk3399(LbusbContext *ctx) {
+static int connectRkMaskRom(LbusbContext *ctx, uint32_t usb_id, const char *name) {
 	if (!ctx->usb_ctx) {
 		if (libusb_init(&ctx->usb_ctx)) {
 			fprintf(stderr, "error initializing libusb\n");
@@ -76,7 +79,7 @@ static int connectRk3399(LbusbContext *ctx) {
 	for (size_t pos = 0; list[pos]; ++pos) {
 		struct libusb_device_descriptor devdesc;
 		libusb_get_device_descriptor(list[pos], &devdesc);
-		if (devdesc.idVendor == 0x2207 && devdesc.idProduct == 0x330c) {
+		if (((uint32_t)devdesc.idVendor << 16 | devdesc.idProduct) == usb_id) {
 			int err = libusb_open(list[pos], &ctx->usb_handle);
 			ctx->usb_device = list[pos];
 			ctx->st = LBUSB_RK_MASKROM;
@@ -89,7 +92,7 @@ static int connectRk3399(LbusbContext *ctx) {
 	}
 	libusb_free_device_list(list, 1);
 	if (ctx->st != LBUSB_RK_MASKROM) {
-		fprintf(stderr, "No RK3399 in mask ROM mode (USB 2207:330c) found\n");
+		fprintf(stderr, "No %s (USB %x:%x) found\n", name, (unsigned)(usb_id >> 16), (unsigned)(usb_id & 0xffff));
 		return ERR_OTHER;
 	}
 	return 0;
@@ -112,7 +115,9 @@ static int rk3399MaskRomTransfer(LbusbContext *ctx, const char *buf, size_t size
 	uint8_t xfer_buf[4096];
 	uint8_t rc4_st[258];
 	uint16_t crc = 0xffff;
-	rc4_init(rc4_st, RC4_RK_KEY, sizeof(RC4_RK_KEY));
+	if (ctx->maskrom_rc4) {
+		rc4_init(rc4_st, RC4_RK_KEY, sizeof(RC4_RK_KEY));
+	}
 	for (size_t offset = 0; offset < size; offset += 4096) {
 		size_t blocklen = size - offset;
 		if (blocklen > 0x1000) {blocklen = 0x1000;}
@@ -127,7 +132,7 @@ static int rk3399MaskRomTransfer(LbusbContext *ctx, const char *buf, size_t size
 			memset(xfer_buf + blocklen, 0, 0x1000 - blocklen);
 			blocklen = 0x1000;
 		}
-		rc4(xfer_buf, blocklen, rc4_st);
+		if (ctx->maskrom_rc4) {rc4(xfer_buf, blocklen, rc4_st);}
 		crc = crc16(xfer_buf, blocklen, crc, 0x1021);
 		if (blocklen < 0xffe) {
 			xfer_buf[blocklen++] = crc >> 8;
@@ -181,11 +186,22 @@ int main(int argc, char **argv) {
 	while (*cmd) {
 		if (0 == strcmp("help", *cmd)) {
 			return help(argv[0]);
-		} else if (0 == strcmp("rk3399", *cmd)) {
+		} else if (0 == strcmp("rk3399", *cmd) || 0 == strcmp("rk3566", *cmd)) {
 			if (ctx.st != LBUSB_NO_DEVICE) {
 				return cliStateError(argv[0], *cmd, ctx.st);
 			}
-			if ((res = connectRk3399(&ctx))) {return res;}
+			uint32_t id;
+			const char *name;
+			if (0 == strcmp("rk3399", *cmd)) {
+				ctx.maskrom_rc4 = true;
+				id = 0x2207330c;
+				name = "RK3399 in mask ROM mode";
+			} else {
+				ctx.maskrom_rc4 = false;
+				id = 0x2207350a;
+				name = "RK3566 in mask ROM mode";
+			}
+			if ((res =connectRkMaskRom(&ctx, id, name))) {return res;}
 		} else if (0 == strcmp("loader", *cmd)) {
 			if (ctx.st != LBUSB_RK_MASKROM) {
 				return cliStateError(argv[0], *cmd, ctx.st);
