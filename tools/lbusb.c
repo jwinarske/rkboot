@@ -173,6 +173,10 @@ static int cliStateError(const char *name, const char *cmd, LbusbState st) {
 	return ERR_CMDLINE;
 }
 
+static char hexDigit(size_t v) {
+	return v < 10 ? '0' + v : v - 10 + 'a';
+}
+
 int main(int argc, char **argv) {
 	if (argc < 1) {return 0;}
 	if (argc == 1) {return help(argv[0]);}
@@ -245,6 +249,32 @@ int main(int argc, char **argv) {
 			if (err) {
 				fprintf(stderr, "error while sending command: %d (%s)\n", err, libusb_error_name(err));
 				return ERR_USB;
+			}
+			fprintf(stderr, "waiting for event\n");
+			err = libusb_bulk_transfer(
+				ctx.usb_handle, 0x81,
+				(unsigned char *)buf, 512, &transferred_bytes,
+				1000
+			);
+			if (err) {
+				fprintf(stderr, "error while receiving event: %d (%s)\n", err, libusb_error_name(err));
+				return ERR_USB;
+			}
+			fprintf(stderr, "received %d bytes\n", transferred_bytes);
+			for (size_t i = 0; i < 512; i += 16) {
+				char line[52];
+				line[16] = ' ';
+				line[33] = ' ';
+				line[50] = '\n';
+				line[51] = 0;
+				for (size_t j = 0; j < 16; ++j) {
+					uint8_t b= buf[i + j];
+					char *p = line + j * 2 + (int)(j >= 8);
+					p[0] = hexDigit(b & 15);
+					p[1] = hexDigit(b >> 4);
+					line[34 + j] = b < ' ' || b >= 127 ? '.' : b;
+				}
+				fputs(line, stderr);
 			}
 		} else {
 			fprintf(stderr, "Error: unknown command %s in state %s\n", *cmd, lbusb_state_names[ctx.st]);
