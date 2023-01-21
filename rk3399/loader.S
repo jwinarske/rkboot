@@ -343,9 +343,9 @@ next_dwc3_event:
 	cmp x11, #7	// command completion
 	b.eq next_dwc3_event
 	and x11, x10, 0xfff
-	cmp x11, #0x042	// EP0IN transfer complete
+	cmp x11, #(DWC3_DEPEVT(0) | DWC3_DEPEVT_IN | DWC3_DEPEVT_XFER_COMPLETE)
 	b.eq  next_dwc3_event
-	cmp x11, #0x048	// EP2OUT transfer complete
+	cmp x11, #(DWC3_DEPEVT(2) | DWC3_DEPEVT_XFER_COMPLETE)
 	b.eq ep2out_complete
 
 halt:

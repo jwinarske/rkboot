@@ -74,3 +74,6 @@
 // 6: stream
 // 7: command completion
 // [12..16] Status bits
+#define DWC3_DEPEVT_IN 2
+#define DWC3_DEPEVT(ep) ((ep) << 2 & 0x3c)
+#define DWC3_DEPEVT_XFER_COMPLETE 0x40
