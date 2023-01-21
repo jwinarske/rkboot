@@ -236,34 +236,46 @@ otg_data:
 
 	mov32 x9, LOADER_VA_OTG0 + DWC3_DEPCMD
 
-	// configure EP2OUT
+	// configure EP2OUT and EP1IN
 	ldp w0, w1, [x28, #TOC_OFFS(ep2out_config)]
-	stp wzr, w1, [x9, #0x40]
-	str w0, [x9, #0x48]
-	mov x0, #(DWC3_DEPCMD_SET_EP_CFG | DWC3_DEPCMD_ACT | DWC3_DEPCMD_IOC)
-	dmb sy
-	str w0, [x9, #0x4c]
+	ldp w3, w4, [x28, #TOC_OFFS(ep1in_config)]
+	mov x2, #(DWC3_DEPCMD_SET_EP_CFG | DWC3_DEPCMD_ACT | DWC3_DEPCMD_IOC)
+	stp wzr, w4, [x9, #0x30]
+	str w3, [x9, #0x38]
+	stp w2, wzr, [x9, #0x3c]
+	stp w1, w0, [x9, #0x44]
+	str w2, [x9, #0x4c]
 .text 1
 .align 2
 ep2out_config:
 	.4byte (DWC3_DEPCFG0(512, 0, 0, 0) | DWC3_DEPCFG0_BULK_EP)
 	.4byte (DWC3_DEPCFG1(0, 0, 2, 0) | DWC3_DEPCFG1_INTEN_XFER_COMPLETE | DWC3_DEPCFG1_INTEN_FIFO_ERR)
+ep1in_config:
+	.4byte (DWC3_DEPCFG0(512, 1, 0, 0) | DWC3_DEPCFG0_BULK_EP)
+	.4byte (DWC3_DEPCFG1(0, 0, 1, 1) | DWC3_DEPCFG1_INTEN_XFER_COMPLETE | DWC3_DEPCFG1_INTEN_FIFO_ERR)
 
 .text 0
 	add x2, x9, #0x4c
 	bl wait_depcmd
-
-	// make dwc3 assign a transfer resource to EP2OUT
-	mov x0, #1
-	stp wzr, wzr, [x9, #0x40]
-	str w0, [x9, #0x48]
-	mov x0, #(DWC3_DEPCMD_SET_XFER_RSC_CFG | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
-	str w0, [x9, #0x4c]
-	add x2, x9, #0x4c
+	add x2, x9, #0x3c
 	bl wait_depcmd
 
-	// enable EP2OUT
-	mov x0, #0x13
+	// make dwc3 assign a transfer resource to EP2OUT and EP1IN
+	mov x0, #1
+	mov x2, #(DWC3_DEPCMD_SET_XFER_RSC_CFG | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
+	stp wzr, wzr, [x9, #0x40]
+	stp wzr, wzr, [x9, #0x30]
+	str w0, [x9, #0x48]
+	str w0, [x9, #0x38]
+	str w2, [x9, #0x4c]
+	str w2, [x9, #0x3c]
+	add x2, x9, #0x4c
+	bl wait_depcmd
+	add x2, x9, #0x3c
+	bl wait_depcmd
+
+	// enable EP0, EP1IN and EP2OUT
+	mov x0, #0x1b
 	str w0, [x9, #(DWC3_DALEPENA - DWC3_DEPCMD)]
 
 	// complete status phase of the request that started us
@@ -347,6 +359,8 @@ next_dwc3_event:
 	b.eq  next_dwc3_event
 	cmp x11, #(DWC3_DEPEVT(2) | DWC3_DEPEVT_XFER_COMPLETE)
 	b.eq ep2out_complete
+	cmp x11, #(DWC3_DEPEVT(1) | DWC3_DEPEVT_IN | DWC3_DEPEVT_XFER_COMPLETE)
+	b.eq next_dwc3_event
 
 halt:
 #if ENV_VERBOSITY >= 4
@@ -360,11 +374,31 @@ halt:
 	b 0b
 
 ep2out_complete:
+	ldp x0, x1, [x28, TOC_OFFS(out_dtrb)]
+	stp w0, wzr, [x26, #0x20]
+	str x1, [x26, #0x28]
+	lsr x0, x0, #32
+	stp wzr, w0, [x9, #0x30]
+	str wzr, [x9, #0x38]
+	add x1, x9, #0x3c
+	mov x0, #(DWC3_DEPCMD_START_XFER | DWC3_DEPCMD_IOC | DWC3_DEPCMD_ACT)
+	stlr w0, [x1]
 #if ENV_VERBOSITY >= 5
 	mov x5, x26
 	add x6, x26, #0x500
 	bl dumpmem
 #endif
+
+.text 1
+.align 3
+out_dtrb:
+	.4byte (LOADER_PA_UNCACHED + 0x200)
+	// physical address of the DTRB
+	.4byte (LOADER_PA_UNCACHED + 0x20)
+	.4byte 0x100	// size
+	.4byte (DWC3_DTRB_NORMAL | DWC3_DTRB_HWO | DWC3_DTRB_IOC | DWC3_DTRB_LAST)	// control word
+
+.text 0
 	b next_dwc3_event
 ENDFUNC(entry_point)
 
