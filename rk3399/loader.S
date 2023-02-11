@@ -22,7 +22,10 @@
 #define MAP_DEV (PAGE(1) | VMSAV8_64_XN)
 #define MAP_UNCACHED (PAGE(2) | VMSAV8_64_XN)
 
-#define TOC_OFFS(n) ((n) - toc_setup - 0x100)
+#define TOC_OFFS(n) ((n) - toc - 0x100)
+.text 1
+.align 3
+toc:
 
 .text 0
 	.ascii "RK33"
@@ -41,9 +44,9 @@ PROC(entry_point, 2)
 	stp x23, x24, [x29, #48]
 #endif
 
-	adr x28, toc_setup + 0x100
+	adr x28, toc + 0x100
 	// init architectural counter
-	ldp w1, w2, [x28, #TOC_OFFS(toc_setup)]
+	ldp w1, w2, [x28, #TOC_OFFS(timer_data)]
 	msr CNTFRQ_EL0, x1
 	mov x1, #0xffffffff
 	str wzr, [x2, #28]	// stop the timer
@@ -53,7 +56,7 @@ PROC(entry_point, 2)
 
 .text 1
 .align 3
-toc_setup:
+timer_data:
 	.4byte 0x16e3600	// 24000000 (timer ticks per second)
 	.4byte 0xff8680a0	// STimer11 address
 
