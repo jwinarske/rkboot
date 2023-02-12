@@ -181,15 +181,16 @@ secondary_ptes:
 	bl dumpmem
 #endif
 
-	// top of the stack page, start of the uncached page
+	// end of the code page, start of the uncached page
 	mov32 x26, LOADER_VA_LOADER_UNCACHED
 	// setup stack
-	sub sp, x26, #LOADER_STACKFRAME_SIZE
-	sub x29, x26, #LOADER_STACKFRAME_SIZE
+	sub x29, x26, #0x1000
+	sub sp, x29, #LOADER_STACKFRAME_SIZE
+	sub x29, x29, #LOADER_STACKFRAME_SIZE
 
-	// clear both stack and uncached page
-	sub x0, x26, 0x1000
-	mov x1, #0x2000
+	// clear the stack, code, and uncached pages
+	sub x0, x26, #0x2000
+	mov x1, #0x3000
 	bl zero_range
 
 	// stop events from being written out to system RAM
@@ -203,7 +204,7 @@ secondary_ptes:
 
 	// migrate the event buffer
 	mov32 x0, (LOADER_VA_BROM_DATA + 0x210)
-	add x1, x26, #0x200
+	add x1, x26, #LOADER_EVTBUF_OFF
 	mov x3, #0x100
 	bl copy
 	stp w12, wzr, [x10]	// GEVNTADR
@@ -213,7 +214,8 @@ secondary_ptes:
 .text 1
 .align 2
 otg_data:
-	.4byte (LOADER_VA_OTG0 + DWC3_GEVNT), 0x80000100, 0xff8eb200, 0x100
+	.4byte (LOADER_VA_OTG0 + DWC3_GEVNT), 0x80000100
+	.4byte (LOADER_PA_UNCACHED + 0x200), 0x100
 
 .text 0
 #if ENV_VERBOSITY >= 7

@@ -3,6 +3,7 @@
 
 #define LOADER_PA_UART2 0xff1a0000
 #define LOADER_PA_UNCACHED 0xff8eb000
+#define LOADER_PA_CODE 0xff8ea000
 
 #define ENUM_LOADER_MAPPINGS(X)\
 	X(uart2, LOADER_PA_UART2, MAP_DEV)\
@@ -11,10 +12,10 @@
 	X(spi1, 0xff1d0000, MAP_DEV)\
 	X(dmac1, 0xff6f0000, MAP_DEV)\
 	X(loader_uncached, LOADER_PA_UNCACHED, MAP_UNCACHED)\
+	X(loader_code, LOADER_PA_CODE, MAP_RW)	/* remapped to RX later */\
 	X(stack, 0xff8e9000, MAP_RW)\
 	X(brom_stack, 0xff8c1000, MAP_RO)	/* unmapped later */\
 	X(brom_data, 0xff8c0000, MAP_RO)	/* unmapped later */\
-	X(loader_code, 0xff8ea000, MAP_RW)	/* remapped to RX later */\
 	X(otg0_extra, 0xfe80c000, MAP_DEV)\
 
 #define LOADER_VA_PGTAB 0xff9ff000
@@ -24,7 +25,10 @@
 #define LOADER_VA_SPI1 0xff9fb000
 #define LOADER_VA_DMAC1 0xff9fa000
 #define LOADER_VA_LOADER_UNCACHED 0xff9f9000
-#define LOADER_VA_BROM_DATA 0xff9f6000
+#define LOADER_VA_LOADER_CODE 0xff9f8000
+#define LOADER_VA_LOADER_STACK 0xff9f7000
+#define LOADER_VA_BROM_STACK 0xff9f6000
+#define LOADER_VA_BROM_DATA 0xff9f5000
 #define LOADER_VA_OTG0 0xff9f4000
 
 #define LOADER_BOOT_MEDIUM_OFF 16
