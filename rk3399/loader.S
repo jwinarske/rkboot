@@ -12,6 +12,8 @@
 // .text 3  common rodata
 // .text 4  post-relocation (transfer) code
 // .text 5  post-relocation (transfer) rodata
+.text 2
+start_relocate:
 
 // PTE macros
 #define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
@@ -26,6 +28,10 @@
 .text 1
 .align 3
 toc:
+#define TOC2_OFFS(n) ((n) - toc2 - 0x100)
+.text 5
+.align 3
+toc2:
 
 .text 0
 	.ascii "RK33"
@@ -193,6 +199,14 @@ secondary_ptes:
 	mov x1, #0x3000
 	bl zero_range
 
+	adr x2, start_relocate
+	sub x3, x26, #0x1000
+	adr x4, end_relocate
+0:	ldp x0, x1, [x2], #16
+	cmp x2, x4
+	stp x0, x1, [x3], #16
+	b.lo 0b
+
 	// stop events from being written out to system RAM
 	// by masking the interrupt
 	adr x9, otg_data
@@ -330,6 +344,31 @@ command_trb:
 	bl dumpmem
 #endif
 
+	// remap code as executable, jump to relocated code
+	ldp w0, w1, [x28, #TOC_OFFS(code_inval)]
+	str xzr, [x0]
+	dsb ish
+	ldp x2, x28, [x28, #TOC_OFFS(code_inval + 8)]
+	tlbi vale3, x1
+	dsb ish
+	str x2, [x0]
+	add x3, x28, #TOC2_OFFS(event_loop)
+	dsb ish
+#if ENV_VERBOSITY >= 4
+	mov x0, #':'
+	str w0, [x27]
+#endif
+	br x3
+ENDFUNC(entry_point)
+
+.text 1
+.align 2
+code_inval:
+	.4byte (LOADER_VA_PGTAB + (LOADER_VA_LOADER_CODE - 0xff800000) / 0x1000 * 8), LOADER_VA_LOADER_CODE >> 12
+	.8byte (LOADER_PA_CODE | MAP_CODE), LOADER_VA_LOADER_CODE + (toc2 - start_relocate) + 0x100
+
+.text 4
+PROC(event_loop, 2)
 	mov32 x8, LOADER_VA_OTG0 + DWC3_GEVNT
 next_dwc3_event:
 	add x0, x8, #12
@@ -382,7 +421,7 @@ halt:
 	b 0b
 
 ep2out_complete:
-	ldp x0, x1, [x28, TOC_OFFS(out_dtrb)]
+	ldp x0, x1, [x28, TOC2_OFFS(out_dtrb)]
 	stp w0, wzr, [x26, #0x20]
 	str x1, [x26, #0x28]
 	lsr x0, x0, #32
@@ -397,7 +436,7 @@ ep2out_complete:
 	bl dumpmem
 #endif
 
-.text 1
+.text 5
 .align 3
 out_dtrb:
 	.4byte (LOADER_PA_UNCACHED + 0x200)
@@ -406,9 +445,9 @@ out_dtrb:
 	.4byte 0x100	// size
 	.4byte (DWC3_DTRB_NORMAL | DWC3_DTRB_HWO | DWC3_DTRB_IOC | DWC3_DTRB_LAST)	// control word
 
-.text 0
+.text 4
 	b next_dwc3_event
-ENDFUNC(entry_point)
+ENDFUNC(event_loop)
 
 .text 2
 SPROC(wait_depcmd_, 2)
@@ -499,3 +538,7 @@ rhex:
 	ret
 ENDFUNC(rhex32)
 #endif
+
+.text 5
+.align 4
+end_relocate:
