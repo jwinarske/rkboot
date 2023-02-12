@@ -183,6 +183,9 @@ secondary_ptes:
 
 	// top of the stack page, start of the uncached page
 	mov32 x26, LOADER_VA_LOADER_UNCACHED
+	// setup stack
+	sub sp, x26, #LOADER_STACKFRAME_SIZE
+	sub x29, x26, #LOADER_STACKFRAME_SIZE
 
 	// clear both stack and uncached page
 	sub x0, x26, 0x1000
@@ -223,7 +226,7 @@ otg_data:
 	mov32 x0, (LOADER_VA_BROM_DATA + 0x41c)
 	ldr x0, [x0]
 	add x0, x0, #4
-	strb w0, [x26, #LOADER_EVTBUF_POS_OFF]
+	strb w0, [x29, #LOADER_EVTBUF_POS_OFF]
 #if ENV_VERBOSITY >= 5
 	and x0, x0, #0xff
 	bl rhex32
@@ -332,11 +335,11 @@ next_dwc3_event:
 	cbz x0, next_dwc3_event
 
 	// bump dequeue position, compute pointer
-	ldrb w0, [x26, #LOADER_EVTBUF_POS_OFF]
+	ldrb w0, [x29, #LOADER_EVTBUF_POS_OFF]
 	add x1, x0, #4
 	add x0, x0, x26
 	add x0, x0, #LOADER_EVTBUF_OFF
-	strb w1, [x26, #LOADER_EVTBUF_POS_OFF]
+	strb w1, [x29, #LOADER_EVTBUF_POS_OFF]
 
 	ldr w10, [x0]	// load event
 	mov x1, #4
