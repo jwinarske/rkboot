@@ -17,7 +17,7 @@ start_relocate:
 
 // PTE macros
 #define PAGE(attridx) (VMSAV8_64_PAGE(attridx) | VMSAV8_64_AF | VMSAV8_64_OSH)
-#define MAP_NULL 0
+#define MAP_NULL 2	// 0 is a sentinel value, so use this invalid PTE
 #define MAP_CODE (PAGE(0) | VMSAV8_64_RO)
 #define MAP_RO (PAGE(0) | VMSAV8_64_RO | VMSAV8_64_XN)
 #define MAP_RW (PAGE(0) | VMSAV8_64_XN)
