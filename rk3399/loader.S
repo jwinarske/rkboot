@@ -369,6 +369,7 @@ code_inval:
 
 .text 4
 PROC(event_loop, 2)
+	bl clear_low_sram
 	mov32 x8, LOADER_VA_OTG0 + DWC3_GEVNT
 next_dwc3_event:
 	add x0, x8, #12
@@ -448,6 +449,73 @@ out_dtrb:
 .text 4
 	b next_dwc3_event
 ENDFUNC(event_loop)
+
+// X23: PTE start
+// X24: page number start
+// X25: #pages
+// clobbers X0
+SPROC(break_page_range, 2)
+	dsb ish
+	add x0, x23, x25, lsl #3
+0:	str xzr, [x0, #-8]!
+	cmp x0, x23
+	b.hi 0b
+
+	dsb ish
+	add x0, x24, x25
+0:	sub x0, x0, #1
+	tlbi vale3, x2
+	cmp x0, x24
+	b.hi 0b
+
+	dsb ish
+	ret
+ENDFUNC(break_page_range)
+
+/// invalidate cache for 0xff8c0000–0xff8effff (physical) and
+/// unmap everything 0xff800000–0xff9effff (virtual)
+// clobbers …X25
+SPROC(clear_low_sram, 2)
+	ldp w23, w24, [x28, #TOC2_OFFS(clear_low_sram_data)]
+	mov x22, x30
+	mov x25, #0x1f0
+	bl break_page_range
+
+	ldr x2, clear_low_sram_data + 8
+	add x0, x23, #(0x29 * 8)
+0:	str x2, [x0, #-8]!
+	cmp x0, x23
+	sub x2, x2, #0x1000
+	b.hi 0b
+
+#if ENV_VERBOSITY >= 4
+	mov x5, x23
+	add x6, x5, #0x1000
+	bl dumpmem
+#endif
+
+	dsb ish
+	mov x0, 0xff800000
+	add x1, x0, 0x29000
+0:	dc ivac, x0
+	add x0, x0, #64
+	cmp x0, x1
+	b.lo 0b
+
+	ic iallu
+	dsb ish
+	mov x25, #0x29
+	mov x30, x22
+	b break_page_range
+
+.text 5
+.align 2
+clear_low_sram_data:
+	.4byte LOADER_VA_PGTAB, 0xff8c0
+	.8byte 0xff8e8000 | MAP_UNCACHED
+
+.text 4
+ENDFUNC(clear_low_sram)
 
 .text 2
 SPROC(wait_depcmd_, 2)
