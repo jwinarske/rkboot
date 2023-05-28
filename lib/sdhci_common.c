@@ -41,7 +41,7 @@ void sdhci_irq(struct sdhci_state *st) {
 enum iost sdhci_wait_state(struct sdhci_state *st, u32 mask, u32 expected, timestamp_t timeout, const char *name) {
 	volatile struct sdhci_regs *sdhci = st->regs;
 	timestamp_t start = get_timestamp();
-	u32 prests, int_st;
+	u32 prests = 0, int_st = 0;
 	while (1) {
 		if ((int_st = atomic_load_explicit(&st->int_st, memory_order_relaxed)) >> 16) {
 			info("%s error: intsts0x%08"PRIx32" prests0x%08"PRIx32" cmd %"PRIx16" %08"PRIx32" acmd0x%"PRIx16"\n", name, int_st, prests, sdhci->cmd, sdhci->arg, sdhci->auto_cmd_error_st);

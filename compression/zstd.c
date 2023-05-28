@@ -238,7 +238,7 @@ static size_t decompress_block(const u8 *in, const u8 *end, u8 *out, u8 *out_end
 	return NUM_DECODE_STATUS + (out - out_start);
 }
 
-static enum compr_probe_status probe(const u8 *in, const u8 *end, u64 *size) {
+static enum compr_probe_status probe(const u8 *in, const u8 *end, size_t *size) {
 	if (end - in < 4) {return COMPR_PROBE_NOT_ENOUGH_DATA;}
 	u32 magic = in[0] | (u32)in[1] << 8 | (u32)in[2] << 16 | (u32)in[3] << 24;
 	if (magic != 0xfd2fb528) {return COMPR_PROBE_WRONG_MAGIC;}

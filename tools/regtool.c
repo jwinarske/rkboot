@@ -77,19 +77,21 @@ u16 parse_offset(const char *start, const char *end) {
 	return reg * 32 + bit;
 }
 
-const char *memmem_(const char *haystack, size_t haystack_len, const char *needle, size_t needle_len) {
-	if (haystack_len < needle_len) {return 0;}
-	const char *hay_end = haystack + haystack_len - needle_len, *needle_end = needle + needle_len;
-	const char *hay = haystack;
-	while (haystack <= hay_end) {
-		const char *n = needle;
-		do {
-			if (n >= needle_end) {return haystack;}
-		} while (*n++ == *hay++);
-		hay = haystack += 1;
+#if !defined(HAVE_MEMMEM)
+	const char *memmem(const char *haystack, size_t haystack_len, const char *needle, size_t needle_len) {
+		if (haystack_len < needle_len) {return 0;}
+		const char *hay_end = haystack + haystack_len - needle_len, *needle_end = needle + needle_len;
+		const char *hay = haystack;
+		while (haystack <= hay_end) {
+			const char *n = needle;
+			do {
+				if (n >= needle_end) {return haystack;}
+			} while (*n++ == *hay++);
+			hay = haystack += 1;
+		}
+		return 0;
 	}
-	return 0;
-}
+#endif
 
 char *demultiplex(const struct context *ctx, const char *expr, size_t expr_size, u32 local_reps, const u8 *rep_values, size_t *len) {
 	u32 active_reps = local_reps | ctx->global_reps;
@@ -102,7 +104,7 @@ char *demultiplex(const struct context *ctx, const char *expr, size_t expr_size,
 		u8 value = local_reps & 1 << rep ? rep_values[rep] : ctx->rep_values[rep];
 		const char *occ;
 		size_t len = strlen(rep_macro[rep]);
-		while ((occ = memmem_(string, string_end - string, rep_macro[rep], len))) {
+		while ((occ = memmem(string, string_end - string, rep_macro[rep], len))) {
 			char *new_str = malloc(string_end - string);
 			assert(new_str);
 			memcpy(new_str, string, occ - string);
