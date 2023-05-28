@@ -77,7 +77,7 @@ u16 parse_offset(const char *start, const char *end) {
 	return reg * 32 + bit;
 }
 
-const char *memmem(const char *haystack, size_t haystack_len, const char *needle, size_t needle_len) {
+const char *memmem_(const char *haystack, size_t haystack_len, const char *needle, size_t needle_len) {
 	if (haystack_len < needle_len) {return 0;}
 	const char *hay_end = haystack + haystack_len - needle_len, *needle_end = needle + needle_len;
 	const char *hay = haystack;
@@ -102,7 +102,7 @@ char *demultiplex(const struct context *ctx, const char *expr, size_t expr_size,
 		u8 value = local_reps & 1 << rep ? rep_values[rep] : ctx->rep_values[rep];
 		const char *occ;
 		size_t len = strlen(rep_macro[rep]);
-		while ((occ = memmem(string, string_end - string, rep_macro[rep], len))) {
+		while ((occ = memmem_(string, string_end - string, rep_macro[rep], len))) {
 			char *new_str = malloc(string_end - string);
 			assert(new_str);
 			memcpy(new_str, string, occ - string);
@@ -117,7 +117,7 @@ char *demultiplex(const struct context *ctx, const char *expr, size_t expr_size,
 				char c = *occ++;
 				if (c == ')') {
 					check(param + 1 == rep_num_repetitions[rep],
-						"%s call had %"PRIu8" arguments, expected %"PRIu8", in %.*s",
+						"%s call had %d arguments, expected %d, in %.*s",
 						rep_names[rep], param + 1, rep_num_repetitions[rep],
 						(int)expr_size, expr
 					);
@@ -183,10 +183,10 @@ void reg_table(struct context *ctx) {
 		if (pline->name_len == 8 && !strncmp("reserved", pline->name, pline->name_len)) {continue;}*/
 		printf("\t");
 		if (last_reg != field->offset / 32) {
-			printf("%"PRIu16, field->offset / 32);
+			printf("%"PRIu16, (u16)(field->offset / 32));
 			last_reg = field->offset / 32;
 		}
-		printf("\t%"PRIu16"\t", field->offset % 32);
+		printf("\t%"PRIu16"\t", (u16)(field->offset % 32));
 		if (pline->size != 1) {
 			printf("%"PRIu8, pline->size);
 		}
@@ -211,7 +211,7 @@ void reg_table(struct context *ctx) {
 		if (field->flags & 1 << REP_CS) {
 			printf(" %"PRIu8, field->rep_value[REP_CS]);
 		} else if (field->flags & 1 << REP_CS4) {
-			printf(" %"PRIu8"%.*s", field->rep_value[REP_CS4] & 1, !!(field->rep_value[REP_CS4] >> 1), "x");
+			printf(" %d%.*s", field->rep_value[REP_CS4] & 1, !!(field->rep_value[REP_CS4] >> 1), "x");
 		}
 		if (field->flags & 1 << REP_ASLICE) {
 			printf(" %"PRIu8, field->rep_value[REP_ASLICE]);
@@ -443,7 +443,7 @@ void read_lines(struct context *ctx, const char *input_ptr, const char *input_en
 			parsed_line->offset_end = end_offset;
 		}
 		input_ptr = line_end;
-		check(line < UINT16_MAX, "input has too many lines (>%"PRIu16")\n", UINT16_MAX);
+		check(line < UINT16_MAX, "input has too many lines (>%d)\n", UINT16_MAX);
 		line += 1;
 	} while (input_ptr < input_end);
 	debug("got %zu lines\n", ctx->lines_size);

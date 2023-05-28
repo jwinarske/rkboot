@@ -8,7 +8,7 @@
 #include <plat.h>
 
 static inline void UNUSED dump_mem(volatile const void *mem, size_t size) {
-	char buf[16], line[71];
+	char buf[16], line[256];
 	printf("memory dump starting at %"PRIxPTR":\n", (uintptr_t)mem);
 	for (size_t pos = 0; pos < size; pos += ARRAY_SIZE(buf)) {
 		const char *start = (const char *)mem + pos;
