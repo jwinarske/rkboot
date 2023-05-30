@@ -10,6 +10,8 @@
 
 #include <gic.h>
 
+typedef long double max_align_t;
+
 extern const u8 _binary_dramstage_lz4_start[], _binary_dramstage_lz4_end[];
 
 extern const struct decompressor lz4_decompressor;

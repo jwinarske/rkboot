@@ -50,4 +50,4 @@ _Static_assert((u64)REGMAP64K_BASE(NUM_REGMAP64K) == regmap4k_base, "");
 	DEFINE_REGMAP64K(X)
 #undef X
 
-_Static_assert(vstacks_end <= regmap64k_base, "VStacks and regmaps don't fit into 2 MiB");
+_Static_assert((int)vstacks_end <= (int)regmap64k_base, "VStacks and regmaps don't fit into 2 MiB");

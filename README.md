@@ -39,9 +39,24 @@ Two pass build to support Yocto Target/Native scheme
 
 #### Host
 
-    arch -arm64 cmake ../tools -DCMAKE_STAGING_PREFIX=`pwd`/../artifacts
-    arch -arm64 make install
+Mac M1/M2
+
+    arch -arm64 cmake -GNinja ../tools -DCMAKE_STAGING_PREFIX=`pwd`/../artifacts
+    ninja -j`sysctl -n hw.ncpu` install
+
+or
+
+    cmake ../tools -DCMAKE_STAGING_PREFIX=`pwd`/../artifacts
+    make -j install
 
 #### Target
 
-    arch -arm64 cmake .. -DTRIPLE=aarch64-elf -DCMAKE_TOOLCHAIN_FILE=/Users/joel/development/levinboot/_build/../aarch64-toolchain.cmake -DCMAKE_MAKEFILE_VERBOSE=1 -DTF_A_HEADERS=`pwd`/../../trusted-firmware-a/include/export
+    cmake -GNinja .. -DTRIPLE=aarch64-elf -DCMAKE_TOOLCHAIN_FILE=/Users/joel/development/levinboot/_build/../aarch64-toolchain.cmake -Dboards=rp64,pbp -Ddecompressors=lz4,gzip,zstd -Dboot_media=spi,emmc,sd,nvme -Dfull_debug=FALSE -DCMAKE_VERBOSE_MAKEFILE=1 -Dwith-tf-a-headers=/Users/joel/development/levinboot/build/../../trusted-firmware-a/include/export
+
+    cmake -GNinja .. -DTRIPLE=aarch64-elf -DCMAKE_TOOLCHAIN_FILE=/Users/joel/development/levinboot/_build/../aarch64-toolchain.cmake -DCMAKE_MAKEFILE_VERBOSE=1 -DTF_A_HEADERS=`pwd`/../../trusted-firmware-a/include/export
+    ninja -j`sysctl -n hw.ncpu`
+
+or
+
+    cmake .. -DTRIPLE=aarch64-elf -DCMAKE_TOOLCHAIN_FILE=/Users/joel/development/levinboot/_build/../aarch64-toolchain.cmake -DCMAKE_MAKEFILE_VERBOSE=1 -DTF_A_HEADERS=`pwd`/../../trusted-firmware-a/include/export
+    make -j

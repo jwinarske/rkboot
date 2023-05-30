@@ -95,6 +95,7 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 		flush_range(dev->end_ptr, end - dev->end_ptr);
 		if (!sdhci_reset_xfer(&dev->xfer)) {return (struct async_buf) {iost_u8 + IOST_INVALID, iost_u8};}
 		_Bool success = sdhci_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
+		(void)success;
 		assert(success);
 		enum iost res = sdhci_start_xfer(&emmc_state, &dev->xfer, dev->next_lba);
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}

@@ -10,6 +10,9 @@
 #include <timer.h>
 #include <runqueue.h>
 #include <byteorder.h>
+#if defined(SPEW_MSG) || defined(DEBUG_MSG)
+# include "dump_mem.h"
+#endif
 
 
 enum iost nvme_init(struct nvme_state *st) {

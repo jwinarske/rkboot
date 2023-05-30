@@ -59,6 +59,7 @@ HEADER_FUNC irq_save_t irq_lock(irq_lock_t *lock) {
 		asm("wfe");
 		irq_mask();
 	}
+	return irq; //TODO - remove after validation
 }
 
 HEADER_FUNC void irq_unlock(irq_lock_t *lock, irq_save_t irq) {

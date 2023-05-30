@@ -190,6 +190,7 @@ static u64 unmap_one(u64 *pt, u64 first, u64 last) {
 			}
 			u32 last_entry = last >> shift & MASK64(MAPPING_LEVEL_SHIFT);
 			u64 template = pte_lvls[lvl].last_level ? 3 : 1;
+			(void)template;
 			for_range(i, first_entry, last_entry + 1) {
 				assert((pt[i] & 3) == template);
 				pt[i] = 0;
@@ -210,6 +211,7 @@ static u64 unmap_one(u64 *pt, u64 first, u64 last) {
 		if (first >> shift < last >> shift) {last = first | mask;}
 	}
 	assert(UNREACHABLE);
+	return 0;
 }
 
 void mmu_unmap_range(u64 first, u64 last) {

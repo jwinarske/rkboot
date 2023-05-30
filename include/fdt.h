@@ -37,7 +37,7 @@ static inline u32 fdt_token_size(const uint32_t *start, const uint32_t *end) {
 	size_t space = (const char*)end - (const char *)start;
 	uint32_t cmd = be32(*start++);
 	if (cmd == FDT_CMD_NODE) {
-		size_t namelen = strnlen(start, space);
+		size_t namelen = strnlen((const char *)start, space);
 		return namelen != space ? 5 + namelen : 0;
 	} else if (cmd == FDT_CMD_NODE_END) {
 		return 4;

@@ -150,6 +150,7 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 		enum iost res = nvme_reset_xfer(&dev->xfer);
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
 		_Bool success = nvme_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
+		(void)success;
 		assert(success);
 		/* we will invalidate later, but this prevents any previous
 		 * cache contents from overwriting DMA'd-in data */

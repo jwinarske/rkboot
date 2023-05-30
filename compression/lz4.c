@@ -184,6 +184,7 @@ static size_t decode_block(struct decompressor_state *state,  const u8 *in,  con
 }
 
 static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *end) {
+	(void)end;
 	assert(end - in >= 7);
 	struct lz4_dec_state *st = (struct lz4_dec_state *)state;
 	st->flags = in[4];

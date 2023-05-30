@@ -111,6 +111,7 @@ static struct async_buf pump(struct async_transfer *async, size_t consume, size_
 		enum iost res = dwmmc_start_request(&dev->xfer, dev->next_lba);
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}
 		_Bool success = dwmmc_add_phys_buffer(&dev->xfer, plat_virt_to_phys(dev->end_ptr), plat_virt_to_phys(end));
+		(void)success;
 		assert(success);
 		res = dwmmc_start_xfer(&sdmmc_state, &dev->xfer);
 		if (res != IOST_OK) {return (struct async_buf) {iost_u8 + res, iost_u8};}

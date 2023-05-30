@@ -506,6 +506,7 @@ static void xxh64_init(struct xxh64_state *state) {
 }
 
 static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *end) {
+    (void)end;
 	struct zstd_dec_state *st = (struct zstd_dec_state *)state;
 	assert(end - in >= 6);
 	u8 frame_header_desc = in[4];
@@ -517,6 +518,7 @@ static const u8 *init(struct decompressor_state *state, const u8 *in, const u8 *
 	debug("fcsfs%"PRIu8"\n", fcs_field_size);
 	u8 frame_header_size = fcs_field_size
 		+ !(frame_header_desc & Single_Segment_Flag); /* window descriptor */
+	(void)frame_header_size;
 	assert(end - in > 5 + frame_header_size);
 	in += 5;
 

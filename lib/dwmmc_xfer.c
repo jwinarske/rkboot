@@ -73,6 +73,7 @@ enum iost dwmmc_start_xfer(struct dwmmc_state *state, struct dwmmc_xfer *xfer) {
 	atomic_thread_fence(memory_order_release);
 	u8 status = DWMMC_CREATING;
 	_Bool success = atomic_compare_exchange_strong_explicit(&xfer->status, &status, DWMMC_SUBMITTED, memory_order_relaxed, memory_order_relaxed);
+    (void)success;
 	assert(success);
 	struct dwmmc_xfer *prev_xfer = 0;
 	success = atomic_compare_exchange_strong_explicit(&state->active_xfer, &prev_xfer, xfer, memory_order_relaxed, memory_order_relaxed);

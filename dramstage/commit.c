@@ -104,6 +104,7 @@ static void load_elf(const struct elf_header *header) {
 		assert(ph->offset % ph->alignment == 0);
 		assert(ph->vaddr % ph->alignment == 0);
 		u64 alignment = ph->alignment;
+		(void)alignment;
 		assert(alignment % 16 == 0);
 		const u64 words_copied = (ph->file_size + 7) >> 3;
 		const u64 words_clear = ((ph->mem_size + 7) >> 3) - words_copied;

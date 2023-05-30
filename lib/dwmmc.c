@@ -86,6 +86,7 @@ _Bool dwmmc_init_late(struct dwmmc_state *state, struct sd_cardinfo *card) {
 	assert(svc->voltages_supported & 1 << DWMMC_SIGNAL_3V3);
 
 	u32 last_cmd = dwmmc->cmd;
+	(void)last_cmd;
 	assert((last_cmd & 63) == 41);
 	u32 acmd41_arg = dwmmc->cmdarg;
 	_Bool sd_2_0 = !!(acmd41_arg & SD_OCR_HIGH_CAPACITY);

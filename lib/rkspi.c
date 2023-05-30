@@ -71,7 +71,7 @@ void rkspi_start_rx_xfer(struct rkspi_xfer_state *state, volatile struct rkspi_r
 		}
 		spi->rx_fifo_threshold = irq_threshold - 1;
 	}
-	debug("starting %"PRIu32"-byte RX transfer\n", bytes);
+	debug("starting %"PRIu64"-byte RX transfer\n", bytes);
 	state->this_xfer_items = bytes / 2;
 	spi->ctrl1 = bytes - 1;
 	spi->enable = 1;
@@ -88,7 +88,7 @@ void rkspi_handle_interrupt(struct rkspi_xfer_state *state, volatile struct rksp
 	assert(read_items <= (size_t)(end - buf));
 	for_range(i, 0, read_items) {*buf++ = to_le16((u16)spi->rx);}
 	atomic_store_explicit(&state->buf, (void *)buf, memory_order_release);
-	spew("pos=0x%zx, this_xfer=%"PRIu16"\n", pos, state->this_xfer_items);
+	//TODO spew("pos=0x%zx, this_xfer=%"PRIu16"\n", pos, state->this_xfer_items);
 	sched_queue_list(CURRENT_RUNQUEUE, &state->waiters);
 	if ((state->this_xfer_items -= read_items) == 0) {
 		if (end <= buf) {return;}

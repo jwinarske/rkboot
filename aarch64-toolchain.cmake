@@ -122,12 +122,12 @@ set(_AFLAGS ${GCCFLAGS}
     -nostdlib
 )
 
-set(_LDFLAGS ${GCCFLAGS}
+set(_LDFLAGS
     -march=armv8-a+crc
     -mcpu=cortex-a72.cortex-a53+crc
     -x none
     -Wl,--gc-sections
-    -Wl,-Map,${APP}.map
+    -Wl,-Map,${NAME}.map
 )
 
 set(PARSE_SYMBOL_OPTIONS --print-size)
@@ -145,10 +145,10 @@ set(POSTBUILD_GEN_INCBIN ${OBJCOPY} -I binary -O elf64-littleaarch64 -B aarch64 
 
 
 # Install Files
-set(MAP_FILE ${CMAKE_BINARY_DIR}/${APP}.map)
-set(SYMBOL_LISTING_FILE ${CMAKE_BINARY_DIR}/${APP}_readelf.txt)
-set(HEX_FILE ${CMAKE_BINARY_DIR}/${APP}.hex)
-set(BIN_FILE ${CMAKE_BINARY_DIR}/${APP}.bin)
+set(MAP_FILE ${CMAKE_BINARY_DIR}/${NAME}.map)
+set(SYMBOL_LISTING_FILE ${CMAKE_BINARY_DIR}/${NAME}_readelf.txt)
+set(HEX_FILE ${CMAKE_BINARY_DIR}/${NAME}.hex)
+set(BIN_FILE ${CMAKE_BINARY_DIR}/${NAME}.bin)
 
 # remove list item delimeter
 string(REPLACE ";" " " CMAKE_C_FLAGS "${_CFLAGS}")
